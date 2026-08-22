@@ -61,3 +61,4 @@ plans/
 !.claude/commands
 !.claude/settings.json
 .dys/
+.build-extension-test-shared-*/

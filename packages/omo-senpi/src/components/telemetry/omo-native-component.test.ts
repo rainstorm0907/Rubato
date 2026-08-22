@@ -101,12 +101,16 @@ function assertAllowlistedPayloadKeys(messages: readonly TelemetryCaptureMessage
 }
 
 describe("OmO Native telemetry component integration", () => {
-  test("#given the real component list #when composed #then telemetry input classification registers before ultrawork", () => {
+  // Rubato: upstream asserted telemetry registers before ultrawork. We register
+  // neither — telemetry ships session shape to PostHog, and ultrawork injects a
+  // second voice over our own lead prompt. The component source stays buildable
+  // and the rest of this suite still exercises it directly.
+  // See docs/rubato/component-policy.md.
+  test("#given the real component list #when composed #then telemetry is not registered", () => {
     const names = omoSenpiComponents.map(({ name }) => name)
 
-    expect(names.indexOf("telemetry")).toBeGreaterThanOrEqual(0)
-    expect(names.indexOf("telemetry")).toBeLessThan(names.indexOf("ultrawork"))
-    expect(names.filter((name) => name === "telemetry")).toHaveLength(1)
+    expect(names).not.toContain("telemetry")
+    expect(names).not.toContain("ultrawork")
   })
 
   test("#given an enabled composed component #when the full host sequence dispatches #then the exact event stream is captured in order", async () => {

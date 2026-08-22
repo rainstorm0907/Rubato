@@ -17,21 +17,18 @@ import { createUltraworkComponent } from "../components/ultrawork"
 import { createUlwLoopComponent } from "../components/ulw-loop"
 import type { OmoSenpiComponent } from "./types"
 
+// Rubato: this array is the single place where we choose what runs.
+//
+// We do NOT delete upstream component sources — every `create*Component` above stays
+// imported and buildable. Removing a component here is a one-line change, so an upstream
+// merge conflicts in this file only, and the conflict itself is the notification that
+// upstream added or reordered a component. See docs/rubato/component-policy.md.
+//
+// Registration ORDER is meaningful upstream (e.g. start-work-continuation must precede
+// ulw-loop so boulder work wins). Keep the surviving entries in upstream's relative order.
 export function createOmoSenpiComponents(taskComponent: OmoSenpiComponent): OmoSenpiComponent[] {
   return [
     createConfigStartupComponent(),
-    createNativeBadgeComponent(),
-    createOnboardingComponent(),
-    createInitDeepAdvisorComponent(),
-    createOmoNativeTelemetryComponent(),
-    createUltraworkComponent(),
-    createSkillPointersComponent(),
-    createStartWorkContinuationComponent(),
-    createUlwLoopComponent(),
-    createTodoFanoutReminderComponent(),
-    createGitMasterAttributionComponent(),
-    createFallbackArchitectComponent(),
-    createCommentCheckerComponent(),
     createAstGrepComponent(),
     createLspComponent(),
     taskComponent,
@@ -39,3 +36,22 @@ export function createOmoSenpiComponents(taskComponent: OmoSenpiComponent): OmoS
     createConfigWatchComponent(),
   ]
 }
+
+// Dropped for Rubato, with the reason each one is off. Re-enable by moving the call back
+// into the array above at its upstream position.
+//
+//   native-badge             posts an OMO status badge; collides with the rubato brand
+//   onboarding               starts a turn we never asked for on first run
+//   init-deep-advisor        preflights the project and runs an advice flow; the first turn
+//                            of a team run must be ours
+//   telemetry                ships session shape to PostHog
+//   ultrawork                injects extra planning/delegation instructions on `ulw`
+//   skill-pointers           injects mass-ulw / ulw-plan / ulw-loop / ulw-research skill
+//                            pointers on keyword match (same family as the two above)
+//   start-work-continuation  nags a settling agent up to 8 times from boulder state;
+//                            completion is owned by Taskforce done-evidence
+//   ulw-loop                 same, from ulw-loop state
+//   todo-fanout-reminder     duplicates our approval gate for delegation decisions
+//   git-master               adds a third-party co-author trailer to our commits
+//   fallback-architect       changes behaviour on model downgrade, outside our role plan
+//   comment-checker          held pending a look at its actual output quality

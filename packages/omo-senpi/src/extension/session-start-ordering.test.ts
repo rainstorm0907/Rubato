@@ -24,19 +24,18 @@ import type { ComponentContext } from "./types"
 afterEach(() => resetTestHome())
 
 describe("session_start component ordering", () => {
-  test("#given the production component list #when startup handlers are ordered #then onboarding immediately precedes the advisor after native badge", () => {
+  // Rubato: upstream asserted the relative order of native-badge / onboarding /
+  // init-deep-advisor. We drop all three, so that ordering no longer exists to
+  // check. What matters for us instead is that they never come back by accident:
+  // nothing may start a turn we did not ask for. See docs/rubato/component-policy.md.
+  test("#given the production component list #when it is composed #then no turn-starting component is registered", () => {
     // given
     const names = omoSenpiComponents.map(({ name }) => name)
 
-    // when
-    const nativeBadgeIndex = names.indexOf("native-badge")
-    const onboardingIndex = names.indexOf("onboarding")
-    const advisorIndex = names.indexOf("init-deep-advisor")
-
     // then
-    expect(onboardingIndex).toBe(nativeBadgeIndex + 1)
-    expect(advisorIndex).toBe(onboardingIndex + 1)
-    expect(onboardingIndex).toBeLessThan(advisorIndex)
+    expect(names).not.toContain("native-badge")
+    expect(names).not.toContain("onboarding")
+    expect(names).not.toContain("init-deep-advisor")
   })
 
   test("#given real onboarding state and an active ulw loop #when startup then agent_end fire #then onboarding is preserved and the first-session advisor stays detached and suppressed", async () => {

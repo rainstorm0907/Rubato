@@ -38,20 +38,24 @@ describe("omo-senpi extension entry", () => {
 
     await extension(pi)
 
-    expect(pi.flags.map((flag) => flag.name)).toEqual(
-      expect.arrayContaining([
-        "omo-senpi-config-startup-disabled",
-        "omo-senpi-ultrawork-disabled",
-        "omo-senpi-ulw-loop-disabled",
-        "omo-senpi-fallback-architect-disabled",
-        "omo-senpi-comment-checker-disabled",
-        "omo-senpi-telemetry-disabled",
-        "omo-senpi-lsp-disabled",
-        "omo-senpi-config-watch-disabled",
-      ]),
-    )
+    // Rubato: only the components we chose register at all. A flag exists per
+    // registered component, so this asserts the kept set AND the dropped set at
+    // once — see docs/rubato/component-policy.md.
+    const componentFlags = pi.flags
+      .map((flag) => flag.name)
+      .filter((name) => name.startsWith("omo-senpi-") && name.endsWith("-disabled"))
+      .filter((name) => name !== "omo-senpi-disabled")
+
+    expect(componentFlags).toEqual([
+      "omo-senpi-config-startup-disabled",
+      "omo-senpi-ast-grep-disabled",
+      "omo-senpi-lsp-disabled",
+      "omo-senpi-task-disabled",
+      "omo-senpi-memory-disabled",
+      "omo-senpi-config-watch-disabled",
+    ])
     expect(pi.handlers.map((handler) => handler.event)).toEqual(
-      expect.arrayContaining(["input", "tool_result", "session_start", "model_select", "message_end"]),
+      expect.arrayContaining(["input", "tool_result", "session_start"]),
     )
   })
 
