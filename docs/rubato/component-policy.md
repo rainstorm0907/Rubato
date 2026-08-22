@@ -23,13 +23,17 @@
 
 **등록 순서는 의미가 있다.** upstream에서 `start-work-continuation`이 `ulw-loop`보다 먼저 등록되어야 boulder 작업이 우선권을 갖는 식이다. 살아남은 항목은 upstream의 상대 순서를 유지한다.
 
-## 지금 켜는 것 (6개)
+## 지금 켜는 것 (4개)
 
-`config-startup`, `ast-grep`, `lsp`, `task`, `memory`, `config-watch`.
+`ast-grep`, `lsp`, `task`, `memory`.
 
-`task`가 이 포크가 존재하는 이유이고(팀 실행 엔진), `config-startup`은 다른 component가 그 설정 뷰에 의존한다.
+`task`가 이 포크가 존재하는 이유다(팀 실행 엔진).
 
-## 지금 끄는 것 (12개)
+**문이 둘이라는 것을 기억해라.** 이 배열은 *번들에 넣을지*를 정하고, 오버레이의 `ON_COMPONENTS`(`harness/rubato-pi/src/policy.mjs`)가 *그중 무엇을 등록할지*를 다시 정한다. 둘 다 지나야 실제로 돈다.
+
+**두 목록은 같아야 한다.** 한때 이 배열이 여섯이고 오버레이가 넷이어서 `config-startup`·`config-watch`가 번들에만 실리고 켜지지는 않았다. 안 켜지는 것을 배포물에 넣는 낭비이고, 나중에 읽는 사람에게는 버그로 보인다.
+
+## 지금 끄는 것 (14개)
 
 결정의 정본은 `agent-taskforce` 레포의 `harness/docs/rubato-pi-design.md` 4절 카탈로그(2026-08-22 사용자 확정)다. 요약하면 이렇게 갈린다.
 
@@ -50,6 +54,8 @@
 **다만 남는 위험은 기록해 둔다.** 같은 지시가 두 곳(이 component와 리드 프롬프트)에 존재한다. 지금은 component가 져 있어 실질 충돌이 없지만, **누군가 `ultrawork`를 다시 켜면 두 목소리가 생긴다.** 그때는 둘 중 하나를 골라야 하며, 이 문서에 그 결정을 적는다.
 
 **바깥으로 나가거나 남의 이름이 붙는 것** — `telemetry`(세션 형태를 PostHog로 전송), `git-master`(커밋 메시지에 제3자 co-author trailer), `native-badge`(OMO 상태 배지 — rubato 브랜드와 충돌).
+
+**우리가 쓰지 않는 설정 파일을 다루는 것** — `config-startup`(`~/.omo` 설정을 읽는다), `config-watch`(그 파일이 바뀌면 다시 읽는다). rubato-pi 는 그 파일을 쓰지 않는다. 설정을 코드로 만들어 런타임에 그대로 넘긴다(`harness/rubato-pi/src/omo-config.mjs`) — 그래서 읽을 것도 감시할 것도 없다. 설계 문서에는 `config-startup`을 유지로 적었지만 그것은 `~/.omo` 설정을 쓰던 시절 기준이고, 지금 구조에서는 성립하지 않는다.
 
 **보류** — `fallback-architect`(모델 강등 시 자동 행동 변경; 우리 모델 배치와 충돌 가능), `comment-checker`(실제 출력 품질을 보고 판단).
 
