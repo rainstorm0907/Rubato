@@ -18,9 +18,9 @@ export const FALLBACK_CATALOG = Object.freeze([
   { id: "anthropic/claude-opus-5", name: "Opus 5" },
   { id: "anthropic/claude-sonnet-5", name: "Sonnet 5" },
   { id: "anthropic/claude-haiku-4-5", name: "Haiku 4.5" },
-  { id: "openai/gpt-5.6-sol", name: "GPT-5.6 Sol" },
-  { id: "openai/gpt-5.6-terra", name: "GPT-5.6 Terra" },
-  { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna" },
+  { id: "openai-codex/gpt-5.6-sol", name: "GPT-5.6 Sol" },
+  { id: "openai-codex/gpt-5.6-terra", name: "GPT-5.6 Terra" },
+  { id: "openai-codex/gpt-5.6-luna", name: "GPT-5.6 Luna" },
 ]);
 
 export function brokerUrl(env = process.env) {

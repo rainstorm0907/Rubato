@@ -11,6 +11,10 @@ if [ "${1-}" = "restart" ]; then
   shift
   exec "$HERE/rubato-restart.sh" "$@"
 fi
+if [ "${1-}" = "auth" ]; then
+  shift
+  exec "$HERE/rubato-auth.sh" "$@"
+fi
 
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 SELECT="$ROOT/scripts/select-node.mjs"

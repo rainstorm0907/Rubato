@@ -35,11 +35,24 @@ function sanitizeLog(value: string): string {
   return SENSITIVE.test(value) ? "[redacted]" : value;
 }
 
+// OpenCodex 는 선택이다. Codex 를 직접 OAuth 로 붙인 뒤로는 없어도 모든 모델이
+// 돌아간다. 예전에는 이 fetch 가 죽으면 카탈로그 전체가 빈 채로 나가서 — 직접
+// 프로바이더까지 같이 사라졌다 — 그것이 "모델이 하나도 안 보인다"의 정체였다.
+type JsonObject = Record<string, unknown>;
+
 async function proxyModels(config: ReturnType<typeof loadConfig>, res: ServerResponse): Promise<void> {
-  const upstream = await fetch(`${config.opencodexBaseUrl}/v1/models`);
-  const payload = await upstream.json();
-  const catalog = opencodexModelsToFxCatalog(payload);
-  catalog.data = catalog.data.filter((entry) => !String(entry.id).startsWith("xai/") && !String(entry.id).startsWith("anthropic/"));
+  const catalog: { object: "list"; data: JsonObject[] } = { object: "list", data: [] };
+  try {
+    const upstream = await fetch(`${config.opencodexBaseUrl}/v1/models`);
+    const payload = await upstream.json();
+    const proxied = opencodexModelsToFxCatalog(payload);
+    catalog.data = proxied.data.filter((entry) => {
+      const id = String(entry.id);
+      return !id.startsWith("xai/") && !id.startsWith("anthropic/") && !id.startsWith("openai-codex/");
+    });
+  } catch {
+    // OpenCodex 가 안 뗴 뿐이다. 직접 프로바이더만 내려준다.
+  }
   catalog.data.push(...DIRECT_CATALOG.map((model) => ({ ...model })));
   sendJson(res, 200, catalog);
 }

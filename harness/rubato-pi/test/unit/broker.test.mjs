@@ -40,13 +40,13 @@ test("broker url stays on the rubato loopback relay", () => {
 test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(catalogId({ provider: "anthropic", id: "claude-opus-5" }), "anthropic/claude-opus-5");
   const grouped = groupCatalog(FALLBACK_CATALOG);
-  assert.deepEqual(Object.keys(grouped).sort(), ["anthropic", "openai", "xai"]);
+  assert.deepEqual(Object.keys(grouped).sort(), ["anthropic", "openai-codex", "xai"]);
   assert.ok(grouped.anthropic.some((model) => model.id === "claude-opus-5"));
   assert.ok(grouped.anthropic.every((model) => model.cacheRetention === "long"));
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
   assert.equal(grouped.xai[0].contextWindow, 500_000);
-  assert.equal(grouped.openai.find((model) => model.id === "gpt-5.6-sol").contextWindow, 400_000);
+  assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol").contextWindow, 400_000);
 });
 
 test("ensureBroker starts the existing relay only when it is down", () => {
@@ -444,7 +444,7 @@ test("direct-vendor lanes the broker does not serve are dropped from the model p
   const foreign = foreignProviderIds(builtin);
   assert.ok(foreign.includes("vercel-ai-gateway"));
   assert.ok(foreign.includes("alibaba-token-plan"));
-  for (const kept of ["anthropic", "openai", "xai"]) {
+  for (const kept of ["anthropic", "openai-codex", "xai"]) {
     assert.ok(!foreign.includes(kept), `${kept} is served by the broker and must stay`);
   }
 });
@@ -457,7 +457,12 @@ test("the overlay registers broker providers and unregisters every foreign one",
     unregisterProvider: (name) => unregistered.push(name),
   });
 
-  assert.deepEqual([...registered].sort(), ["anthropic", "openai", "xai"]);
+  // 카탈로그는 브리지에서 온다. OpenCodex 가 떠 있으면 "openai" 레인이 얹히고 아니면
+  // 없다 — 그래서 정확한 개수로 잠그지 않는다. 우리가 반드시 무는 셋만 검사한다.
+  // (openai-codex 는 Codex 를 OpenCodex 없이 직접 무는 자리다.)
+  for (const required of ["anthropic", "openai-codex", "xai"]) {
+    assert.ok(registered.includes(required), `${required} must be registered`);
+  }
   assert.ok(unregistered.includes("vercel-ai-gateway"));
   for (const kept of registered) {
     assert.ok(!unregistered.includes(kept), `${kept} was registered then dropped`);
@@ -472,7 +477,7 @@ test("a host that refuses to unregister does not break the overlay", async () =>
       throw new Error("unsupported");
     },
   });
-  assert.equal(registered.length, 3);
+  assert.ok(registered.length >= 3, `expected at least 3 providers, got ${registered.length}`);
 });
 
 test("launcher loads the broker overlay after the lead overlay", () => {

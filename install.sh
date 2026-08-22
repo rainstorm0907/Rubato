@@ -77,8 +77,8 @@ BUN="$(find_bun || true)"
 if [ -n "$BUN" ]; then ok "bun 1.4+ : $BUN ($("$BUN" --version))"
 else err "bun 1.4+ 가 없다"; add_manual "curl -fsSL https://bun.sh/install | bash"; fi
 
-command -v opencodex >/dev/null 2>&1 && ok "opencodex 있다 (Codex 경로)" \
-  || warn "opencodex 가 없다 — Codex 경로만 못 쓴다 (brew install opencodex)"
+command -v opencodex >/dev/null 2>&1 && ok "opencodex 있다 (선택 — 추가 모델을 카탈로그에 얹는다)" \
+  || say "opencodex 없음 (선택). Codex 는 OAuth 로 직접 간다"
 
 if [ -z "$NODE24" ] || [ -z "$BUN" ]; then
   err "필수 도구가 없어 여기서 멈춘다"
@@ -157,11 +157,26 @@ head_ "단계 5 · 크레덴셜 (읽기만 한다)"
 CRED_OK=1
 [ -f "$HOME/.senpi/agent/auth.json" ] && ok "xAI — ~/.senpi/agent/auth.json" \
   || { warn "xAI OAuth 가 없다"; CRED_OK=0; add_manual "xAI 로그인이 필요하다"; }
-security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1 \
-  && ok "Claude setup-token — Keychain" \
-  || { warn "Claude setup-token 이 없다"; CRED_OK=0; add_manual "claude setup-token 을 돌려라"; }
-[ -f "$HOME/.opencodex/auth.json" ] && ok "OpenCodex — ~/.opencodex/auth.json" \
-  || { warn "OpenCodex 로그인이 없다"; CRED_OK=0; add_manual "opencodex 로그인이 필요하다"; }
+# Claude 는 1년짜리 장기 setup-token 이다(sk-ant-oat...). bridge 는 파일을 먼저 보고
+# 없으면 Keychain 으로 넘어간다. 계정 이름 기본값은 sub 이고 FX_CLAUDE_ACCOUNT 로 바꾼다.
+CLAUDE_ACCOUNT="${FX_CLAUDE_ACCOUNT:-sub}"
+if [ -f "$HOME/.claude/auth/setup-token-$CLAUDE_ACCOUNT" ]; then
+  ok "Claude 장기 setup-token — ~/.claude/auth/setup-token-$CLAUDE_ACCOUNT"
+elif security find-generic-password -s "Claude Code-setup-token-$CLAUDE_ACCOUNT" >/dev/null 2>&1; then
+  ok "Claude 장기 setup-token — Keychain ($CLAUDE_ACCOUNT)"
+else
+  warn "Claude setup-token 이 없다 (계정: $CLAUDE_ACCOUNT)"
+  CRED_OK=0
+  add_manual "claude setup-token 으로 받아 ~/.claude/auth/setup-token-$CLAUDE_ACCOUNT 에 넣어라"
+fi
+# Codex 는 senpi auth.json 의 openai-codex OAuth 로 직접 간다. OpenCodex 는 선택이다.
+if [ -f "$HOME/.senpi/agent/auth.json" ] && grep -q '"openai-codex"' "$HOME/.senpi/agent/auth.json" 2>/dev/null; then
+  ok "Codex — ~/.senpi/agent/auth.json (openai-codex)"
+else
+  warn "Codex OAuth 가 없다"
+  CRED_OK=0
+  add_manual "Codex 로그인이 필요하다 (senpi auth.json 의 openai-codex)"
+fi
 
 head_ "단계 6 · 확인"
 if [ "$APPLY" -eq 0 ]; then

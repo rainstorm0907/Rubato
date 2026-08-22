@@ -8,9 +8,9 @@ export const MODEL_CATEGORIES = Object.freeze({
   opus: "anthropic/claude-opus-5",
   sonnet: "anthropic/claude-sonnet-5",
   haiku: "anthropic/claude-haiku-4-5",
-  sol: "openai/gpt-5.6-sol",
-  terra: "openai/gpt-5.6-terra",
-  luna: "openai/gpt-5.6-luna",
+  sol: "openai-codex/gpt-5.6-sol",
+  terra: "openai-codex/gpt-5.6-terra",
+  luna: "openai-codex/gpt-5.6-luna",
 });
 
 // Senpi ships these agents; rubato-pi does not route to them. They came from

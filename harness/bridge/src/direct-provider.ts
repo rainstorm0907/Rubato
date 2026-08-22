@@ -5,6 +5,7 @@ import { basename, join } from "node:path";
 import { createModels } from "@earendil-works/pi-ai";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import type { CacheRetention } from "./config.ts";
 import { emptyFxUsage, gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
 import { encodeSseData, encodeSseDone } from "./sse.ts";
@@ -15,14 +16,24 @@ type Credential = { type: "oauth"; access: string; refresh: string; expires: num
 const DEFAULT_XAI_AUTH_PATH = join(homedir(), ".senpi", "agent", "auth.json");
 
 export function isDirectModel(model: string): boolean {
-  return model.startsWith("xai/") || model.startsWith("anthropic/") || model.startsWith("claude-");
+  return model.startsWith("xai/") || model.startsWith("anthropic/") || model.startsWith("claude-")
+    || model.startsWith("openai-codex/");
 }
 
-function providerModel(model: string): { provider: "xai" | "anthropic"; modelId: string } {
+type DirectProvider = "xai" | "anthropic" | "openai-codex";
+
+function providerModel(model: string): { provider: DirectProvider; modelId: string } {
   if (model.startsWith("xai/")) return { provider: "xai", modelId: model.slice(4) };
   if (model.startsWith("anthropic/")) return { provider: "anthropic", modelId: model.slice("anthropic/".length) };
   if (model.startsWith("claude-")) return { provider: "anthropic", modelId: model };
+  if (model.startsWith("openai-codex/")) return { provider: "openai-codex", modelId: model.slice("openai-codex/".length) };
   throw new Error(`not a direct provider model: ${model}`);
+}
+
+// xai 와 openai-codex 는 같은 senpi auth.json 에서 OAuth 를 읽는다(각각 "xai",
+// "openai-codex" 키). anthropic 만 다르다 — 거기는 Claude Code 의 장기 setup-token 이다.
+function usesSenpiCredentials(provider: DirectProvider): boolean {
+  return provider === "xai" || provider === "openai-codex";
 }
 
 export const DIRECT_CATALOG = [
@@ -31,6 +42,9 @@ export const DIRECT_CATALOG = [
   { id: "anthropic/claude-opus-5", type: "language", owned_by: "anthropic", tags: ["tool-use", "reasoning"] },
   { id: "anthropic/claude-fable-5", type: "language", owned_by: "anthropic", tags: ["tool-use", "reasoning"] },
   { id: "anthropic/claude-haiku-4-5", type: "language", owned_by: "anthropic", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-sol", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-luna", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-terra", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
 ];
 
 export function claudeCodeUserAgentFromTarget(target: string): string {
@@ -270,10 +284,14 @@ export async function* directProviderToFxSse(args: {
     ? { env: async (name: string) => name === "ANTHROPIC_OAUTH_TOKEN" ? await readClaudeSetupToken() : undefined, fileExists: async () => false }
     : undefined;
   const models = createModels({
-    ...(selected.provider === "xai" ? { credentials: new SenpiCredentialStore(args.xaiAuthPath ?? process.env.SENPI_AUTH_PATH ?? DEFAULT_XAI_AUTH_PATH) } : {}),
+    ...(usesSenpiCredentials(selected.provider) ? { credentials: new SenpiCredentialStore(args.xaiAuthPath ?? process.env.SENPI_AUTH_PATH ?? DEFAULT_XAI_AUTH_PATH) } : {}),
     ...(authContext ? { authContext } : {}),
   });
-  models.setProvider(selected.provider === "xai" ? xaiProvider() : anthropicProvider());
+  models.setProvider(
+    selected.provider === "xai" ? xaiProvider()
+    : selected.provider === "openai-codex" ? openaiCodexProvider()
+    : anthropicProvider(),
+  );
   const model = models.getModel(selected.provider, selected.modelId);
   if (!model) throw new Error(`unknown ${selected.provider} model: ${args.model}`);
   const context = fxPromptToPiContext(args.body.prompt, args.body.tools, selected.provider, selected.modelId);

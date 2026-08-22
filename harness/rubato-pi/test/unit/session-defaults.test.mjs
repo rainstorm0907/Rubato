@@ -42,7 +42,8 @@ test("models.json disables vercel and other foreign builtins without dropping us
   assert.ok(next.disabledProviders.includes("already-off"));
   assert.ok(next.disabledProviders.includes("vercel-ai-gateway"));
   assert.ok(next.disabledProviders.includes("alibaba-token-plan"));
-  for (const kept of ["anthropic", "openai", "xai"]) {
+  // Codex 를 직접 물면서 브로커가 서비스하는 id 가 openai -> openai-codex 로 바뀌었다.
+  for (const kept of ["anthropic", "openai-codex", "xai"]) {
     assert.ok(!next.disabledProviders.includes(kept), `${kept} is served by the broker`);
   }
   assert.match(written, /vercel-ai-gateway/);

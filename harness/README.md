@@ -33,9 +33,17 @@ harness/scripts/install-skills.sh    # 번들 스킬 -> ~/.agents/skills
 echo 'alias rubato="$HOME/<클론경로>/Rubato/harness/scripts/rubato-pi.sh"' >> ~/.zshrc
 ```
 
-**요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다), Codex 경로를 쓸 때 `opencodex`.
+**요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). `opencodex` 는 선택이다 — Codex 는 OAuth 로 직접 가고, OpenCodex 가 있으면 그쪽 모델이 카탈로그에 더해질 뿐이다.
 
-**크레덴셜은 각자 넣는다.** xAI OAuth(`~/.senpi/agent/auth.json`), Claude setup-token(macOS Keychain), OpenCodex 로그인. 설치는 이것들을 만들지 않는다.
+**크레덴셜은 각자 넣는다.** 설치는 이것들을 만들지 않는다. 상태는 `rubato auth` 로 본다.
+
+| 프로바이더 | 자리 | 방식 |
+|---|---|---|
+| xAI | `~/.senpi/agent/auth.json` 의 `xai` | OAuth, 자동 갱신 |
+| Codex | 같은 파일의 `openai-codex` | OAuth, 자동 갱신 |
+| Claude | `~/.claude/auth/setup-token-<계정>` (없으면 Keychain) | **1년 장기 토큰** `sk-ant-oat...` |
+
+계정 이름 기본값은 `sub` 이고 `FX_CLAUDE_ACCOUNT` 로 바꾼다.
 
 Claude Code 쪽 세팅(agent 정의, 컴팩션 훅, 스킬 심링크 배선)까지 원하면 agent-taskforce 의 `install.sh` 를 쓴다. 그 스크립트가 이 레포를 클론하고 위 단계를 대신 밟는다.
 
@@ -73,11 +81,13 @@ Rubato (keepitmello)                       component를 고른 엔진 + 이 harn
 ```text
 rubato-pi
   → 127.0.0.1:8788  bridge
-       ├─ xai/*        → senpi-ai xAI transport → xAI OAuth direct
-       ├─ anthropic/*  → senpi-ai Messages transport + setup-token
-       └─ 나머지        → OpenCodex 127.0.0.1:10100
-                         → Codex
+       ├─ xai/*           → pi-ai xAI transport      → xAI OAuth
+       ├─ anthropic/*     → pi-ai Messages transport → Claude 장기 setup-token
+       ├─ openai-codex/*  → pi-ai Codex transport    → Codex OAuth
+       └─ 나머지           → OpenCodex 127.0.0.1:10100 (선택)
 ```
+
+셋 다 이 중계기가 직접 문다. OpenCodex 는 없어도 되고, 있으면 그쪽 카탈로그가 더해진다.
 
 Senpi agent나 provider CLI가 도구를 실행하지 않는다. transport는 tool call만 반환하며 실행과 승인, tool result 전달은 하네스가 소유한다. xAI OAuth credential은 기본 `~/.senpi/agent/auth.json`, Claude setup-token은 macOS Keychain에서 읽는다. Codex credential은 OpenCodex가 가진다. Codex 경로를 쓸 때는 OpenCodex가 `10100`에서 살아 있어야 한다.
 
