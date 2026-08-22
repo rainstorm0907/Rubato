@@ -1,3 +1,19 @@
+<!-- rubato: 이 블록만 우리 것이다. 아래는 upstream README를 그대로 둔다. -->
+
+> [!IMPORTANT]
+> **이 레포는 `code-yeongyu/oh-my-openagent`의 포크다 (`keepitmello/Rubato`).**
+>
+> 하는 일은 두 가지다. 엔진에서 돌릴 component를 고르는 것, 그리고 그 위에 우리 하네스를 얹는 것이다.
+>
+> - component는 18개 중 6개만 배열에 남긴다. 소스 파일은 지우지 않는다. 이유와 머지 절차는 [docs/rubato/component-policy.md](docs/rubato/component-policy.md).
+> - `harness/`가 실행 오버레이다. 역할별 시스템 프롬프트, rubato-pi, provider bridge가 여기 있다. 실행 방법은 [harness/README.md](harness/README.md).
+>
+> 스킬·agent 정의·사례는 짝 레포 `keepitmello/agent-taskforce`에 있다. 이 레포는 실행기이고, 저쪽은 하네스 없이도 의미가 있는 공유 자산이다.
+>
+> 계보: `pi-mono`(badlogic) → Senpi(code-yeongyu) → omo-ai/oh-my-openagent → 이 포크 → `harness/rubato-pi`.
+>
+> 아래 본문은 upstream README다. OmO 설치 안내와 배지는 이 포크의 사용법이 아니다.
+
 > [!NOTE]
 > **OmO for Codex is here: try LazyCodex**
 >

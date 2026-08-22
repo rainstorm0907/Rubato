@@ -1,0 +1,13 @@
+{
+  "name": "fx-v3-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "npm:@code-yeongyu/senpi-ai@2026.8.19"
+  }
+}

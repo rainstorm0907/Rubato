@@ -1,0 +1,12 @@
+{
+  "name": "fx-oauth-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npm run start --workspace=bridge",
+    "test": "npm test --workspace=bridge"
+  },
+  "workspaces": [
+    "bridge"
+  ]
+}

@@ -28,12 +28,10 @@ import type { OmoSenpiComponent } from "./types"
 // ulw-loop so boulder work wins). Keep the surviving entries in upstream's relative order.
 export function createOmoSenpiComponents(taskComponent: OmoSenpiComponent): OmoSenpiComponent[] {
   return [
-    createConfigStartupComponent(),
     createAstGrepComponent(),
     createLspComponent(),
     taskComponent,
     createMemoryComponent(),
-    createConfigWatchComponent(),
   ]
 }
 
@@ -55,3 +53,14 @@ export function createOmoSenpiComponents(taskComponent: OmoSenpiComponent): OmoS
 //   git-master               adds a third-party co-author trailer to our commits
 //   fallback-architect       changes behaviour on model downgrade, outside our role plan
 //   comment-checker          held pending a look at its actual output quality
+//   config-startup           loads the `~/.omo` config file. The rubato-pi overlay never reads
+//                            that file: it builds the config in code and hands it to the
+//                            runtime (harness/rubato-pi/src/omo-config.mjs), so there is
+//                            nothing here to load.
+//   config-watch             re-reads that same file when it changes on disk. We do not read
+//                            it, so there is nothing to watch.
+//
+// Keep this array and the overlay's ON_COMPONENTS (harness/rubato-pi/src/policy.mjs) saying
+// the same thing. They are two gates in series — this one decides what gets bundled at all,
+// the overlay decides what it then registers — so a name present here but absent there is
+// dead weight shipped in the bundle, and the mismatch reads as a bug later.

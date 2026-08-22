@@ -1,0 +1,12 @@
+harness/bridge/src 에 어떤 파일들이 있고 각각 무슨 역할인지 한 줄씩 정리해줘.
+provider로 나가는 요청 본문을 만드는 함수가 어디 있어? 파일과 함수명을 알려줘.
+그 함수가 tool 정의를 provider별로 어떻게 변환하는지 설명해줘.
+fx 쪽(Zig)에서 응답의 generation id를 읽어 usage를 기록하는 코드가 어디야?
+fx의 history compaction 관련 설정값들을 값과 함께 알려줘.
+그 설정이면 compaction이 몇 번째 턴마다 발동하는지 코드 로직으로 따져봐.
+harness/scripts 에 뭐가 있고 각각 무슨 일을 해?
+bridge 테스트들이 각각 뭘 검증하는지 목록으로 정리해줘.
+usage 수치가 provider 응답에서 fx의 usage.jsonl까지 가는 경로를 순서대로 나열해줘.
+harness/README.md 에서 아직 구현 안 된 것 또는 미룬 것으로 적힌 게 뭐야?
+지금까지 본 코드 중에 가장 깨지기 쉬워 보이는 곳 한 군데를 짚고 이유를 말해줘.
+지금까지 파악한 이 하네스의 구조를 세 문장으로 요약해줘.

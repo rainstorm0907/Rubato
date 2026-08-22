@@ -1,0 +1,6 @@
+{
+  "_comment": "$/1M tokens. Claude Code 가 보고한 실제 total_cost_usd 에서 역산했다(오차 0.00%). 하드코딩된 추정이 아니다.",
+  "_method": "harness/bench/README.md '가격을 어떻게 얻는가' 참조. 새 모델은 같은 방법으로 역산해 추가한다.",
+  "anthropic/claude-sonnet-5": {"input": 3.0, "cache_read": 0.30, "cache_write": 6.0, "output": 15.0, "verified": "2026-08-21"},
+  "anthropic/claude-opus-5":   {"input": 5.0, "cache_read": 0.50, "cache_write": 10.0, "output": 25.0, "verified": "2026-08-21"}
+}

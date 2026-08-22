@@ -1,0 +1,2338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rubato-pi 설계 결정 — OMO component 선택과 PoC gate</title>
+<meta name="description" content="rubato-pi의 기반 후보와 OMO component 18개를 결정하기 위한 작업용 문서. 정본은 rubato-pi-design.md.">
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --paper: #f6f3ec;
+    --paper-raised: #fbf9f4;
+    --rule: #d8d0c0;
+    --rule-strong: #b3a893;
+    --ink: #1e1b16;
+    --ink-soft: #4c463b;
+    --ink-faint: #6d6555;
+    --accent: #2f4858;
+    --accent-soft: #e6ebee;
+    --flag: #7a3b1d;
+    --flag-soft: #f4e7e0;
+    --ok: #2f5d3a;
+    --ok-soft: #e4eee6;
+    --radius: 3px;
+    --measure: 68ch;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+
+  code, kbd, pre, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+  }
+
+  code {
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 0.05em 0.32em;
+  }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; }
+
+  :focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.6rem 1rem;
+    z-index: 20;
+  }
+  .skip-link:focus {
+    left: 0.5rem;
+    top: 0.5rem;
+  }
+
+  .wrap {
+    max-width: 74rem;
+    margin: 0 auto;
+    padding: 0 1.25rem 5rem;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding: 2.5rem 0 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .masthead .kicker {
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.4rem;
+  }
+
+  h1 {
+    font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem);
+    line-height: 1.25;
+    margin: 0 0 0.6rem;
+    letter-spacing: -0.01em;
+  }
+
+  .standfirst {
+    max-width: var(--measure);
+    color: var(--ink-soft);
+    margin: 0 0 1rem;
+  }
+
+  .meta-line {
+    font-size: 0.9rem;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+
+  .review-path {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.6rem;
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    counter-reset: review-step;
+  }
+
+  .review-path li {
+    counter-increment: review-step;
+    border-top: 1px solid var(--rule-strong);
+    padding-top: 0.5rem;
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+  }
+
+  .review-path li::before {
+    content: counter(review-step);
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    margin-right: 0.35rem;
+    border: 1px solid var(--rule-strong);
+    border-radius: 50%;
+    color: var(--ink);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .review-path strong { color: var(--ink); }
+
+  /* ---------- action bar ---------- */
+
+  .actionbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--paper);
+    border-bottom: 1px solid var(--rule);
+    padding: 0.75rem 0;
+    margin-bottom: 2rem;
+  }
+
+  .actionbar-inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: center;
+  }
+
+  .btn {
+    font: inherit;
+    font-size: 0.95rem;
+    padding: 0.5rem 0.95rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule-strong);
+    background: var(--paper-raised);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-soft); }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-primary:hover { background: #24384a; }
+
+  .progress-block { flex: 1 1 16rem; min-width: 14rem; }
+
+  .progress-text {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+  }
+  .progress-text strong { color: var(--ink); }
+
+  .progress-track {
+    height: 6px;
+    background: var(--rule);
+    border-radius: 999px;
+    margin-top: 0.35rem;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 180ms ease-out;
+  }
+  .progress-block[data-complete="true"] .progress-fill { background: var(--ok); }
+
+  .secondary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+
+  .storage-warning {
+    border: 1px solid var(--flag);
+    border-left-width: 5px;
+    background: var(--flag-soft);
+    padding: 0.6rem 0.85rem;
+    margin: 0.75rem 0 0;
+    font-size: 0.9rem;
+  }
+  .storage-warning:empty { display: none; }
+
+  /* ---------- structure ---------- */
+
+  nav.toc {
+    border: 1px solid var(--rule);
+    background: var(--paper-raised);
+    padding: 1rem 1.25rem;
+    margin-bottom: 2.5rem;
+  }
+  nav.toc h2 { font-size: 0.95rem; margin: 0 0 0.5rem; letter-spacing: 0.04em; }
+  nav.toc ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.25rem 1.25rem;
+    font-size: 0.92rem;
+  }
+  nav.toc li::before { content: "—"; color: var(--ink-faint); margin-right: 0.4rem; }
+
+  section { margin: 0 0 3.5rem; scroll-margin-top: 5.5rem; }
+
+  h2 {
+    font-size: 1.35rem;
+    margin: 0 0 0.35rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--rule-strong);
+    letter-spacing: -0.01em;
+  }
+  h2 .sec-no {
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-right: 0.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  h3 {
+    font-size: 1.05rem;
+    margin: 2rem 0 0.5rem;
+  }
+
+  h4 { font-size: 0.98rem; margin: 1.25rem 0 0.35rem; }
+
+  p, li { max-width: var(--measure); }
+  p { margin: 0 0 0.9rem; }
+
+  .lede { color: var(--ink-soft); margin-bottom: 1.5rem; }
+
+  ul, ol { padding-left: 1.25rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .note {
+    border-left: 4px solid var(--rule-strong);
+    padding: 0.4rem 0 0.4rem 1rem;
+    margin: 1.25rem 0;
+    color: var(--ink-soft);
+  }
+  .note strong { color: var(--ink); }
+
+  .callout {
+    border: 1px solid var(--rule-strong);
+    border-left-width: 5px;
+    background: var(--paper-raised);
+    padding: 0.9rem 1.1rem;
+    margin: 1.25rem 0;
+  }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout-title {
+    font-weight: 600;
+    margin: 0 0 0.4rem;
+  }
+
+  /* ---------- layer stack ---------- */
+
+  .stack { list-style: none; padding: 0; margin: 1.25rem 0; max-width: none; }
+  .stack > li {
+    border: 1px solid var(--rule-strong);
+    background: var(--paper-raised);
+    padding: 0.9rem 1.1rem;
+    margin: 0 0 0.35rem;
+    max-width: none;
+  }
+  .stack .layer-name {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.15rem;
+  }
+  .stack .layer-owner {
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 0.5rem;
+  }
+  .stack ul { margin: 0; font-size: 0.94rem; }
+  .stack-arrow {
+    text-align: center;
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    margin: 0 0 0.35rem;
+  }
+
+  /* ---------- tables ---------- */
+
+  .table-scroll { overflow-x: auto; margin: 1.25rem 0; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.94rem;
+  }
+
+  caption {
+    text-align: left;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    padding-bottom: 0.6rem;
+    max-width: var(--measure);
+  }
+
+  th, td {
+    border: 1px solid var(--rule);
+    padding: 0.55rem 0.7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    background: var(--accent-soft);
+    border-color: var(--rule-strong);
+    font-size: 0.85rem;
+    letter-spacing: 0.03em;
+  }
+
+  tbody th { background: var(--paper-raised); font-weight: 600; }
+
+  /* ---------- decision table ---------- */
+
+  #decision-table td { vertical-align: top; }
+
+  .col-num { width: 3rem; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-faint); }
+  .col-name { width: 13rem; }
+  .col-proposal { width: 15rem; }
+  .col-decision { width: 17rem; }
+
+  .comp-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92rem;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+
+  .detail-link { font-size: 0.85rem; }
+
+  .proposal {
+    display: inline-block;
+    border: 1px solid var(--rule-strong);
+    background: var(--paper-raised);
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+  }
+  .proposal-why { font-size: 0.88rem; color: var(--ink-soft); display: block; }
+
+  .radiogroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    border: 0;
+    margin: 0 0 0.4rem;
+    padding: 0;
+  }
+
+  .radiogroup label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    padding: 0.2rem 0.3rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .radiogroup label:hover { background: var(--accent-soft); }
+  .radiogroup input { margin: 0; }
+
+  .row-status {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    border-top: 1px dotted var(--rule-strong);
+    padding-top: 0.35rem;
+  }
+  tr[data-decided="true"] .row-status { color: var(--ok); font-weight: 600; }
+  tr[data-decided="true"] .col-num { color: var(--ok); font-weight: 700; }
+  tr[data-decided="true"] td:first-child { box-shadow: inset 4px 0 0 var(--ok); }
+
+  /* ---------- component cards ---------- */
+
+  .cards { margin-top: 2rem; }
+
+  details.card {
+    border: 1px solid var(--rule);
+    background: var(--paper-raised);
+    margin-bottom: 0.5rem;
+    scroll-margin-top: 5.5rem;
+  }
+
+  details.card > summary {
+    cursor: pointer;
+    padding: 0.65rem 0.9rem;
+    font-weight: 600;
+    display: list-item;
+    list-style-position: inside;
+  }
+  details.card > summary:hover { background: var(--accent-soft); }
+  details.card[open] > summary { border-bottom: 1px solid var(--rule); }
+
+  .card-summary-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.94rem;
+  }
+  .card-summary-note {
+    font-weight: 400;
+    color: var(--ink-faint);
+    font-size: 0.88rem;
+  }
+
+  .card-body { padding: 0.9rem 1.1rem 1.1rem; }
+
+  .card-body dl {
+    display: grid;
+    grid-template-columns: minmax(8rem, 12rem) 1fr;
+    gap: 0.5rem 1.25rem;
+    margin: 0 0 0.9rem;
+  }
+  .card-body dt {
+    font-size: 0.85rem;
+    letter-spacing: 0.03em;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+  .card-body dd { margin: 0; }
+
+  .card-back { font-size: 0.88rem; margin: 0; }
+
+  /* ---------- gates ---------- */
+
+  .gate {
+    border: 1px solid var(--rule-strong);
+    border-left-width: 5px;
+    background: var(--paper-raised);
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 0.75rem;
+  }
+  .gate h4 { margin-top: 0; }
+  .gate-id {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+  .gate-state {
+    display: inline-block;
+    font-size: 0.85rem;
+    border: 1px solid var(--rule-strong);
+    background: var(--paper);
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius);
+    margin-left: 0.35rem;
+    font-weight: 600;
+  }
+  .gate > :last-child { margin-bottom: 0; }
+
+  .evidence-list { font-size: 0.92rem; }
+  .evidence-list li { margin-bottom: 0.5rem; }
+
+  footer.doc-footer {
+    border-top: 2px solid var(--ink);
+    padding-top: 1.25rem;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- responsive: table becomes cards ---------- */
+
+  @media (max-width: 900px) {
+    .review-path { grid-template-columns: 1fr; gap: 0.35rem; }
+    #decision-table thead { display: none; }
+    #decision-table, #decision-table tbody, #decision-table tr, #decision-table td { display: block; width: auto; }
+    #decision-table caption { display: block; width: 100%; }
+    #decision-table tr {
+      border: 1px solid var(--rule-strong);
+      background: var(--paper-raised);
+      margin-bottom: 0.85rem;
+      padding: 0.35rem 0.15rem;
+    }
+    #decision-table td {
+      border: 0;
+      border-bottom: 1px dotted var(--rule);
+      padding: 0.5rem 0.75rem;
+    }
+    #decision-table td:last-child { border-bottom: 0; }
+    #decision-table td::before {
+      content: attr(data-label);
+      display: block;
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 0.2rem;
+    }
+    #decision-table .col-num { text-align: left; }
+    tr[data-decided="true"] td:first-child { box-shadow: none; }
+    tr[data-decided="true"] { border-left-width: 5px; border-left-color: var(--ok); }
+    .card-body dl { grid-template-columns: 1fr; gap: 0.15rem; }
+    .card-body dd { margin-bottom: 0.6rem; }
+    .actionbar { position: static; }
+  }
+
+  /* ---------- preferences ---------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  @media (prefers-contrast: more) {
+    :root {
+      --paper: #fff;
+      --paper-raised: #fff;
+      --rule: #555;
+      --rule-strong: #000;
+      --ink: #000;
+      --ink-soft: #1a1a1a;
+      --ink-faint: #333;
+      --accent: #00325c;
+      --accent-soft: #dde8f2;
+    }
+    a { text-decoration-thickness: 2px; }
+  }
+
+  /* ---------- print ---------- */
+
+  @media print {
+    :root { --paper: #fff; --paper-raised: #fff; }
+    body { font-size: 11pt; }
+    .actionbar, nav.toc, .skip-link, .detail-link, .card-back { display: none; }
+    section { page-break-inside: auto; margin-bottom: 1.5rem; }
+    details.card { break-inside: avoid; border-color: #999; }
+    h2 { break-after: avoid; }
+    table { font-size: 10pt; }
+    a[href^="http"]::after {
+      content: " (" attr(href) ")";
+      font-size: 8pt;
+      color: #444;
+      word-break: break-all;
+    }
+    .radiogroup { display: none; }
+    .row-status { border-top: 0; font-weight: 600; color: #000; }
+  }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#decision-section">component 결정표로 건너뛰기</a>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">harness / 설계 기준</p>
+  <h1>rubato-pi — 기반 선택과 OMO component 결정</h1>
+  <p class="standfirst">
+    <code>rubato-pi</code>는 기존 rubato(fx 포크 + fx-v3-bridge)와 별개로 Senpi 엔진 계열 위에 올리는 두 번째 실행 하네스 후보다.
+    이 화면의 할 일은 하나다 — OMO Native가 얹어 주는 18개 component를 각각 유지할지, 기본 OFF로 둘지, 보류할지 정하고,
+    OMO의 <code>task</code>만 재사용하는 후보 C(thin overlay)가 채택 조건 6개를 통과하는지 판정하는 것.
+  </p>
+  <p class="meta-line">
+    작성 2026-08-22 · 근거 문장의 정본은 <a href="rubato-pi-design.md">rubato-pi-design.md</a>이며, 이 화면과 충돌하면 정본이 우선한다.
+  </p>
+  <ol class="review-path" aria-label="결정 순서">
+    <li><strong>기능 이해</strong> — 한 줄 요약을 보고, 영향·의존성이 필요하면 <em>상세 보기</em>를 연다.</li>
+    <li><strong>결정 기록</strong> — v0 제안은 자동 선택되지 않는 참고안이다. 유지·기본 OFF·보류는 언제든 바꾸거나 초기화할 수 있다.</li>
+    <li><strong>채택 판정</strong> — 18개 결정을 마치면 후보 C의 채택 조건 6개와 공식 소스 근거를 검토한다.</li>
+  </ol>
+</header>
+
+<div class="actionbar">
+  <div class="actionbar-inner">
+    <button type="button" class="btn btn-primary" id="primary-action">첫 미결정으로 이동</button>
+    <div class="progress-block" id="progress-block" data-complete="false">
+      <p class="progress-text" id="progress-text" role="status" aria-live="polite">
+        18개 component 중 <strong>0개</strong> 결정 · 남은 항목 18개
+      </p>
+      <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+    <div class="secondary-actions">
+      <a href="#decision-section">결정표</a>
+      <a href="#gates">채택 조건 6개</a>
+      <a href="#evidence">공식 소스</a>
+      <button type="button" class="btn" id="reset-action">선택 초기화</button>
+    </div>
+  </div>
+  <p class="storage-warning" id="storage-warning" role="status" aria-live="polite"></p>
+</div>
+
+<nav class="toc" aria-labelledby="toc-heading">
+  <h2 id="toc-heading">목차</h2>
+  <ol>
+    <li><a href="#status">문서의 현재 상태</a></li>
+    <li><a href="#layers">OMO Native의 계층</a></li>
+    <li><a href="#candidates">세 후보 비교</a></li>
+    <li><a href="#decision-section">component 18개 결정</a></li>
+    <li><a href="#builtin">Senpi 기본 제공 기능</a></li>
+    <li><a href="#taskforce">Taskforce 호환 간극</a></li>
+    <li><a href="#gates">후보 C 채택 조건 6개</a></li>
+    <li><a href="#metrics">검증 지표</a></li>
+    <li><a href="#license">라이선스</a></li>
+    <li><a href="#open">열린 결정</a></li>
+    <li><a href="#evidence">공식 소스 근거</a></li>
+  </ol>
+</nav>
+
+<main id="main">
+
+<!-- ============ 1. 상태 ============ -->
+<section id="status" aria-labelledby="status-h">
+  <h2 id="status-h"><span class="sec-no">01</span>문서의 현재 상태</h2>
+  <p class="lede">
+    무엇이 정해졌고 무엇이 안 정해졌는지를 먼저 갈라 둔다. 추천이 나중에 뒤집힐 때 무엇이 무너진 것인지 추적하기 위해서다.
+  </p>
+
+  <h3>결정 완료</h3>
+  <ul>
+    <li>rubato-pi는 OMO Native 기반을 <strong>우선 검토</strong> 대상으로 삼는다. 백지에서 Senpi 위에 직접 짓는 안은 폐기가 아니라 비교 대상으로 남는다.</li>
+    <li>OMO의 개별 기능(ultrawork 계열, memory 계열 등)은 꺼도 된다. 다만 <strong>끄기 전에 전체 목록을 파악한 뒤 선택한다</strong> — 그 목록이 아래 결정표다.</li>
+  </ul>
+
+  <h3>미결정</h3>
+  <ul>
+    <li>세 후보(bare Senpi custom / OMO monorepo fork / OMO task-only thin overlay) 중 무엇을 채택할지. <strong>thin overlay는 확정된 추천이 아니라 현재 증거상 가장 싼 v0 실험 후보</strong>이며, gate 1~6을 모두 통과해야 채택 가능해진다.</li>
+    <li>18개 component 각각의 유지 · 기본 OFF · 보류.</li>
+    <li>버전 pin 정책의 구체적 형태(정확 pin의 갱신 주기, 누가 allowlist를 갱신하는지).</li>
+    <li>rubato-pi가 기존 rubato(fx)를 대체하는지, 병행하는지, 특정 역할만 가져가는지.</li>
+    <li>외부 배포 여부. 이것이 정해져야 라이선스 제약이 실제 제약이 되는지 결정된다.</li>
+  </ul>
+
+  <h3>검증한 것과 검증하지 않은 것</h3>
+  <p>
+    여기 적힌 구조·동작 주장은 (a) 로컬 설치물 <code>/opt/homebrew/lib/node_modules/omo-ai</code>의 실제 파일,
+    (b) upstream <code>dev</code> 브랜치의 고정 commit 소스, (c) Senpi 공식 문서,
+    (d) 로컬 beta.7을 RPC 모드로 띄워 <code>get_commands</code>로 명령·스킬 표면을 읽은 실측 중 하나에 대응한다.
+  </p>
+  <div class="callout">
+    <p class="callout-title">실행 실측은 (d) 범위에서만 했다</p>
+    <p>
+      확장 적재 형태별 명령·스킬 표면과 disable 플래그의 CLI 반응은 프로세스를 띄워 쟀다. 반면 캐시 적중률, 컴팩션 연속성,
+      crash/resume, 팀원 자식의 확장 상속은 <strong>재지 않았다</strong> — 검증 지표에 "측정해야 할 것"으로만 있다.
+      실측 대상은 로컬 beta.7이므로 upstream <code>dev</code>에 그대로 옮겨 말할 수 없다.
+    </p>
+  </div>
+</section>
+
+<!-- ============ 2. 계층 ============ -->
+<section id="layers" aria-labelledby="layers-h">
+  <h2 id="layers-h"><span class="sec-no">02</span>OMO Native의 계층</h2>
+  <p class="lede">
+    <code>omo</code> 명령 하나가 소유자가 서로 다른 세 계층을 세운다. 이 분해가 이후 모든 선택의 전제다.
+  </p>
+
+  <ol class="stack">
+    <li>
+      <span class="layer-name">launcher</span>
+      <span class="layer-owner">omo-ai 패키지 · <code>bin/omo.js</code> → <code>bin/lib/launcher.js</code></span>
+      <ul>
+        <li>Senpi 엔진 경로를 해석해 spawn 한다.</li>
+        <li><code>SENPI_BRAND</code>로 이름 · 설정 디렉토리 · env prefix · update 채널을 주입 (name <code>omo</code>, configDir <code>.omo</code>, envPrefix <code>OMO</code>, distTag <code>beta</code>).</li>
+        <li><code>SENPI_CODING_AGENT_DIR = ~/.omo/agent</code>, <code>OMO_NATIVE=1</code>(footer 배지 마커).</li>
+        <li><code>--extension &lt;plugin 경로&gt;</code>를 앞에 붙여 확장을 적재한다.</li>
+      </ul>
+    </li>
+    <li class="stack-arrow" aria-hidden="true">spawn (Node)</li>
+    <li>
+      <span class="layer-name">OMO extension</span>
+      <span class="layer-owner">Pi 패키지 <code>@code-yeongyu/omo-senpi</code></span>
+      <ul>
+        <li><code>plugin/extensions/omo.js</code> — 단일 번들 진입점.</li>
+        <li><code>plugin/skills/</code> — 실측 22개 적재. <code>plugin/runtime/</code> — ast-grep MCP, LSP daemon, agent-toolkit.</li>
+        <li>component를 등록 순서대로 register (dev 18개 / 로컬 beta.7 16개).</li>
+        <li>전역 플래그 <code>omo-senpi-disabled</code> + component마다 <code>omo-senpi-&lt;name&gt;-disabled</code>.</li>
+      </ul>
+    </li>
+    <li class="stack-arrow" aria-hidden="true">Senpi ExtensionAPI</li>
+    <li>
+      <span class="layer-name">Senpi engine</span>
+      <span class="layer-owner"><code>@code-yeongyu/senpi</code> (MIT)</span>
+      <ul>
+        <li>모델 라우팅 / 프로바이더 OAuth / 프롬프트 캐시 / 컴팩션 / 권한 / 도구(PTY bash 계열) / 스킬 로더 / 세션 저장·분기 / MCP 클라이언트 / TUI.</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h3>세 번째 계층이 만드는 결합</h3>
+  <p>
+    launcher가 하는 일은 "브랜드 주입"이라고 부르기에는 범위가 넓다 — 설정 디렉토리(<code>~/.omo/agent</code>), 환경변수 prefix,
+    업데이트 채널(<code>omo-ai@beta</code>), wire 상의 user-agent까지 바꾼다. rubato-pi가 OMO 확장만 재사용하고 브랜드를 자기 것으로
+    가져가려면 이 launcher를 <strong>쓰지 않고 직접 대체</strong>해야 한다. 우회가 아니라 계층이 원래 그렇게 갈라져 있다는 뜻이다 —
+    확장은 Senpi의 표준 Pi 패키지 규약을 따르므로 launcher 없이도 적재된다.
+  </p>
+
+  <h3>로컬 설치물과 upstream을 혼동하지 않는다</h3>
+  <p>로컬은 <code>omo-ai@5.0.0-0.beta.7</code>(엔진 <code>2026.8.12-4</code>), upstream <code>dev</code>(commit <code>024cd9f</code>)는 beta.15(엔진 <code>2026.8.21-3</code>)다. 확인된 차이 셋.</p>
+  <ul>
+    <li><strong>component 개수 — 로컬 16개, upstream 18개.</strong> beta.7 번들에는 <code>git-master</code>와 <code>mass-ulw</code>가 component로 등록되지 않는다. 이 화면에서 "18"은 언제나 dev를 가리킨다.</li>
+    <li><strong><code>dag</code>와 팀원 프로세스 분기는 beta.7에 없다.</strong> 로컬 번들에 <code>dag</code> 도구와 <code>isTeamMemberProcess</code> 식별자가 둘 다 0회다. 도구 개수(11개), 승인 gate 대상, 중첩 위임 판정은 전부 upstream <code>dev</code> 기준이다.</li>
+    <li><strong>component별 disable 플래그도 beta.7에는 없다.</strong> dev의 <code>compose.ts</code>는 18개 전부에 <code>omo-senpi-&lt;name&gt;-disabled</code>를 <code>registerFlag</code> 하지만, beta.7 번들의 플래그 이름은 7개뿐이다. 로컬에서 <code>--omo-senpi-memory-disabled</code>, <code>--omo-senpi-disabled</code>, <code>=true</code> 변형까지 붙여 봤지만 <strong>어느 것도 component를 끄지 못했다</strong>. 이것이 gate 5의 출처다.</li>
+  </ul>
+  <p class="meta-line">엔진 pin은 OMO의 설계 의도이기도 하다 — launcher가 <code>omo update self</code>류를 가로채고 "엔진이 이 패키지에 pin 되어 있으므로 self-update는 pairing을 깬다"고 답한다.</p>
+</section>
+
+<!-- ============ 3. 후보 ============ -->
+<section id="candidates" aria-labelledby="candidates-h">
+  <h2 id="candidates-h"><span class="sec-no">03</span>세 후보 비교</h2>
+  <p class="lede">셋 다 Senpi를 엔진으로 쓴다. 갈리는 것은 <strong>OMO 코드에 대한 소유권을 얼마나 가져오는가</strong>이다.</p>
+
+  <h3>후보 A — bare Senpi custom</h3>
+  <p>
+    Senpi를 그대로 쓰고 Taskforce에 필요한 것(팀 통신, 역할 계약, 완료 증거)을 우리 확장으로 새로 쓴다. OMO는 참조만 한다.
+    얻는 것은 표면적의 최소화 — upstream 추적이 Senpi 하나로 끝나고 라이선스도 MIT 단일이다.
+    잃는 것은 OMO의 <code>task</code>/team 엔진 전부다: persistent child, 직접 peer messaging, 내구 mailbox, exactly-once 배달 원장,
+    crash/reload/resume 재조정, 컴팩션 중 버퍼링, DAG/status. fx Team Overlay에서 의도적으로 만들지 않았던 것들(broadcast, 공유 task 원장, 중첩 팀)이
+    여기서는 OMO가 이미 갖고 있는 것들이다.
+  </p>
+
+  <h3>후보 B — OMO monorepo 삭제식 fork</h3>
+  <p>
+    포크하고 필요 없는 것을 지운다. 얻는 것은 완전한 개조 자유 — component 경계를 다시 긋고 <code>senpi-task</code> 내부 의미(완료 증거 필드 추가 등)를 직접 고칠 수 있다.
+    잃는 것 둘: upstream 추적이 이 레포가 이미 아는 조용한 실패를 부르고(fx 포크의 <code>control_store.zig</code> 스키마 충돌, OMO는 packages 46개로 표면적이 더 넓다),
+    루트가 Sustainable Use License라 포크물의 외부·상업 배포가 막힌다.
+  </p>
+
+  <h3>후보 C — upstream OMO task-only thin overlay (v0 실험 후보, 조건부)</h3>
+  <p>
+    Senpi와 OMO 확장을 <strong>정확 버전 pin으로 설치만</strong> 하고 포크하지 않는다. 필요한 component만 켜고 나머지는 disable 플래그로 끄며,
+    Taskforce 의미론은 <strong>우리 쪽 얇은 어댑터 확장</strong>이 얹는다. 근거는 하나다 — 개조 비용 사다리에서 가장 싼 쪽부터 시도한다.
+    가장 싼 형태는 이번 실측으로 좁혀졌다: <code>plugin/extensions/omo.js</code> <strong>파일 하나</strong>를 <code>-e</code>로 지정하면
+    component와 task 엔진은 그대로 들어오면서 OMO 스킬 22개는 따라오지 않는다. 포크도, 패키지 필터 설정도 필요 없다.
+  </p>
+  <div class="callout">
+    <p class="callout-title">그러나 같은 조사에서 gap 넷이 소스로 확인됐다</p>
+    <p>
+      팀원의 중첩 위임 불가, 역할 계약의 시스템 프롬프트 주입 경로 부재, 자식별 permission 전달 필드 부재, 팀원의 task board 직접 접근 부재.
+      이 중 permission은 pretrusted 역할별 전용 worktree 설정으로 해결될 가능성이 남아 있고, 나머지는 현재 설정으로 열리지 않는다.
+      여기에 아직 재지 않은 것 둘이 붙는다 — 팀원 자식의 확장·disable 상태 상속(gate 4), disable 플래그를 실제로 세울 수 있는지(gate 5).
+    </p>
+  </div>
+
+  <h4>깨지는 자리에 따라 갈 곳이 다르다</h4>
+  <ul>
+    <li><strong>gate 1~2가 해결되지 않으면 → 후보 B로 승격.</strong> 둘은 OMO task internals의 개조를 요구한다. gate 3은 pretrusted 전용 worktree E2E가 실패하거나 worktree 공유가 필수일 때만 같은 승격 후보가 된다. 포크 범위는 <code>senpi-task</code> + <code>omo-senpi/components/task</code>로 좁힐 수 있다.</li>
+    <li><strong>gate 4(자식 상속)가 깨지면 → 후보 A가 살아난다.</strong> 확장을 자식까지 전달할 방법이 없다는 뜻이므로 task/team 재구현 비용과 재비교한다.</li>
+    <li><strong>gate 5(플래그)가 깨지면 → 대안 경로를 먼저 찾고, 없으면 후보 B.</strong> component를 못 끄면 "필요한 것만 켠다"는 후보 C의 정의가 성립하지 않는다.</li>
+  </ul>
+
+  <h4>승격 기준 — 실험을 접는 조건을 미리 못 박는다</h4>
+  <ol>
+    <li>gate 1~2와, 전용 worktree PoC가 실패한 gate 3의 해법이 모두 "자식에 강제 적재되는 우리 확장이 OMO 내부 동작을 되돌려 놓는" 형태로 수렴할 때. 그 어댑터는 이미 thin overlay가 아니라 <strong>바깥에서 하는 포크</strong>다.</li>
+    <li>하나의 gate를 통과시키려 넣은 우회가 다른 gate를 깨서 되돌리는 일이 반복될 때. 내부 패치가 얽히면 pin을 올릴 때마다 전부 재검증해야 하고, 이것이 fx 포크의 조용한 실패와 같은 모양이다.</li>
+  </ol>
+
+  <div class="table-scroll">
+    <table>
+      <caption>후보별 비용과 현재 위치. "현재 위치"는 gate 결과에 따라 바뀐다.</caption>
+      <thead>
+        <tr>
+          <th scope="col">항목</th>
+          <th scope="col">A. bare Senpi</th>
+          <th scope="col">B. monorepo fork</th>
+          <th scope="col">C. thin overlay</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">추적할 upstream</th><td>Senpi 1개</td><td>Senpi + OMO 전체</td><td>Senpi + OMO(설치물)</td></tr>
+        <tr><th scope="row">task/team 재구현</th><td>필요</td><td>불필요</td><td>불필요</td></tr>
+        <tr><th scope="row">OMO 내부 의미 개조</th><td>해당 없음</td><td>가능</td><td>불가 (어댑터로 감싸기만)</td></tr>
+        <tr><th scope="row">라이선스 부담</th><td>MIT만</td><td>Sustainable Use</td><td>Sustainable Use (사용 범위에 한함)</td></tr>
+        <tr><th scope="row">현재 위치</th><td>대안 — gate 4 실패 시 부활</td><td>대안 — gate 1~2·5·6 실패 또는 gate 3 PoC 실패 시 승격</td><td>v0 실험 후보 — gate 1~6 필수</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 4. 결정 ============ -->
+<section id="decision-section" aria-labelledby="decision-h">
+  <h2 id="decision-h"><span class="sec-no">04</span>component 18개 결정</h2>
+  <p class="lede">
+    목록과 <strong>등록 순서</strong>의 정본은 <code>packages/omo-senpi/src/extension/component-list.ts</code> (commit <code>024cd9f</code>)다.
+    순서에는 의미가 있다 — 예를 들어 <code>start-work-continuation</code>이 <code>ulw-loop</code>보다 먼저 등록되어야 boulder 작업이 우선권을 갖는다.
+    <code>compose.ts</code>가 각 component에 <code>omo-senpi-&lt;name&gt;-disabled</code> 플래그를 등록하고 <code>true</code>면 건너뛴다.
+    <strong>소스상으로는 18개 전부가 개별적으로 꺼진다.</strong>
+  </p>
+
+  <div class="callout">
+    <p class="callout-title">"소스에 플래그가 있다"와 "우리가 그 플래그를 세울 수 있다"는 다른 문제다</p>
+    <p>
+      로컬 beta.7에서 이 플래그들을 CLI 인자로 넘겨 봤더니 전역·개별 어느 쪽도 효과가 없었다. beta.7은 플래그가 7개뿐이라 dev의 결과를 대신하지 못하지만,
+      짚이는 구조는 dev에도 그대로 있다 — <code>compose.ts</code>는 확장이 <strong>활성화되는 시점에</strong> <code>registerFlag</code>를 하고 곧바로 같은 함수에서 <code>getFlag</code>로 읽는데,
+      그 시점은 CLI가 argv를 파싱한 뒤다. "플래그로 끈다"는 후보 C의 전제이면서 동시에 <strong>검증되지 않은 전제</strong>이고, gate 5로 다룬다.
+    </p>
+  </div>
+
+  <h3>선택 기준</h3>
+  <ul>
+    <li><strong>유지</strong> — 그 기능이 없으면 rubato-pi가 목적을 못 이룰 때만.</li>
+    <li><strong>기본 OFF</strong> — 기능은 이해했고 필요 없다고 판단했을 때. 나중에 플래그 하나로 되돌린다.</li>
+    <li><strong>보류</strong> — 근거가 부족할 때. v0에서는 꺼진 상태로 출발하되, 어떤 지표를 재야 결정되는지를 함께 적는다.</li>
+  </ul>
+  <p class="note">
+    <strong>"v0 제안"은 추천이지 결정이 아니다.</strong> 초기 상태는 18개 전부 미결정이며, 추천값이 자동으로 선택되지 않는다.
+    결정 컨트롤은 이 표 한 곳뿐이고, 아래 상세 카드는 읽기 전용이다.
+  </p>
+
+  <div class="table-scroll">
+    <table id="decision-table">
+      <caption>OMO component 18개 요약 결정표 — 각 행에서 유지 · 기본 OFF · 보류 중 하나를 고른다. 선택은 이 브라우저에만 저장된다.</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="col-num">#</th>
+          <th scope="col" class="col-name">component</th>
+          <th scope="col">무슨 기능인가</th>
+          <th scope="col" class="col-proposal">v0 제안</th>
+          <th scope="col" class="col-decision">결정</th>
+        </tr>
+      </thead>
+      <tbody id="decision-rows">
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">1</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-config-startup">config-startup</span>
+            <a class="detail-link" href="#card-config-startup">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">기존 OMO 설정을 새 형식으로 옮기고, 선택한 프로파일의 설정을 실제 실행 설정으로 불러온다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">유지</span>
+            <span class="proposal-why"><code>task</code>가 이 로더를 통해 설정을 읽는다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-config-startup">
+              <label><input type="radio" name="c-config-startup" value="keep"> 유지</label>
+              <label><input type="radio" name="c-config-startup" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-config-startup" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-config-startup">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">2</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-native-badge">native-badge</span>
+            <a class="detail-link" href="#card-native-badge">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">화면 아래쪽에 OMO가 실행 중인지, 응답을 마쳤는지 보여주는 상태 표시를 붙인다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">우리 이름을 쓸 것이므로 브랜드가 충돌한다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-native-badge">
+              <label><input type="radio" name="c-native-badge" value="keep"> 유지</label>
+              <label><input type="radio" name="c-native-badge" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-native-badge" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-native-badge">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">3</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-onboarding">onboarding</span>
+            <a class="detail-link" href="#card-onboarding">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">처음 실행할 때 온보딩 안내를 자동으로 시작한다. 사용자가 묻지 않아도 에이전트가 먼저 한 턴을 쓴다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">자동 턴 시작은 리드 세션의 승인 경계와 어긋난다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-onboarding">
+              <label><input type="radio" name="c-onboarding" value="keep"> 유지</label>
+              <label><input type="radio" name="c-onboarding" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-onboarding" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-onboarding">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">4</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-init-deep-advisor">init-deep-advisor</span>
+            <a class="detail-link" href="#card-init-deep-advisor">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">새 프로젝트의 초기 설정이 끝났는지 검사하고, 빠진 준비 작업이 있으면 자동으로 안내한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">팀 런의 첫 턴을 우리가 소유해야 한다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-init-deep-advisor">
+              <label><input type="radio" name="c-init-deep-advisor" value="keep"> 유지</label>
+              <label><input type="radio" name="c-init-deep-advisor" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-init-deep-advisor" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-init-deep-advisor">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">5</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-telemetry">telemetry</span>
+            <a class="detail-link" href="#card-telemetry">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">사용 횟수와 세션 진행 같은 익명 통계를 PostHog로 보낸다. 코드와 프롬프트 본문은 보내지 않으며 끌 수 있다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">프롬프트 내용은 안 나가도 세션 형태가 나간다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-telemetry">
+              <label><input type="radio" name="c-telemetry" value="keep"> 유지</label>
+              <label><input type="radio" name="c-telemetry" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-telemetry" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-telemetry">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">6</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-ultrawork">ultrawork</span>
+            <a class="detail-link" href="#card-ultrawork">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가"><code>ultrawork</code>나 <code>ulw</code>라고 입력하면 계획·위임·완료를 더 적극적으로 밀어붙이라는 추가 지시를 넣는다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">지시문 본문이 우리 계약과 충돌하는지 읽어 본 뒤 결정</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-ultrawork">
+              <label><input type="radio" name="c-ultrawork" value="keep"> 유지</label>
+              <label><input type="radio" name="c-ultrawork" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-ultrawork" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-ultrawork">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">7</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-mass-ulw">mass-ulw</span>
+            <a class="detail-link" href="#card-mass-ulw">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가"><code>mass ulw</code> 같은 명령을 쓰면 여러 작업을 그래프로 나눠 대량 병렬 실행하라는 추가 지시를 넣는다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">팬아웃 결정 권한이 리드와 이중으로 생긴다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-mass-ulw">
+              <label><input type="radio" name="c-mass-ulw" value="keep"> 유지</label>
+              <label><input type="radio" name="c-mass-ulw" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-mass-ulw" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-mass-ulw">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">8</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-start-work-continuation">start-work-continuation</span>
+            <a class="detail-link" href="#card-start-work-continuation">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">OMO 작업 계획이 남아 있으면 에이전트가 멈추려 할 때 계속 작업하라고 최대 8번 재촉한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">완료 판정은 Taskforce 완료 증거가 소유한다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-start-work-continuation">
+              <label><input type="radio" name="c-start-work-continuation" value="keep"> 유지</label>
+              <label><input type="radio" name="c-start-work-continuation" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-start-work-continuation" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-start-work-continuation">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">9</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-ulw-loop">ulw-loop</span>
+            <a class="detail-link" href="#card-ulw-loop">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">반복 작업 모드가 켜져 있으면 에이전트가 완료했다고 멈추지 못하게 계속 수행 지시를 넣는다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">완료 판정 권한이 넘어가는 것은 같은 이유로 막는다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-ulw-loop">
+              <label><input type="radio" name="c-ulw-loop" value="keep"> 유지</label>
+              <label><input type="radio" name="c-ulw-loop" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-ulw-loop" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-ulw-loop">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">10</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-todo-fanout-reminder">todo-fanout-reminder</span>
+            <a class="detail-link" href="#card-todo-fanout-reminder">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가"><code>ultrawork</code> 중 첫 작업 목록을 만들면, 병렬로 나눌 일이 있는지 다시 판단하라는 알림을 한 번 넣는다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">우리 승인 gate와 병존 가능한지 확인 후</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-todo-fanout-reminder">
+              <label><input type="radio" name="c-todo-fanout-reminder" value="keep"> 유지</label>
+              <label><input type="radio" name="c-todo-fanout-reminder" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-todo-fanout-reminder" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-todo-fanout-reminder">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">11</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-git-master">git-master</span>
+            <a class="detail-link" href="#card-git-master">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">커밋을 만들 때 외부 계정을 공동 작성자로 표시하도록 커밋 메시지 꼬리말을 추가한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">커밋 메시지는 이 레포 규약이 소유한다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-git-master">
+              <label><input type="radio" name="c-git-master" value="keep"> 유지</label>
+              <label><input type="radio" name="c-git-master" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-git-master" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-git-master">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">12</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-fallback-architect">fallback-architect</span>
+            <a class="detail-link" href="#card-fallback-architect">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">주 모델을 쓸 수 없어 대체 모델로 내려가면, 별도 설계 에이전트에게 문제 분해를 상담하라고 자동 지시한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">우리 모델 배치를 정한 뒤 판단</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-fallback-architect">
+              <label><input type="radio" name="c-fallback-architect" value="keep"> 유지</label>
+              <label><input type="radio" name="c-fallback-architect" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-fallback-architect" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-fallback-architect">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">13</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-comment-checker">comment-checker</span>
+            <a class="detail-link" href="#card-comment-checker">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">파일을 수정한 뒤 코드 주석이 불필요하거나 과하지 않은지 자동 검사하고 결과를 알려준다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">실제 출력 품질을 보고 판단</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-comment-checker">
+              <label><input type="radio" name="c-comment-checker" value="keep"> 유지</label>
+              <label><input type="radio" name="c-comment-checker" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-comment-checker" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-comment-checker">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">14</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-ast-grep">ast-grep</span>
+            <a class="detail-link" href="#card-ast-grep">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">코드 구조를 문법 트리 기준으로 검색하고 매칭할 수 있는 <code>ast-grep</code> 도구를 추가한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">도구 정의 토큰 비용을 재고 판단</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-ast-grep">
+              <label><input type="radio" name="c-ast-grep" value="keep"> 유지</label>
+              <label><input type="radio" name="c-ast-grep" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-ast-grep" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-ast-grep">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">15</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-lsp">lsp</span>
+            <a class="detail-link" href="#card-lsp">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">오류 진단, 정의로 이동, 참조 찾기, 심볼 검색, 이름 변경을 할 수 있는 언어 서버 도구 6개를 추가한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">상시 프롬프트에 실리는 도구 정의 비용을 재고 판단</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-lsp">
+              <label><input type="radio" name="c-lsp" value="keep"> 유지</label>
+              <label><input type="radio" name="c-lsp" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-lsp" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-lsp">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">16</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-task">task</span>
+            <a class="detail-link" href="#card-task">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">여러 에이전트를 띄우고 작업 배분·메시지·상태·중단 후 복구를 관리하는 팀 실행 엔진을 추가한다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">유지 (ON)</span>
+            <span class="proposal-why">후보 C가 존재하는 이유 전체 — 단 gate 1~6이 조건이다</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-task">
+              <label><input type="radio" name="c-task" value="keep"> 유지</label>
+              <label><input type="radio" name="c-task" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-task" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-task">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">17</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-memory">memory</span>
+            <a class="detail-link" href="#card-memory">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">프로젝트 지식을 세션 밖에도 저장해 다음 대화에 다시 넣는다. 쉬는 동안 별도 에이전트가 메모리를 정리할 수도 있다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">기본 OFF</span>
+            <span class="proposal-why">캐시·비용 지표를 측정할 때까지</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-memory">
+              <label><input type="radio" name="c-memory" value="keep"> 유지</label>
+              <label><input type="radio" name="c-memory" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-memory" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-memory">미결정</p>
+          </td>
+        </tr>
+
+        <tr data-decided="false">
+          <td class="col-num" data-label="번호">18</td>
+          <td class="col-name" data-label="component">
+            <span class="comp-name" id="name-config-watch">config-watch</span>
+            <a class="detail-link" href="#card-config-watch">상세 보기</a>
+          </td>
+          <td data-label="무슨 기능인가">실행 중 <code>.omo</code> 설정 파일이 바뀌면 재시작 없이 새 설정을 다시 읽는다. 잘못된 설정이면 반영하지 않는다</td>
+          <td class="col-proposal" data-label="v0 제안">
+            <span class="proposal">보류</span>
+            <span class="proposal-why">hot reload가 실행 중 팀 런에 미치는 영향을 보고 판단</span>
+          </td>
+          <td class="col-decision" data-label="결정">
+            <div class="radiogroup" role="radiogroup" aria-labelledby="name-config-watch">
+              <label><input type="radio" name="c-config-watch" value="keep"> 유지</label>
+              <label><input type="radio" name="c-config-watch" value="off"> 기본 OFF</label>
+              <label><input type="radio" name="c-config-watch" value="hold"> 보류</label>
+            </div>
+            <p class="row-status" data-status-for="c-config-watch">미결정</p>
+          </td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="cards-h">component 상세</h3>
+  <p class="lede">기본 상태는 접힘이다. 결정은 위 표에서만 하고, 여기서는 근거만 읽는다.</p>
+
+  <div class="cards">
+
+    <details class="card" id="card-config-startup">
+      <summary><span class="card-summary-name">1 · config-startup</span> <span class="card-summary-note">v0 제안: 유지</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>레거시 설정 마이그레이션(lock + journal)을 Senpi가 설정을 읽기 전에 돌리고, 프로파일이 고른 <code>[senpi]</code> 뷰를 로드한다. 결과와 진단은 첫 <code>session_start</code>에 한 번 알린다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장(<code>omo-senpi</code>). Senpi 설정 적재보다 앞선 시점에 끼어들며, 다른 component가 이 설정 뷰를 통해 값을 읽는다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>없음. 모델 컨텍스트에 들어가지 않는다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>낮음. 단 <code>task</code> component가 이 로더를 통해 설정을 읽으므로 끄면 그쪽이 영향을 받는다.</dd>
+          <dt>제안 사유</dt>
+          <dd>유지 — 후보 C에서 유일하게 켜는 <code>task</code>가 이 로더에 의존한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-config-startup">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-native-badge">
+      <summary><span class="card-summary-name">2 · native-badge</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>session_start</code>와 <code>agent_settled</code>에 footer 상태 배지를 게시한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi TUI의 footer 표면. launcher가 심는 <code>OMO_NATIVE=1</code>이 이 배지의 마커다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>없음.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>없음. 오히려 rubato-pi 브랜드와 충돌한다.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 우리 이름과 우리 state 디렉토리를 쓸 것이므로 OMO 배지는 잘못된 정보를 준다.</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/native-badge/index.ts"><code>components/native-badge/index.ts</code></a></dd>
+        </dl>
+        <p class="card-back"><a href="#name-native-badge">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-onboarding">
+      <summary><span class="card-summary-name">3 · onboarding</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>설치당 1회, 대화형 세션의 <code>startup</code>에서만 온보딩 스킬을 읽으라는 숨은 메시지를 보내 <strong>자기 턴을 하나 시작한다</strong>.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 세션 수명주기(<code>startup</code>)와 메시지 주입 채널.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>턴 하나와 스킬 본문만큼 컨텍스트를 먹는다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>없음.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 우리가 시키지 않은 턴이 스스로 시작되는 것은 리드 세션의 승인 경계와 어긋난다.</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/onboarding/component.ts"><code>components/onboarding/component.ts</code></a></dd>
+        </dl>
+        <p class="card-back"><a href="#name-onboarding">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-init-deep-advisor">
+      <summary><span class="card-summary-name">4 · init-deep-advisor</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>startup</code> 세션에서 프로젝트 초기화 상태를 preflight 검사하고 조언 흐름을 돌린다. git 저장소 여부, 온보딩 마커 시각 등을 본다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 세션 <code>startup</code> 훅.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>발동 시 컨텍스트를 소비한다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>없음.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 팀 런의 첫 턴은 우리가 소유해야 한다.</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/init-deep-advisor/component.ts"><code>components/init-deep-advisor/component.ts</code></a></dd>
+        </dl>
+        <p class="card-back"><a href="#name-init-deep-advisor">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-telemetry">
+      <summary><span class="card-summary-name">5 · telemetry</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>PostHog로 익명 이벤트를 전송한다 — <code>daily_active</code>, <code>session_started</code>, <code>prompt_submitted</code>, <code>turn_completed</code>. opt-out env는 <code>OMO_SENPI_DISABLE_POSTHOG</code>, <code>OMO_DISABLE_POSTHOG</code>, <code>DO_NOT_TRACK</code> 등이다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장. 네트워크 전송은 Senpi를 거치지 않고 확장이 직접 한다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>없음.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>없음.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 프롬프트 내용은 보내지 않지만 세션의 형태가 나간다. component 플래그와 env 양쪽으로 끄는 것이 안전하다(gate 5가 깨져도 env는 남는다).</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/dev/docs/reference/senpi-telemetry.md">OMO 텔레메트리 문서</a> · 로컬 번들 <code>plugin/extensions/omo.js</code>의 이벤트 스키마</dd>
+        </dl>
+        <p class="card-back"><a href="#name-telemetry">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-ultrawork">
+      <summary><span class="card-summary-name">6 · ultrawork</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>입력이 <code>/(?:ultrawork|ulw(?!-))/i</code>에 걸리면 숨은 커스텀 메시지로 ultrawork 지시문을 주입한다. 세션당 arming 원장을 유지하고 컴팩션 후 재무장한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 메시지 주입 채널과 컴팩션 이벤트.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd><strong>큼.</strong> 지시문 본문이 매 arming마다 대화 컨텍스트로 들어간다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>간접적. 우리 리드/팀원 프롬프트와 지시문이 겹치거나 충돌할 수 있다.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 지시문 본문을 읽고 우리 계약과 충돌하는지 확인한 뒤 결정한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-ultrawork">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-mass-ulw">
+      <summary><span class="card-summary-name">7 · mass-ulw</span> <span class="card-summary-note">v0 제안: 보류 · 로컬 beta.7에는 없음</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>mass ulw</code> / <code>mulw</code> / <code>meth</code> 등에 걸리면 <code>dag</code> 도구로 오케스트레이션하라는 숨은 스킬 포인터를 주입한다. 상태를 갖지 않고 매번 재주입한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → 메시지 주입 채널. 가리키는 대상은 <code>task</code> component가 등록한 <code>dag</code> 도구다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>작음(포인터 수백 바이트). 단 뒤따라 읽히는 스킬 본문은 크다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>겹침. 팬아웃 결정 권한이 우리 리드와 이 지시문 양쪽에 생긴다.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 승인 gate 설계와 함께 판단한다. 로컬 beta.7 번들에는 <code>mass-ulw</code> 문자열이 0회이므로 upstream <code>dev</code>에서만 확인 가능하다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-mass-ulw">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-start-work-continuation">
+      <summary><span class="card-summary-name">8 · start-work-continuation</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>agent_end</code>에 <code>.omo/boulder.json</code>을 읽어 활성 work plan이 있으면 계속하라는 지시를 주입한다. 연속 8회 상한이 있다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 턴 종료 이벤트. 상태는 프로젝트의 <code>.omo/boulder.json</code>이 갖는다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>매 턴 끝마다 지시문이 추가될 수 있다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>충돌 가능. 완료 판정 권한이 boulder 상태로 넘어간다.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 완료 판정은 Taskforce의 완료 증거가 소유한다. 두 개의 완료 판정자가 있으면 어느 쪽이 진짜인지 모르는 상태가 생긴다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-start-work-continuation">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-ulw-loop">
+      <summary><span class="card-summary-name">9 · ulw-loop</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>omo-agent-toolkit ulw-loop</code> 상태가 살아 있으면 계속 지시를 주입한다. boulder 작업이 이어질 수 있으면 <code>start-work-continuation</code>에 양보한다(등록 순서가 이 우선권을 만든다).</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → 턴 종료 이벤트. 상태는 패키징된 agent-toolkit 런타임이 갖는다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>매 턴 끝마다 지시문이 추가될 수 있다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>충돌 가능 — 완료 판정 권한 문제가 8번과 같다.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 같은 이유.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-ulw-loop">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-todo-fanout-reminder">
+      <summary><span class="card-summary-name">10 · todo-fanout-reminder</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>ultrawork가 무장된 세션에서 todo 도구의 첫 작업 추가 결과에 세션 1회 <code>&lt;system-reminder&gt;</code>를 붙여 팬아웃 판단을 명시하게 한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 도구 결과 후처리. <code>ultrawork</code> component의 arming 상태에 의존한다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>작음(세션 1회).</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>겹침. 위임 결정을 사용자에게 보고하라는 요구가 우리 승인 gate와 중복된다.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 우리 승인 gate와 병존 가능한지 확인한 뒤 결정한다. 중복 자체가 해로운 것은 아니지만, 두 요구의 문구가 어긋나면 모델이 어느 쪽을 따를지 흔들린다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-todo-fanout-reminder">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-git-master">
+      <summary><span class="card-summary-name">11 · git-master</span> <span class="card-summary-note">v0 제안: 기본 OFF · 로컬 beta.7에는 component 미등록</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd><code>git-master</code> 스킬 본문을 읽을 때 커밋 attribution 지시(<code>commit_footer</code>, <code>include_co_authored_by</code>, 기본 둘 다 true)를 덧붙인다. 그 trailer가 외부 계정을 credit 한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → 스킬 본문 후처리. 스킬 파일 자체는 <code>pi.skills</code> 매니페스트가 배포한다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>작음.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>낮음. 다만 우리 커밋 메시지에 제3자 trailer가 붙는다.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 커밋 메시지 규약은 이 레포가 소유한다. <strong>component를 끄는 것과 스킬을 끄는 것은 별개</strong>라는 점에 주의: component를 꺼도 스킬 파일은 발견될 수 있다. 파일 단위 <code>-e</code> 적재가 스킬 쪽을 함께 해결한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-git-master">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-fallback-architect">
+      <summary><span class="card-summary-name">12 · fallback-architect</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>Senpi의 retry-fallback이 거부·정책 사유로 <code>claude-fable-5</code>를 떠나면, 약해진 현재 모델에게 문제를 분해해 <code>task(category:"architect")</code>로 상담하라는 숨은 지시를 1회 주입하고, 이후 프롬프트마다 짧은 리마인더를 태운다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 모델 fallback 수명주기 이벤트. 상담 경로는 <code>task</code> component의 도구다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>중간. 리마인더가 원 모델 복귀까지 매 프롬프트에 붙는다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>있음. 모델이 강등됐을 때 행동이 자동으로 바뀌는 것은 우리 역할 배치와 충돌할 수 있다.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 우리 모델 배치를 정한 뒤에 판단한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-fallback-architect">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-comment-checker">
+      <summary><span class="card-summary-name">13 · comment-checker</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>write 계열 도구 결과 뒤에 공유 comment-checker 흐름을 돌린다(해당 바이너리를 찾은 경우에만).</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 도구 결과 후처리 + 외부 바이너리.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>작음.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>낮음.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 실제 출력 품질을 보고 판단한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-comment-checker">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-ast-grep">
+      <summary><span class="card-summary-name">14 · ast-grep</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>패키징된 ast-grep MCP 런타임을 <code>_ast_grep</code> stdio 서버로 eager 등록한다. <code>registerMcpServer</code>가 없거나 런타임 파일이 없으면 조용히 건너뛴다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 + <code>plugin/runtime/</code>의 패키징 런타임 → Senpi MCP 클라이언트.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd><strong>중간.</strong> MCP 도구 정의가 매 요청 프롬프트에 실린다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>있음. 구조적 코드 검색은 investigator 역할에 유용하다.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — 도구 정의가 캐시 접두를 얼마나 부풀리는지 재고 판단한다.</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/ast-grep/index.ts"><code>components/ast-grep/index.ts</code></a></dd>
+        </dl>
+        <p class="card-back"><a href="#name-ast-grep">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-lsp">
+      <summary><span class="card-summary-name">15 · lsp</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>LSP 도구 6개(<code>lsp_diagnostics</code>, <code>lsp_goto_definition</code>, <code>lsp_find_references</code>, <code>lsp_symbols</code>, <code>lsp_prepare_rename</code>, <code>lsp_rename</code>)를 항상 등록하고, 실행은 패키징된 LSP daemon이 맡는다. 프로젝트 로컬 <code>.pi/lsp-client.json</code>의 command/env는 안전상 무시한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 + 패키징 LSP daemon → Senpi 도구 표면.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd><strong>중간.</strong> 도구 6개 정의가 상시 프롬프트에 실린다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>있음.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — <code>ast-grep</code>과 같은 이유이며, 둘을 함께 재서 비교한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-lsp">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-task">
+      <summary><span class="card-summary-name">16 · task</span> <span class="card-summary-note">v0 제안: 유지 (ON) — 후보 C의 존재 이유</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>
+            <strong>도구 11개</strong>를 등록한다 — task 계열 4개(<code>task</code>, <code>task_send</code>, <code>task_cancel</code>, <code>task_output</code>),
+            그래프 실행 1개(<code>dag</code>), 리드 전용 team 6개(<code>team_create</code>, <code>team_delete</code>, <code>task_create</code>, <code>task_get</code>, <code>task_list</code>, <code>task_update</code>).
+            <code>@oh-my-opencode/senpi-task</code> 엔진 위에 persistent child, 내구 mailbox, 세션 시작 복구 체인, <code>/tasks</code>·<code>/task-kill</code>·dag 명령, 상태 footer를 얹고,
+            curated read-only 서브에이전트 4개(<code>explore</code>, <code>librarian</code>, <code>metis</code>, <code>momus</code>)를 오버레이한다. <code>--no-omo-task</code>로 차단한다.
+          </dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 + <code>@oh-my-opencode/senpi-task</code> 엔진 → Senpi 도구·명령·footer 표면. 자식은 별도 <code>senpi --mode rpc</code> 프로세스다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd><strong>큼.</strong> 도구 11개 + 에이전트 설명이 프롬프트에 실린다. <code>dag</code>는 설명문만 다섯 문장이다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd><strong>핵심.</strong> 후보 C가 존재하는 이유 전체. 다만 도구 11개가 다 뜨는 것은 리드에서뿐이고, 팀원 프로세스에는 <code>task_send</code> 하나만 있다.</dd>
+          <dt>제안 사유</dt>
+          <dd>유지(ON) — 단 gate 1~6이 조건이다. 이 component 없이는 후보 C를 고를 이유가 없고, gate가 깨지면 후보 자체가 바뀐다.</dd>
+          <dt>근거</dt>
+          <dd>
+            <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/task/index.ts">도구 등록과 팀원 프로세스 early return</a> ·
+            <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/AGENTS.md">task/team 엔진 계약</a>
+          </dd>
+        </dl>
+        <p class="card-back"><a href="#name-task">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-memory">
+      <summary><span class="card-summary-name">17 · memory</span> <span class="card-summary-note">v0 제안: 기본 OFF</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>
+            Letta-Code 계열 영속 메모리. 도구 2개(<code>memory</code>, <code>memory_apply_patch</code>), <strong>슬래시 명령 13개</strong>
+            (<code>/memory /memfs /remember /init /doctor /recompile /memory-repository /sleeptime /reflect /dream /search /people /facts</code>),
+            HTML 뷰어, 파일시스템 정책, 그리고 백그라운드 "dreaming" — <code>agent_settled</code> 시 git worktree에서 detached <code>senpi -p</code> 자식을 띄워 반영을 돌린다. <code>memory.enabled</code>는 기본 ON이다.
+          </dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi 도구·슬래시 명령·프롬프트 합성 지점. 배경 자식은 Senpi 프로세스를 새로 띄운다.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd><strong>큼.</strong> <code>before_agent_start</code>마다 컴파일된 메모리 블록을 프롬프트에 합성한다(HEAD 기준 캐시). <code>compile_warn_tokens</code> 기본값은 30000이다.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>있음, 부정적 방향으로. 우리가 통제하지 않는 자식 프로세스가 배경에서 뜨고, 프롬프트 접두가 커밋 HEAD에 따라 바뀌면 캐시 접두가 흔들린다.</dd>
+          <dt>제안 사유</dt>
+          <dd>기본 OFF — 캐시·비용 지표를 측정할 때까지. 켜려면 배경 자식과 접두 변동을 먼저 관측해야 한다.</dd>
+          <dt>근거</dt>
+          <dd><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/memory/commands/register.ts">슬래시 명령 13개 (<code>MEMORY_COMMAND_NAMES</code>)</a></dd>
+        </dl>
+        <p class="card-back"><a href="#name-memory">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+    <details class="card" id="card-config-watch">
+      <summary><span class="card-summary-name">18 · config-watch</span> <span class="card-summary-note">v0 제안: 보류</span></summary>
+      <div class="card-body">
+        <dl>
+          <dt>무엇을 하는가</dt>
+          <dd>해석된 사용자·프로젝트 <code>.omo</code> 설정 체인을 Senpi의 선택적 config-watch 프로토콜에 등록한다. dry-run 검증에서 새 진단이 나오면 reload를 거부하고, 재등록은 <code>setTimeout(0)</code>으로 지연하며 fingerprint당 3회로 제한한다.</dd>
+          <dt>소유 계층</dt>
+          <dd>OMO 확장 → Senpi config-watch 프로토콜.</dd>
+          <dt>컨텍스트·캐시 영향</dt>
+          <dd>없음.</dd>
+          <dt>Taskforce 관련성</dt>
+          <dd>낮음.</dd>
+          <dt>제안 사유</dt>
+          <dd>보류 — hot reload가 실행 중인 팀 런에 미치는 영향을 보고 판단한다.</dd>
+        </dl>
+        <p class="card-back"><a href="#name-config-watch">요약표에서 이 항목 결정하기</a></p>
+      </div>
+    </details>
+
+  </div>
+
+  <h3>카탈로그에 딸린 주의</h3>
+  <ul>
+    <li><strong><code>agent-home</code>과 <code>config-resolution</code>은 component가 아니다.</strong> <code>src/components/</code> 아래에 디렉토리는 있지만 <code>component-list.ts</code>가 반환하는 배열에 없다. 헬퍼다.</li>
+    <li><strong>component를 끄는 것과 스킬을 끄는 것은 별개다.</strong> OMO 확장은 스킬 묶음을 <code>pi.skills</code> 매니페스트로 함께 배포한다. <code>git-master</code> component를 꺼도 스킬 파일은 여전히 발견된다.</li>
+    <li><strong>스킬 개수는 <code>plugin/README.md</code>가 19라고 적지만 실측은 22다.</strong> 로컬 beta.7을 디렉토리 형태로 적재했을 때 늘어난 스킬이 22개였다. 개수를 인용할 때는 산문이 아니라 코드와 실측을 본다.</li>
+  </ul>
+</section>
+
+<!-- ============ 5. builtin ============ -->
+<section id="builtin" aria-labelledby="builtin-h">
+  <h2 id="builtin-h"><span class="sec-no">05</span>Senpi builtin — 다시 만들지 않을 것</h2>
+  <p class="lede">
+    fx 포크에서 직접 깎았던 것 상당수를 Senpi가 이미 갖고 있다. 여기 적힌 것은 <strong>재구현 금지 목록</strong>이다 —
+    우리 코드로 옮기는 순간 두 번째 정본이 생긴다.
+  </p>
+
+  <h3>프롬프트 캐시</h3>
+  <ul>
+    <li>Claude SDK OAuth(구독) 레인은 SDK가 <code>cache_control</code>을 소유하므로 Senpi가 breakpoint를 못 넣는다. 그래도 <strong>300초로 보고</strong>해 캐시 인지 예산이 제 크기를 잡게 한다. 재정의 불가.</li>
+    <li>직접 Anthropic API 레인은 기본 5분이고 <code>cacheRetention: "long"</code> 또는 <code>PI_CACHE_RETENTION=long</code>으로 1시간을 켠다. 1시간 쓰기가 base input의 2배라는 비용 구조까지 문서가 명시한다 — 기존 rubato가 독립적으로 실측해 도달한 결론과 같다.</li>
+    <li>Anthropic 호환 프로바이더(kimi-coding, fireworks, gateway류)는 1시간 TTL이 native base URL에 gate 되어 있어 short로 남는다.</li>
+    <li>재정의 우선순위: <code>models.json</code>/카탈로그의 <code>cacheRetention</code> &gt; <code>PI_CACHE_RETENTION</code> &gt; 레인 기본값.</li>
+    <li><strong>서버 affinity</strong>도 builtin이다. Anthropic 구독 레인은 rendezvous 해싱으로 한 세션이 한 계정에 붙는다. OpenRouter는 세션 id를 <code>x-session-id</code> 헤더와 body 양쪽으로 보내고, Moonshot에는 <code>prompt_cache_key</code>, Cloudflare에는 <code>x-session-affinity</code>가 자동으로 붙는다.</li>
+    <li><strong>캐시 인지 타임아웃</strong>은 fx에서 만들지 않은 종류다. <code>promptCache.cacheAwareTimeouts</code>(기본 true)가 foreground 도구 대기를 캐시 TTL에서 <code>safetyBufferSeconds</code>(기본 30)를 뺀 값으로 상한 건다. 예산에 걸린 명령은 죽이는 대신 살아 있는 background 세션으로 넘긴다.</li>
+    <li><strong>parked 세션의 wake source 집계</strong> — <code>wake_source_state</code>를 terminal monitor, background bash, detached eval, <code>senpi-task</code>(OMO의 background 자식과 소유 팀원)가 발행하고, 하나라도 근무 중이면 캐시 TTL 안에서 대기한다.</li>
+  </ul>
+
+  <h3>컨텍스트와 컴팩션</h3>
+  <ul>
+    <li>자동 트리거는 <code>contextTokens &gt; contextWindow - reserveTokens</code> (<code>compaction.reserveTokens</code> 기본 16384). 컷 포인트는 뒤에서부터 <code>keepRecentTokens</code>(기본 20000)까지 모은다.</li>
+    <li>사유는 <code>manual</code> / <code>threshold</code> / <code>overflow</code> 셋. overflow는 컨텍스트 초과로 턴이 중단된 뒤의 복구 경로이며 <code>willRetry</code>로 재시도 여부를 알린다.</li>
+    <li>컴팩션·branch 요약 요청은 <strong>새 라우팅 세션 id를 쓰고 프로바이더가 지원하면 캐시 쓰기를 끈다</strong> — 재사용 가능성이 없는 일회성 프롬프트이기 때문이다.</li>
+    <li>확장이 <code>session_before_compact</code> / <code>session_compact_failed</code> / <code>session_before_tree</code>로 요약을 가로챌 수 있다.</li>
+    <li>요약 실패는 무한 재시도가 아니라 유한 예산이며, "speculative warm-up"은 자기 idle 재시도를 따로 갖는다.</li>
+  </ul>
+
+  <h3>컨텍스트·규칙 중복 제거</h3>
+  <ul>
+    <li>컨텍스트 파일은 <code>AGENTS.md</code> 또는 <code>CLAUDE.md</code>를 계층적으로 적재하고, <code>AGENTS.override.md</code>가 있으면 그 디렉토리에서 그것을 대신 쓴다. <code>--no-context-files</code>로 끈다.</li>
+    <li>동적 project rule은 대상이 달라도 본문이 다시 붙지 않는다 — <strong>규칙 본문은 하나의 live-context 중복 제거 범위를 공유</strong>하며, 컴팩션이 경계를 지우거나 내용 해시가 바뀔 때까지 재주입되지 않는다.</li>
+    <li>스킬은 심링크 별칭을 canonical path로 중복 제거한다. 이 레포의 정본 배치(<code>~/.agents/skills/</code>에 실체, 각 CLI가 심링크)가 그대로 통한다.</li>
+  </ul>
+
+  <h3>권한 — 그리고 그 한계</h3>
+  <p>
+    프리셋(<code>full-access</code>, <code>workspace</code>, <code>read-only</code>, <code>ask</code>)을 먼저 평가하고 전역 설정 → 프로젝트 설정 → CLI 플래그 순으로 명시 규칙을 적용한다.
+    <strong>마지막에 맞는 규칙이 이긴다.</strong> <code>read-only</code>는 <code>read</code>/<code>list</code>/<code>grep</code>을 허용하고 <code>edit</code>/<code>bash</code>/<code>external_directory</code>를 <em>묻는다</em>.
+  </p>
+  <div class="callout">
+    <p class="callout-title">권한 규칙은 확인 정책이지 샌드박스가 아니다</p>
+    <p>문서가 명시한다 — Senpi, 확장, 패키지 설치, 자식 프로세스는 여전히 호스트 프로세스 권한으로 돈다. gate 3의 verifier 쓰기 차단은 이 한계 위에 설계해야 한다.</p>
+  </div>
+
+  <h3>background terminal · 모델 fallback · 캐시 연속성 관측</h3>
+  <ul>
+    <li><code>bash</code>는 실제 PTY 위에 있고 동반 도구 다섯이 딸린다: <code>bash_output</code>(비차단 peek, regex 필터), <code>monitor</code>(장기 명령 감시), <code>bash_input</code>, <code>bash_resize</code>, <code>kill_bash</code>(트리 kill). background 세션은 <code>timeout</code>으로 죽지 않고 <code>/reload</code>를 넘어 살아남는다.</li>
+    <li>모델 fallback은 <strong>전환이 현재 턴을 이어가며 기존 대화 접두를 바꾸지 않는다</strong> — 캐시 입력이 보존되고 수명주기 이벤트는 모델 컨텍스트에 들어가지 않는다. 쿨다운은 오류에서 유도되며 프로바이더의 retry-after 힌트가 항상 이긴다.</li>
+    <li>세션 로그의 <code>kind</code>가 <code>bootstrap</code>/<code>delta</code>/<code>reattach</code>/<code>fork</code>/<code>flatten</code>/<code>disabled</code> 중 하나다. <strong><code>flatten</code>이 반복되면 그 레인이 대화 전체를 재전송해 캐시 적중을 잃고 있다는 뜻</strong>이다. <code>SENPI_SESSION_DEBUG=1</code>이 같은 라인을 stderr로 미러한다.</li>
+  </ul>
+</section>
+
+<!-- ============ 6. taskforce ============ -->
+<section id="taskforce" aria-labelledby="taskforce-h">
+  <h2 id="taskforce-h"><span class="sec-no">06</span>task/team과 Agent Taskforce의 간극</h2>
+
+  <h3>재사용할 수 있는 것</h3>
+  <ul>
+    <li><strong>persistent child와 두 실행 모드.</strong> in-process 러너는 부모의 살아 있는 도구 클로저를 공유하고(<code>task_*</code>/<code>team_*</code> 계열은 제외), process 러너는 자식 Senpi 프로세스를 띄워 JSON-RPC로 steer/abort/prompt를 건넨다. 일반 <code>task</code>/<code>dag</code> child와 <code>team_create</code> 멤버가 <strong>같은 process-child 운반체를 쓰지만 의미는 다르다</strong> — 멤버만 team identity, member extension, mailbox, team runtime state를 받는 <strong>resident peer</strong>다. caller-worker subagent가 아니며, <code>team_create</code>도 작업 결과를 기다리지 않고 spawn 완료만 반환한다.</li>
+    <li><strong>직접 peer messaging.</strong> fx Team Overlay에서 Zig 소스를 고쳐가며 얻었던 바로 그 능력이 OMO에는 이미 있다.</li>
+    <li><strong>내구 mailbox와 exactly-once 원장.</strong> unread <code>&lt;messageId&gt;.json</code> → <code>.delivering-&lt;messageId&gt;.json</code> → 수신 세션에서 메시지가 관측된 뒤에만 <code>processed/&lt;messageId&gt;.json</code>으로 커밋. processed 파일이 내구 원장이다.</li>
+    <li><strong>crash/reload/resume 재조정.</strong> 모든 <code>session_start</code>가 정해진 순서의 복구 체인을 돈다: 버퍼된 완료 flush 또는 drop → reconcile(정지된 자식 부활, 내구 process 멤버 재부착) → 소유 멤버 liveness 재관측 → 오래된 예약 회수 → 미통지 완료 재배달 → await TTL 정리 → 소유 리드 poll → 상태 동기화.</li>
+    <li><strong>컴팩션 중 버퍼링.</strong> 완료 라우팅이 부모 상태에 따라 갈린다: <code>idle</code> → wake, <code>streaming</code> → 즉시 전달, <code>compacting</code>/<code>session_switching</code>/<code>session_shutdown</code> → 부모가 안정될 때까지 buffer.</li>
+    <li><strong>DAG/status 저장소.</strong> Task 스키마에 <code>status</code>(pending/claimed/in_progress/completed/deleted), <code>owner</code>, <code>blocks</code>, <code>blockedBy</code>가 있다. 다만 <strong>peer-shared board는 아니다</strong> — board 도구는 리드에만 등록되고 팀원 확장은 <code>task_send</code> 하나만 제공한다.</li>
+  </ul>
+
+  <div class="callout">
+    <p class="callout-title">"launcher만 바꾸면 Taskforce 요구가 전부 OMO에 있다"는 정리는 채택하지 않는다</p>
+    <p>
+      위 목록이 재사용 가능한 것의 전부이고, 그것은 <strong>배관</strong>이다 — persistent child, mailbox, board, 복구 체인.
+      Taskforce가 요구하는 <strong>의미론</strong>은 그 위에 있고, 현재 OMO에는 팀원의 중첩 위임, 역할 계약의 무조건 주입,
+      verifier 권한 정책의 직접 전달, 팀원의 board 직접 접근이 없다. 앞의 둘과 board 접근은 소스에 경로가 없고,
+      verifier 권한은 spawn spec/argv의 직접 전달 경로가 없지만 pretrusted project settings 우회는 아직 실측 전이다.
+      배관이 훌륭하다는 사실과 그 위에 우리 의미론을 얹을 자리가 있다는 사실은 다른 주장이다.
+    </p>
+  </div>
+
+  <h3>의미가 어긋나는 것</h3>
+
+  <h4>사용자 roster 승인 gate가 없다</h4>
+  <p>
+    <code>TeamSpecSchema</code>에 사용자 승인 필드가 없다. 팀 생성은 <code>team_create</code> 호출 한 번이고 모델이 그것을 부를 수 있다.
+    Taskforce는 "리드가 최소 모델·역할 배치안을 먼저 사용자에게 보고하고 승인 뒤 teammate를 띄운다"를 스킬의 정의로 갖는다.
+    gate를 걸어야 할 대상은 <strong>실제로 자식을 띄우는 세 도구</strong>다 — <code>team_create</code>(<code>spawnTeamMembers</code>),
+    <code>task</code>(<code>manager.start</code>), <code>dag</code>(노드마다 자식).
+    <code>task_create</code>는 대상이 <strong>아니다</strong> — 이름이 비슷하지만 tasklist 레코드 생성이고 프로세스를 만들지 않는다.
+  </p>
+
+  <h4>board는 멤버가 claim하도록 설계됐는데, 멤버가 부를 도구가 없다</h4>
+  <p>
+    아래층인 team-core <code>team-tasklist</code>는 멤버 이름 단위 claim을 제대로 구현한다 —
+    <code>claimTask(teamRunId, taskId, memberName, config)</code>가 파일 락으로 경합을 막고, 이미 claim된 것은 <code>AlreadyClaimedError</code>,
+    <code>blockedBy</code>가 안 풀린 것은 <code>BlockedByError</code>로 거절하며, <code>updateTaskStatus</code>는 <code>task.owner !== memberName</code>이면
+    <code>CrossOwnerUpdateError</code>를 던진다. 즉 <strong>여러 peer가 하나의 board를 두고 경쟁하는 상황을 전제한 기제</strong>다.
+    위층은 그 전제를 따라가지 않는다 — board 도구 4개는 <code>buildLeadTeamTools</code>로 리드에만 등록되고, 서비스 메서드는 전부
+    <code>assertOwnedTeam</code>으로 소유 리드 세션인지 먼저 검사한다.
+  </p>
+  <p>
+    그 결과가 갈린다. 리드의 <code>task_update</code>는 <code>owner</code> 파라미터를 받고 기본값만 리드이므로,
+    <strong>리드 중개 board는 추가 코드 없이 오늘 성립한다.</strong> 그러나 이는 팀원이 직접 접근·claim·update하는 Taskforce의 shared board 요구를
+    충족하지 않는 축소안이다. 멤버가 스스로 board를 읽고 자기 이름으로 claim하는 경로는 도구가 없어 막히며, gate 6에서 열어야 한다.
+  </p>
+
+  <h4>역할 계약을 시스템 프롬프트로 주입할 경로가 없다</h4>
+  <p>
+    <code>buildMemberPrompt</code>가 <code>member.prompt</code>를 다른 안내 문장 넷과 이어붙여 <strong>하나의 문자열</strong>로 만들고, 그것이 자식의 첫 프롬프트가 된다.
+    시스템 프롬프트 채널이 아니다. 계약 파일 경로를 가리키는 포인터도 보장 수단이 아니다 — 모델이 그 파일을 읽을지는 모델에 달렸고,
+    컴팩션 뒤 첫 프롬프트가 요약에 흡수되면 계약은 사라진다. 즉 현재 OMO에서 역할 계약은 "지켜지길 기대하는 텍스트"이지 "무조건 실리는 계약"이 아니다.
+  </p>
+
+  <h4>process 멤버는 중첩 위임을 할 수 없다</h4>
+  <p>
+    제약이 아니라 부재다. <code>createTaskComponent</code>의 <code>register</code>가 첫 줄에서 <code>if (isTeamMemberProcess()) return</code>으로 빠져나간다 —
+    팀원 프로세스에서는 task component 자체가 등록되지 않고 도구 11개가 전부 없다. 그 자리의 멤버 확장은 <code>task_send</code> <strong>하나만</strong> 등록한다.
+    fx에서는 팀원이 headless로도 자기 자식을 띄우고 <code>inspect.wait</code>로 거둘 수 있음을 2026-08-21에 실측했지만,
+    OMO에서는 같은 것이 설정으로 열리지 않는다.
+  </p>
+
+  <h4>persona tool policy가 멤버에서 강제되지 않는다</h4>
+  <p>
+    curated read-only 에이전트 4개는 in-process에 고정되어 있고, <code>member-validator.ts</code>가 이 이름들을 팀 멤버 spec에서 <strong>거부</strong>한다.
+    거부 사유가 결정적이다 — "process-mode 스폰(멤버에 필수)은 persona 지시와 도구 allowlist를 떨어뜨린다".
+    즉 읽기 전용으로 고정된 독립 검증자를 팀 멤버로 앉히는 경로가 현재 OMO에는 없다.
+  </p>
+
+  <h4>멤버별 permission을 spawn spec/argv로 전달할 경로가 없다</h4>
+  <ul>
+    <li><code>RpcRunnerSpec</code>의 필드는 <code>task_id</code>, <code>cwd</code>, <code>state_dir</code>, <code>prompt</code>, <code>resumeSessionPath</code>, <code>model</code>, <code>reasoning</code>, <code>variant</code>, <code>extensions</code>, <code>memberEnv</code>뿐이다. permission 관련 필드가 없다.</li>
+    <li><code>buildChildArgs</code>가 만드는 argv는 <code>--no-extensions</code>, <code>--extension &lt;path&gt;</code>(반복), <code>--model</code>, <code>--thinking</code>뿐이다. Senpi에 <code>--permission-preset</code>과 <code>--permission</code>이 실재하지만 OMO는 자식에 실어 보내지 않는다.</li>
+    <li>설정 파일 우회는 <strong>기본값에서는</strong> 먹지 않는다. 비대화형 모드(<code>-p</code>, <code>--mode json</code>, <code>--mode rpc</code>)는 trust 프롬프트를 띄우지 않고 <code>defaultProjectTrust</code>(기본 <code>ask</code>)를 쓰며, <code>ask</code>와 <code>never</code>는 미신뢰 프로젝트 리소스를 무시한다. 그러나 해당 worktree의 trust 결정이 이미 저장됐다면 프로젝트 설정을 읽을 가능성이 있다.</li>
+  </ul>
+  <p>
+    따라서 gate 3은 <strong>pretrusted 전용 worktree 설정이 실제 RPC 멤버에서 역할별 정책으로 작동하는지 먼저 재는 문제</strong>다.
+    OMO가 멤버마다 다른 <code>worktreePath</code>를 <code>cwd</code>로 넘기므로, 역할별 worktree를 따로 프로비저닝하면 디렉토리별 설정이 결과적으로 역할별 정책이 될 수 있다.
+    경계도 분명하다 — 같은 worktree를 두 역할이 공유하면 구분할 수 없고, verifier에는 <code>read-only</code> 프리셋의 "묻기"에 기대지 말고
+    <code>edit</code>·<code>bash</code>를 명시적으로 <code>deny</code>해야 한다(<code>--mode rpc</code> 자식에는 물음에 답할 사람이 없다).
+    또한 trust는 permission보다 넓은 문을 연다 — 프로젝트 리소스·패키지 설치·<strong>프로젝트 확장 실행</strong>까지 허용하므로
+    <code>defaultProjectTrust: "always"</code>를 전역에 켜는 형태는 기본 해법으로 삼지 않는다.
+  </p>
+  <p class="note">
+    <strong>구조 변경으로 갈 때의 직접 접합점은 OMO child argv다.</strong> OMO는 <code>open_session</code>을 호출하지 않고
+    <code>senpi --mode rpc</code> 프로세스를 직접 띄운다. 가장 작은 upstream 변경 후보는 멤버별 permission 값을 <code>RpcRunnerSpec</code>에 넣고
+    Senpi의 기존 <code>--permission-preset</code>/<code>--permission</code> 플래그로 전달하는 배선이다.
+  </p>
+
+  <h4>그 밖에 어긋나는 둘</h4>
+  <ul>
+    <li><strong><code>worktreePath</code>는 git worktree를 만들지 않는다.</strong> <code>mkdir -p</code>로 평범한 디렉토리를 만들고 그 경로를 자식의 <code>cwd</code>로 넘길 뿐, <code>git worktree add</code>는 어디에도 없다. 실제 worktree 생성은 호출자가 미리 해 두어야 한다.</li>
+    <li><strong>owner/verifier/budget/done-evidence 상태 모델이 부분적이다.</strong> 예산은 팀 런 수준으로는 있다(<code>maxMembers</code> 8, <code>maxParallelMembers</code> 4, <code>maxMessagesPerRun</code> 10000, <code>maxWallClockMinutes</code> 120, <code>maxMemberTurns</code> 500). 없는 것은 (a) 위임 단위의 예산과 반환 계약, (b) 완료 증거 필드, (c) owner와 verifier를 구분하는 역할 타입 — 멤버의 <code>agentType</code>은 <code>leader</code> 아니면 <code>general-purpose</code> 둘뿐이다.</li>
+  </ul>
+
+  <h3>필요한 것 — 어댑터로 되는 것과 gate</h3>
+  <p><strong>어댑터로 되는 것 둘.</strong></p>
+  <ol>
+    <li><strong>승인 gate</strong> — 자식을 만드는 세 도구의 호출을 실행 전에 가로채 배치안을 사용자에게 보이고 승인 전에는 통과시키지 않는다. Senpi 확장이 도구 호출을 가로채거나 막을 수 있으므로 접합점이 있다.</li>
+    <li><strong>완료 증거와 예산 반환</strong> — Task 스키마의 <code>metadata</code>가 자유 레코드이므로 여기에 싣는다. 엔진이 강제하지 않으므로 강제는 우리 어댑터가 한다.</li>
+  </ol>
+  <p><strong>어댑터가 아닌 것.</strong> 나머지는 gate 1~6이며 다음 절에 모았다. 여기에 gate가 아닌 추가 작업 하나가 붙는다 —
+    <strong>worktree provisioning</strong>: <code>worktreePath</code>를 채우기 전에 실제 <code>git worktree add</code>를 우리가 돌린다.</p>
+</section>
+
+<!-- ============ 7. gates ============ -->
+<section id="gates" aria-labelledby="gates-h">
+  <h2 id="gates-h"><span class="sec-no">07</span>v0 아키텍처 가설과 gate 1~6</h2>
+  <p class="lede">
+    <strong>이 절은 확정 설계가 아니라 실패 가능한 가설이다.</strong> gate 1~6 중 하나라도 깨지면 후보 선택으로 되돌아간다.
+  </p>
+
+  <h3>v0 조립 형태</h3>
+  <ol class="stack">
+    <li>
+      <span class="layer-name">rubato-pi launcher (우리 것 — OMO launcher 대체)</span>
+      <ul>
+        <li>정확 pin: <code>senpi@&lt;X&gt;</code>, <code>omo-ai@&lt;Y&gt;</code> — 범위 지정자 없음.</li>
+        <li>우리 브랜드 / 설정 디렉토리 / state 경로. exact-pinned Senpi CLI를 직접 spawn.</li>
+        <li><code>-e &lt;omo-ai&gt;/plugin/extensions/omo.js</code> ← <strong>파일 단위. 디렉토리 아님.</strong></li>
+        <li><code>-e &lt;우리 어댑터 확장&gt;</code> ← 반드시 OMO 다음.</li>
+        <li>component disable 플래그 (gate 5 통과 시).</li>
+      </ul>
+    </li>
+    <li>
+      <span class="layer-name">Senpi engine ← 우리 어댑터 확장</span>
+      <span class="layer-owner">승인 gate / 역할 라우팅 / verifier 권한 / 완료 증거 / worktree provisioning</span>
+    </li>
+    <li>
+      <span class="layer-name">OMO 확장 (설치만, 포크 없음)</span>
+      <span class="layer-owner"><code>task</code> ON · 나머지 17개는 결정표에 따름 · OMO 스킬은 파일 단위 적재로 자동 배제(실측)</span>
+    </li>
+  </ol>
+
+  <h3>정확 pin을 쓰는 이유</h3>
+  <p>
+    <code>omo-ai</code>가 이미 엔진을 정확 버전으로 pin 하고 launcher가 self-update를 거부한다. 우리는 그 위에 <code>omo-ai</code> 자체도 고정한다.
+    근거는 이 레포가 아는 실패 모양이다 — 파일 diff가 깨끗하고 빌드가 통과하는데 의미만 틀어지는 조용한 실패.
+    Senpi 릴리스 빈도가 높다는 점(npm에 122개 버전, 최근 5일에 6개)이 이 선택을 더 강하게 만든다.
+  </p>
+
+  <h3>확장 적재 형태 — 파일 단위 <code>-e</code>가 답이다 (실측)</h3>
+  <p>
+    앞선 초안은 settings <code>packages</code>에 객체 형태 필터로 설치해 스킬을 걸러 내자고 추천했다. <strong>그 추천은 내렸다.</strong>
+    settings로 적재된 확장은 <code>process.argv</code>에 없고, <code>team-service.ts</code>가 멤버 확장을 조립할 때 쓰는
+    <code>inheritedExtensions: parseExtensionEntries(process.argv)</code>는 <strong>부모 argv의 <code>-e</code> 항목만</strong> 긁는다.
+    그러면 멤버 자식은 <code>--no-extensions</code>만 받은 채 뜬다.
+  </p>
+
+  <div class="table-scroll">
+    <table>
+      <caption>적재 형태별 명령·스킬 표면 (로컬 beta.7, RPC <code>get_commands</code> 실측)</caption>
+      <thead>
+        <tr><th scope="col">적재 형태</th><th scope="col">확장 명령</th><th scope="col">스킬</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row"><code>-e</code> 없음 (기준선)</th><td>22</td><td>26 — 전부 <code>~/.agents/skills/</code>의 우리 것</td></tr>
+        <tr><th scope="row"><code>-e &lt;plugin&gt;/extensions/omo.js</code> (파일)</th><td>38 (+16 OMO)</td><td><strong>26 — 기준선과 동일</strong></td></tr>
+        <tr><th scope="row"><code>-e &lt;plugin&gt;</code> (디렉토리)</th><td>38 (+16 OMO)</td><td>48 (+22 OMO)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    파일 하나를 지정하면 OMO component와 명령은 전부 등록되면서 <strong>매니페스트의 <code>pi.skills</code>는 따라오지 않는다.</strong>
+    디렉토리를 지정하면 Pi 패키지 규약이 적용되어 스킬 22개가 함께 실린다. OMO launcher가 하는 것이 후자이므로 우리 launcher는 반드시 전자로 대체해야 한다.
+    <code>--no-skills</code>는 쓰지 않는다 — 스킬 발견 자체를 꺼서 <strong>우리 스킬 26개까지 죽인다.</strong>
+  </p>
+
+  <h4><code>-e</code> 순서가 의미를 갖는다</h4>
+  <p>
+    <code>buildChildArgs</code>에서 <strong>DAG가 소유한 자식은 상속 목록의 첫 항목을 <code>slice(1)</code>로 버린다.</strong>
+    주석이 이유를 밝힌다 — "The OMO launcher prepends its own extension before user/provider entries", 즉 첫 항목이 OMO 확장이라고 가정하고
+    DAG 자식이 또 다른 task 엔진을 부팅하지 못하게 막는 것이다. <strong>OMO 확장을 첫 <code>-e</code>로, 우리 어댑터를 그 뒤로 둔다.</strong>
+    순서를 뒤집으면 DAG 자식이 우리 어댑터를 잃고 OMO task 엔진은 유지하게 되어 의도와 정확히 반대가 된다.
+  </p>
+  <p>자식 종류마다 목록이 다르게 조립된다는 점도 함께 봐야 한다.</p>
+  <ul>
+    <li><strong>일반 <code>task</code> 자식</strong> — 시작 spec에 <code>extensions</code>가 없으므로 process 러너가 <code>inheritedExtensions</code>(부모 argv의 <code>-e</code>)를 채운다. 멤버가 아니므로 task component가 등록되어 <strong>중첩 위임이 된다</strong> — 막히는 것은 팀 멤버와 DAG 자식이지 모든 자식이 아니다.</li>
+    <li><strong>DAG 자식</strong> — 같은 목록을 받되 첫 항목이 버려진다.</li>
+    <li><strong>팀 멤버</strong> — <code>assembleMemberExtensions</code>가 멤버 확장 번들을 첫 항목에 두고 그 뒤에 상속분을 붙인다. DAG 소유가 아니므로 <code>slice(1)</code>이 적용되지 않는다. 반대로 멤버가 아닌 자식에서는 <code>buildChildProfile</code>이 그 번들을 걸러 내고 멤버 식별 env도 지운다 — "같은 운반체, 다른 계약"의 구현체다.</li>
+  </ul>
+  <p class="note">
+    소스만 보면 우리 어댑터는 세 갈래 모두에 실린다(DAG 자식에서는 OMO가 대신 빠진다). gate 1·2·6과 gate 3 PoC 실패 뒤의 해법으로
+    "자식에 강제 적재되는 우리 확장"을 검토할 수 있는 근거가 이것이고, <strong>동시에 이것이 소스 독해일 뿐 실행 확인이 아니라는 것이 gate 4다.</strong>
+  </p>
+
+  <h3>gate 1~6</h3>
+  <p class="lede">
+    순서는 4 → 5 → 3 → 6 → 1 → 2가 자연스럽다. 확장 상속과 component 차단이 성립해야 나머지 해법 형태를 결정할 수 있기 때문이다.
+    스킬 차단은 더 이상 gate가 아니다 — 파일 단위 <code>-e</code>로 해결되는 것이 실측됐다.
+  </p>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 1</span> 팀원의 중첩 위임 <span class="gate-state">상태: 소스로 불가 확정</span></h4>
+    <p><code>isTeamMemberProcess()</code> early return을 지나갈 방법이 필요하다. upstream 변경, <code>senpi-task</code>+<code>components/task</code> fork, 또는 자식에 강제 적재되는 우리 확장이 위임 도구를 다시 제공하는 것 중 하나다.</p>
+    <p><strong>깨지면:</strong> 후보 B로 승격 (포크 범위는 <code>senpi-task</code> + <code>omo-senpi/components/task</code>).</p>
+  </div>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 2</span> 역할 계약의 무조건 주입 <span class="gate-state">상태: 소스로 경로 부재 확정</span></h4>
+    <p>역할별 멤버 확장 또는 역할별 시스템 프롬프트 계층이 필요하다. <code>member.prompt</code>도, 계약 파일 경로 포인터도 보장 수단이 아니다.</p>
+    <p><strong>깨지면:</strong> 후보 B로 승격.</p>
+  </div>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 3</span> verifier 쓰기 차단 (멤버별 permission) <span class="gate-state">상태: 전용 worktree E2E 미측정</span></h4>
+    <p>먼저 역할별 전용 worktree를 pretrust하고 프로젝트 설정에서 <code>edit</code>·<code>bash</code>를 명시적으로 <code>deny</code>한 뒤 RPC 멤버에서 E2E로 확인한다.</p>
+    <p><strong>깨지면:</strong> child argv 배선(<code>RpcRunnerSpec</code> + Senpi 기존 플래그), fork, 또는 자식 강제 확장의 도구 호출 거부로 올라간다. worktree 공유가 필수인 경우도 같다.</p>
+  </div>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 4</span> 팀원 자식의 확장·disable 상태 상속 <span class="gate-state">상태: 미측정 (리드 단독만 실측)</span></h4>
+    <p>둘을 한 번에 만족해야 한다 — (a) 파일 단위 <code>-e</code>로 띄운 리드에서 팀원을 스폰했을 때 자식 argv에 같은 확장 경로가 실린다, (b) 부모의 component disable 상태가 자식에도 동일하게 적용된다.</p>
+    <p>(b)가 더 위험하다. <code>parseExtensionEntries</code>는 <code>-e</code>/<code>--extension</code>만 긁으므로 <strong>부모에서 <code>memory</code>를 껐어도 자식은 그것을 모른 채 뜰 수 있다.</strong></p>
+    <p><strong>깨지면:</strong> 후보 A 재검토 (task/team 재구현 비용과 재비교).</p>
+  </div>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 5</span> component disable 플래그를 세울 수 있는가 <span class="gate-state">상태: beta.7에서 실패, dev 미측정</span></h4>
+    <p>플래그가 소스에 있다는 것과 우리가 세울 수 있다는 것은 다르다. dev pin에서 다시 재야 하고, dev에서도 안 되면 "필요한 것만 켠다"는 후보 C의 전제가 무너진다.</p>
+    <p><strong>깨지면:</strong> 다른 경로(설정 파일, 환경변수)를 찾거나, 원치 않는 component가 켜진 채로 사는 비용을 받아들이거나, 후보 B로 올라간다.</p>
+  </div>
+
+  <div class="gate">
+    <h4><span class="gate-id">gate 6</span> 팀원의 board 직접 접근 <span class="gate-state">상태: 소스로 현재 경로 부재 확정</span></h4>
+    <p>member extension에 최소 <code>task_list</code>/<code>task_get</code>/<code>task_update</code>와 자기 이름 기반 claim 권한을 안전하게 추가해야 한다. 리드 중개 board는 비호환 축소안일 뿐 gate 통과로 간주하지 않는다.</p>
+    <p><strong>깨지면:</strong> 제공할 수 없으면 후보 B로.</p>
+  </div>
+
+  <h3>운영에 딸린 결정 셋</h3>
+  <ul>
+    <li><strong>component allowlist와 update gate.</strong> allowlist는 코드가 아니라 launcher가 조립하는 플래그 목록으로 둔다. 버전을 올릴 때 <strong>component 목록의 diff를 먼저 본다</strong> — upstream이 추가한 component는 기본적으로 켜져서 들어온다(<code>compose.ts</code>가 각 플래그 default를 "비활성화 안 함"으로 등록). 늘어난 이름은 결정표에 추가하고 결정 칸을 비운 채 사용자에게 올린다.</li>
+    <li><strong>Taskforce role/member 어댑터.</strong> 어댑터로 되는 둘(승인 gate, 완료 증거·예산)은 우리 레포에 둔다. gate 1·2·6과 gate 3 PoC 실패 뒤의 구조 해법은 gate 4를 확인한 뒤에야 가장 작게 정할 수 있다.</li>
+    <li><strong>전용 brand/state/launcher.</strong> OMO launcher가 주입하는 것(<code>SENPI_BRAND</code>, <code>SENPI_CODING_AGENT_DIR</code>, <code>OMO_NATIVE</code>)을 우리 값으로 바꾼다. 상태 디렉토리 분리가 특히 중요하다 — 공유하면 두 제품이 같은 세션·인증 파일을 만진다.</li>
+  </ul>
+</section>
+
+<!-- ============ 8. metrics ============ -->
+<section id="metrics" aria-labelledby="metrics-h">
+  <h2 id="metrics-h"><span class="sec-no">08</span>업데이트 절차와 검증 지표</h2>
+
+  <h3>업데이트 절차 (제안)</h3>
+  <ol>
+    <li>pin 후보 버전의 <code>component-list.ts</code>를 현재 pin과 대조한다. 늘거나 준 이름이 있으면 결정표를 갱신하고 결정 칸을 비운 채 사용자에게 올린다.</li>
+    <li>Senpi 쪽은 <code>CHANGELOG.md</code>에서 컴팩션·캐시·권한·확장 API 항목만 훑는다. 이 넷이 우리 어댑터가 기대는 계약이다.</li>
+    <li>아래 지표를 pin을 올리기 전과 후에 각각 재고, 회귀가 있으면 되돌린다.</li>
+  </ol>
+
+  <div class="table-scroll">
+    <table>
+      <caption>실제로 관측할 지표 — "무엇이 실패인가"를 미리 정해 두어야 측정이 판정이 된다.</caption>
+      <thead>
+        <tr><th scope="col">무엇을</th><th scope="col">어떻게 재는가</th><th scope="col">무엇이 실패인가</th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">cache hit</th><td>Senpi 세션 로그의 <code>kind</code> 라인. <code>SENPI_SESSION_DEBUG=1</code>로 stderr 미러</td><td><code>flatten</code>이 반복되면 레인이 대화 전체를 재전송 중이다</td></tr>
+        <tr><th scope="row">prompt tokens</th><td>component ON/OFF 조합별 첫 요청의 입력 토큰</td><td>도구·에이전트 정의가 접두를 부풀려 캐시 접두가 흔들린다</td></tr>
+        <tr><th scope="row">compaction continuity</th><td>컴팩션 전후로 팀 런이 끊기지 않는지. 완료 라우팅이 <code>compacting</code>에서 buffer 하는지</td><td>컴팩션 중 도착한 완료 알림이 사라진다</td></tr>
+        <tr><th scope="row">crash/resume</th><td>리드 프로세스를 죽인 뒤 세션 재개. 정지된 자식이 부활하고 process 멤버가 재부착되는지</td><td>자식이 <code>lost</code>로 떨어지거나 원 프롬프트를 재실행한다</td></tr>
+        <tr><th scope="row">mailbox exactly-once</th><td>주입과 커밋 사이에서 프로세스를 죽인 뒤 재시작. <code>processed/&lt;messageId&gt;.json</code> 원장으로 중복 판정</td><td>같은 메시지가 두 번 관측된다</td></tr>
+        <tr><th scope="row">nested helper (gate 1)</th><td>gate 1의 해법을 넣은 뒤 process 멤버가 자기 자식을 띄우는지. 현재 upstream 상태에서는 재 볼 것도 없이 불가이므로 회귀 지표다</td><td>해법을 넣어도 멤버가 <code>task_send</code>만 받는다</td></tr>
+        <tr><th scope="row">verifier write deny (gate 3)</th><td>pretrusted 전용 worktree의 프로젝트 설정에서 <code>edit</code>·<code>bash</code>를 명시적으로 deny하고 verifier RPC 멤버에게 쓰기를 시킨다</td><td>거부되지 않고 파일이 써진다. 권한은 확인 정책일 뿐이라는 한계도 함께 본다</td></tr>
+        <tr><th scope="row">자식의 확장 상속 (gate 4)</th><td>파일 단위 <code>-e</code>로 띄운 리드에서 팀원을 스폰하고 자식 argv를 확인한다</td><td>자식이 <code>--no-extensions</code>만 받고 뜬다</td></tr>
+        <tr><th scope="row">자식의 disable 상태 상속 (gate 4)</th><td>부모에서 특정 component를 끈 뒤 자식의 명령 표면에 그것이 남아 있는지</td><td>자식이 부모가 끈 component를 켠 채로 뜬다 — 이쪽이 실패 가능성이 더 크다</td></tr>
+        <tr><th scope="row">disable 플래그 반응 (gate 5)</th><td>dev pin에서 <code>--omo-senpi-&lt;name&gt;-disabled</code>를 붙이고 <code>get_commands</code> 표면 차이를 본다</td><td>플래그를 붙여도 표면이 그대로다 (beta.7에서 실제로 이랬다)</td></tr>
+        <tr><th scope="row">team board 접근 (gate 6)</th><td>팀원이 직접 list/get/update하고 자기 이름으로 claim하는 시나리오를 실행. 리드 중개는 호환 판정에서 제외</td><td>팀원이 자기 상태를 갱신할 수 없거나, 권한 범위를 넘어 다른 owner의 task를 claim/update한다</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>팀원 모델 확인</h3>
+  <p>
+    fx 어댑터가 이미 요구하는 것이 여기서도 그대로 적용된다: <strong>모델 id가 실제로 어디에 닿는지 실제 호출로 확인한 뒤에 그 역할을 맡긴다.</strong>
+    카탈로그에 이름이 보이는 것은 그 모델이 뜬다는 증거가 아니고, 독립 검증자가 조용히 owner와 같은 모델이면 검증이 아니다.
+  </p>
+</section>
+
+<!-- ============ 9. license ============ -->
+<section id="license" aria-labelledby="license-h">
+  <h2 id="license-h"><span class="sec-no">09</span>라이선스와 배포 제약</h2>
+  <p class="lede">두 저장소의 라이선스가 다르고, 이 차이가 후보 선택에 실제로 영향을 준다.</p>
+
+  <p><strong>Senpi (<code>code-yeongyu/senpi</code>) — MIT.</strong> npm 패키지와 GitHub 저장소 메타데이터 양쪽에서 MIT. 재배포·상업 이용에 제약이 없다.</p>
+
+  <p><strong>OMO (<code>code-yeongyu/oh-my-openagent</code>) 루트 — Sustainable Use License v1.0.</strong> 원문 Limitations의 범위는 이렇다.</p>
+  <ul>
+    <li>소프트웨어를 <strong>자신의 내부 업무 목적, 비상업적 목적, 개인 용도로만</strong> 사용하거나 수정할 수 있다.</li>
+    <li>타인에게 배포하거나 제공하려면 <strong>무상이고 비상업적 목적</strong>이어야 한다.</li>
+    <li>라이선스·저작권 고지를 변경·제거·은폐할 수 없다.</li>
+    <li>제3자 구성요소는 각자의 원래 라이선스를 따른다.</li>
+  </ul>
+
+  <p><strong>OMO plugin 하위(<code>plugin/LICENSE</code>)는 MIT지만 범위가 좁다</strong> — "Senpi LSP adapter descriptor, schema, renderer, path extraction, post-edit wiring, migration-warning helper 부분"에만 적용된다고 명시한다. plugin 디렉토리 전체가 MIT라는 뜻이 아니다.</p>
+
+  <h3>실무적 귀결</h3>
+  <ul>
+    <li><strong>개인·내부 사용은 A/B/C 셋 다 문제없다.</strong> 지금 rubato-pi의 용도가 이것이라면 라이선스는 후보 선택을 좌우하지 않는다.</li>
+    <li><strong>외부 배포나 상업 제공을 하려면</strong> OMO 코드를 포함한 B와 C가 막힌다. C에서 배포물이 "설치 지시와 우리 어댑터뿐"이면 OMO 코드가 없지만 — <strong>이것은 법률 판단이며 이 문서가 결론 내릴 수 없다.</strong></li>
+    <li>후보 A만이 이 제약에서 완전히 자유롭다. 배포 계획이 전제로 깔리면 A의 상대적 가치가 올라간다.</li>
+    <li>브랜드 교체는 라이선스 고지 제거와 다르다. <code>SENPI_BRAND</code>를 바꾸는 것은 설정 주입이지만, LICENSE·NOTICE 파일을 지우는 것은 명시적 금지 사항이다.</li>
+  </ul>
+</section>
+
+<!-- ============ 10. open ============ -->
+<section id="open" aria-labelledby="open-h">
+  <h2 id="open-h"><span class="sec-no">10</span>열린 결정</h2>
+  <p class="lede">
+    component 18개의 선택은 <a href="#decision-section">결정표</a>가 유일한 자리다. 여기서는 나머지를 모은다.
+  </p>
+
+  <h3>구조 결정</h3>
+  <ul>
+    <li>후보 A / B / C 중 무엇으로 갈 것인가. 후보 C를 첫 PoC로 돌리는 데 동의하는지가 먼저 정해져야 한다.</li>
+    <li>rubato-pi가 기존 rubato(fx)를 대체하는가, 병행하는가, 특정 역할만 가져가는가.</li>
+    <li>정확 pin의 갱신 주기와, 누가 component allowlist를 갱신하는가.</li>
+    <li>외부·상업 배포 계획이 있는가. 있다면 후보 선택이 라이선스 제약을 받는다.</li>
+  </ul>
+
+  <h3>PoC gate — 순서와 판정자</h3>
+  <ul>
+    <li><strong>gate 4</strong> — 팀원 자식이 (a) 같은 확장 경로를 상속받는가, (b) 부모의 disable 상태도 물려받는가.</li>
+    <li><strong>gate 5</strong> — dev pin에서 <code>--omo-senpi-&lt;name&gt;-disabled</code>가 실제로 component를 끄는가. 안 되면 어떤 경로로 세울 것인가.</li>
+    <li><strong>gate 3</strong> — pretrusted 역할별 전용 worktree의 명시적 <code>edit</code>·<code>bash</code> deny가 RPC 멤버에서 작동하는가. 실패하면 child argv 배선 / fork / 자식 강제 확장 중 어디로 올라갈 것인가.</li>
+    <li><strong>gate 6</strong> — member extension에 board 도구와 자기 이름 기반 claim을 어떤 권한으로 제공할 것인가.</li>
+    <li><strong>gate 1</strong> — early return을 어떤 방법으로 지나갈 것인가. upstream 변경 / fork / 자식 강제 확장 중 무엇인가.</li>
+    <li><strong>gate 2</strong> — 역할 계약 주입 계층을 역할별 멤버 확장으로 만들 것인가, 역할별 시스템 프롬프트로 만들 것인가.</li>
+    <li><strong>승격 판정</strong> — 승격 기준 둘 중 하나에 걸리면 후보 C를 접고 B로 올린다. 누가 그 판정을 내리는가.</li>
+  </ul>
+
+  <h3>측정해야 결정할 수 있는 것</h3>
+  <ul>
+    <li><code>task</code> component ON의 프롬프트 토큰 비용(도구 11개 + 에이전트 설명)이 얼마인가.</li>
+    <li>결정표에서 "보류"로 남긴 component 각각이 어떤 지표를 봐야 결정되는가.</li>
+  </ul>
+</section>
+
+<!-- ============ 11. evidence ============ -->
+<section id="evidence" aria-labelledby="evidence-h">
+  <h2 id="evidence-h"><span class="sec-no">11</span>근거 링크</h2>
+  <p class="lede">
+    아래는 이 화면의 주장을 직접 떠받치는 링크다. 전체 목록(로컬 파일 경로, 개별 component 구현 등)은 정본
+    <a href="rubato-pi-design.md">rubato-pi-design.md</a>의 11절에 있다.
+  </p>
+
+  <h3>OMO — commit <code>024cd9fe0374a87e0d17f540d229f3e087059385</code> (<code>dev</code>, 2026-08-21, v5.0.0-beta.15)</h3>
+  <ul class="evidence-list">
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent">저장소</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/LICENSE.md">루트 라이선스 (Sustainable Use License v1.0)</a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/extension/component-list.ts">component 목록과 등록 순서</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/extension/compose.ts">전역·개별 disable 플래그 배선</a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/AGENTS.md">component별 동작 서술</a> — <strong>산문이 코드보다 낡은 자리가 있다.</strong> anatomy 표는 "Fifteen live components"라고 하지만 <code>component-list.ts</code>는 18개를 반환한다. 개수를 인용할 때는 코드를 본다</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/AGENTS.md">task/team 엔진 계약</a> — 실행 모드, 배달 모델, 복구 체인, curated 에이전트</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/task/index.ts">도구 11개 등록과 팀원 프로세스 early return</a> (gate 1의 출처)</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/spawn-members.ts">멤버 spawn — <code>worktreePath</code>의 <code>mkdir -p</code>, <code>buildMemberPrompt</code>, 확장 조립</a> (gate 2·3의 출처)</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/member-extension/index.ts">팀원 확장이 <code>task_send</code>만 등록하는 진입점</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/member-extension/identity.ts">멤버 식별 env와 <code>isTeamMemberProcess</code></a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/tools/team/index.ts">리드 전용 team 도구 등록 (<code>buildLeadTeamTools</code> 6개)</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/tools/team/tasks.ts">board 도구 파라미터 — <code>task_update</code>의 <code>owner</code></a> (gate 6의 출처)</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/team-core/src/team-tasklist/claim.ts">멤버 이름 단위 claim 기제 (파일 락, <code>AlreadyClaimedError</code>)</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/team-core/src/team-tasklist/update.ts">cross-owner 변경 거부</a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/task/team-service.ts">board 서비스의 <code>assertOwnedTeam</code>과 <code>inheritedExtensions</code> 호출부</a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/rpc/spawn.ts">자식 argv 구성 — permission 없음, DAG <code>slice(1)</code></a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/types.ts"><code>RpcRunnerSpec</code> 필드 목록</a> (gate 3·4의 출처)</li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/task/engine-runners.ts">모든 process 자식이 부모 argv 확장을 상속하는 자리</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/rpc/parent-extensions.ts">argv에서 <code>-e</code>만 긁는 파서</a></li>
+    <li><a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/member-validator.ts">curated 이름의 팀 멤버 거부</a> · <a href="https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/team-core/src/types.ts">TeamSpec / Member / Task 스키마</a></li>
+  </ul>
+
+  <h3>Senpi 공식 문서 — commit <code>a5eed44536f3024c5740dc3dfff4ffe0bb08b717</code></h3>
+  <p>문서는 <code>main</code>이 아니라 이 commit으로 고정한다. <code>main</code>을 가리키면 다음에 읽는 사람이 보는 문장이 우리가 근거로 삼은 문장과 달라도 그 사실이 드러나지 않는다.</p>
+  <ul class="evidence-list">
+    <li><a href="https://github.com/code-yeongyu/senpi">저장소 (MIT)</a> · <a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/index.md">문서 색인</a></li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/settings.md">설정</a> — 권한 프리셋 넷과 명시 규칙("마지막에 맞는 규칙이 이긴다", 확인 정책이지 샌드박스가 아님), Project Trust와 <code>defaultProjectTrust</code>, 프롬프트 캐시</li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/compaction.md">컴팩션</a> · <a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/providers.md">프로바이더 — 세션 affinity, 레인별 TTL, <code>flatten</code> 관측</a></li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/extensions.md">확장 API — 도구 호출 가로채기</a> (승인 gate 어댑터의 접합점) · <a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/terminal-tools.md">영속 터미널 도구</a></li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/skills.md">스킬 — 적재 위치와 <code>--no-skills</code></a> · <a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/packages.md">패키지 — 객체 형태 필터링</a> (<strong>이 필터 방식은 자식 상속을 깨서 기각됐다</strong>)</li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/rpc.md">RPC 모드 프로토콜</a> — <code>get_commands</code>, <code>get_loaded_surfaces</code>가 로컬 실측의 관측 창구다 · <a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/usage.md">사용법 — 컨텍스트 파일, CLI 플래그</a></li>
+    <li><a href="https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/CHANGELOG.md">changelog</a> — 요약 재시도 예산, project rule 중복 제거, 스킬 심링크 중복 제거</li>
+  </ul>
+
+  <h3>npm과 로컬 설치물</h3>
+  <ul class="evidence-list">
+    <li><a href="https://registry.npmjs.org/omo-ai"><code>omo-ai</code> 레지스트리 JSON</a> · <a href="https://registry.npmjs.org/@code-yeongyu%2Fsenpi"><code>@code-yeongyu/senpi</code> 레지스트리 JSON</a> — npmjs.com 웹 페이지는 브라우저가 아닌 요청을 403으로 막으므로 버전·라이선스 확인은 레지스트리 JSON으로 한다</li>
+    <li>로컬 <code>omo-ai@5.0.0-0.beta.7</code>(embedded Senpi <code>2026.8.12-4</code>) — <code>bin/lib/launcher.js</code>(브랜드 주입과 self-update 차단), <code>plugin/package.json</code>(<code>pi.extensions</code>, <code>pi.skills</code>), <code>plugin/extensions/omo.js</code>·<code>omo-task.js</code>(텔레메트리 스키마, 팀 bounds 기본값, <code>worktreePath</code>가 일반 디렉터리만 만드는 것)</li>
+  </ul>
+
+  <h3>로컬 실측 절차 (2026-08-22)</h3>
+  <ol>
+    <li>Senpi CLI를 <code>--mode rpc --no-context-files --no-prompt-templates</code>로 띄우고 적재 형태별로 <code>-e</code> 인자만 바꾼다.</li>
+    <li>부수효과 격리: <code>SENPI_CODING_AGENT_DIR</code>를 빈 임시 디렉토리로, <code>PI_OFFLINE=1</code>, <code>DO_NOT_TRACK=1</code>, <code>OMO_DISABLE_POSTHOG=1</code>, cwd도 빈 임시 디렉토리. 실제 <code>~/.omo</code>나 <code>~/.senpi</code>는 건드리지 않는다.</li>
+    <li>stdin으로 <code>{"type":"get_commands"}</code>를 보내고 <code>commands</code> 배열을 <code>source</code>별로 센다. <code>source: "skill"</code> 행이 적재된 스킬이다. <strong>모델 호출이 없으므로 비용이 들지 않는다.</strong></li>
+    <li>disable 플래그는 같은 절차에 인자를 추가하고 표면 차이를 본다. 알 수 없는 플래그는 CLI가 <code>Unknown option</code>으로 거부하므로, 거부되지 않았는데 표면이 그대로면 "인식은 되지만 반영되지 않는" 상태다 — beta.7이 이 상태였다.</li>
+  </ol>
+
+  <h3>이 레포</h3>
+  <ul class="evidence-list">
+    <li><code>harness/README.md</code> — 기존 rubato 구조, 프로바이더별 캐시 레버 실측, upstream 머지 시 스키마 버전 대조 절차</li>
+    <li><code>harness/docs/fx-team-overlay.md</code> — fx Team Overlay가 무엇을 만들었고 무엇을 만들지 않았는가</li>
+    <li><code>skills/agent-taskforce/runtimes/fx.md</code> — 런타임 어댑터 계약, headless 위임 실측(2026-08-21), 모델 id 확인 요구</li>
+    <li><code>CLAUDE.md</code> — 정본과 스냅샷의 방향, 개선의 비용 사다리, 복제 금지 원칙과 그 예외</li>
+  </ul>
+</section>
+
+</main>
+
+<footer class="doc-footer">
+  <p>
+    이 화면은 결정을 위한 view다. 문장의 정본은 <a href="rubato-pi-design.md">rubato-pi-design.md</a>이고, 충돌하면 정본이 이긴다.
+    component 선택은 이 브라우저의 localStorage에만 저장되며 서버로 전송되지 않는다.
+  </p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var STORAGE_KEY = "rubato-pi-design-decisions-v1";
+  var LABELS = { keep: "유지", off: "기본 OFF", hold: "보류" };
+  var TOTAL = 18;
+
+  var table = document.getElementById("decision-table");
+  var rows = table ? table.querySelectorAll("#decision-rows tr") : [];
+  var progressText = document.getElementById("progress-text");
+  var progressFill = document.getElementById("progress-fill");
+  var progressBlock = document.getElementById("progress-block");
+  var primaryBtn = document.getElementById("primary-action");
+  var resetBtn = document.getElementById("reset-action");
+  var warningBox = document.getElementById("storage-warning");
+
+  var storageOk = probeStorage();
+  var state = storageOk ? readState() : {};
+
+  function probeStorage() {
+    try {
+      var probe = "__rubato_probe__";
+      window.localStorage.setItem(probe, "1");
+      window.localStorage.removeItem(probe);
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function readState() {
+    try {
+      var raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      var clean = {};
+      Object.keys(parsed).forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(LABELS, parsed[key])) clean[key] = parsed[key];
+      });
+      return clean;
+    } catch (err) {
+      warn("저장된 선택을 읽지 못했습니다. 이번 화면의 선택은 저장되지 않습니다.");
+      return {};
+    }
+  }
+
+  function writeState() {
+    if (!storageOk) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      storageOk = false;
+      warn("선택을 저장하지 못했습니다(브라우저 저장소 사용 불가 또는 용량 초과). 선택은 계속 할 수 있지만 새로 열면 사라집니다.");
+    }
+  }
+
+  function warn(message) {
+    if (!warningBox) return;
+    warningBox.textContent = message;
+  }
+
+  function groupsInOrder() {
+    var list = [];
+    for (var i = 0; i < rows.length; i++) {
+      var input = rows[i].querySelector("input[type=radio]");
+      if (input) list.push({ row: rows[i], name: input.name });
+    }
+    return list;
+  }
+
+  var groups = groupsInOrder();
+
+  function applyStoredSelections() {
+    groups.forEach(function (group) {
+      var value = state[group.name];
+      if (!value) return;
+      var input = group.row.querySelector('input[name="' + group.name + '"][value="' + value + '"]');
+      if (input) input.checked = true;
+    });
+  }
+
+  function decidedCount() {
+    var count = 0;
+    groups.forEach(function (group) {
+      if (group.row.querySelector('input[name="' + group.name + '"]:checked')) count++;
+    });
+    return count;
+  }
+
+  function updateRow(group) {
+    var checked = group.row.querySelector('input[name="' + group.name + '"]:checked');
+    var status = group.row.querySelector('[data-status-for="' + group.name + '"]');
+    if (checked) {
+      group.row.setAttribute("data-decided", "true");
+      if (status) status.textContent = "결정: " + LABELS[checked.value];
+    } else {
+      group.row.setAttribute("data-decided", "false");
+      if (status) status.textContent = "미결정";
+    }
+  }
+
+  function firstUndecided() {
+    for (var i = 0; i < groups.length; i++) {
+      if (!groups[i].row.querySelector('input[name="' + groups[i].name + '"]:checked')) return groups[i];
+    }
+    return null;
+  }
+
+  function updateProgress() {
+    var done = decidedCount();
+    var remaining = TOTAL - done;
+    var complete = done === TOTAL;
+
+    if (progressText) {
+      progressText.innerHTML = complete
+        ? "18개 component <strong>모두 결정 완료</strong> · 결정 검토로 넘어갈 수 있습니다"
+        : "18개 component 중 <strong>" + done + "개</strong> 결정 · 남은 항목 " + remaining + "개";
+    }
+    if (progressFill) progressFill.style.width = (done / TOTAL) * 100 + "%";
+    if (progressBlock) progressBlock.setAttribute("data-complete", complete ? "true" : "false");
+    if (primaryBtn) primaryBtn.textContent = complete ? "결정 검토" : "첫 미결정으로 이동";
+  }
+
+  function scrollToElement(el) {
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (el.scrollIntoView) el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  }
+
+  if (!storageOk) {
+    warn("이 브라우저에서는 선택을 저장할 수 없습니다(로컬 저장소 사용 불가). 선택과 진행률은 정상 동작하지만 새로 열면 초기화됩니다.");
+  }
+
+  applyStoredSelections();
+  groups.forEach(updateRow);
+  updateProgress();
+
+  if (table) {
+    table.addEventListener("change", function (event) {
+      var target = event.target;
+      if (!target || target.type !== "radio") return;
+      state[target.name] = target.value;
+      writeState();
+      var group = null;
+      for (var i = 0; i < groups.length; i++) {
+        if (groups[i].name === target.name) { group = groups[i]; break; }
+      }
+      if (group) updateRow(group);
+      updateProgress();
+    });
+  }
+
+  if (primaryBtn) {
+    primaryBtn.addEventListener("click", function () {
+      var next = firstUndecided();
+      if (next) {
+        var input = next.row.querySelector('input[name="' + next.name + '"]');
+        scrollToElement(next.row);
+        if (input && input.focus) input.focus({ preventScroll: true });
+      } else {
+        var section = document.getElementById("decision-section");
+        if (section) {
+          scrollToElement(section);
+          var heading = document.getElementById("decision-h");
+          if (heading) {
+            heading.setAttribute("tabindex", "-1");
+            heading.focus({ preventScroll: true });
+          }
+        }
+      }
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener("click", function () {
+      var done = decidedCount();
+      if (done === 0) {
+        warn("초기화할 선택이 없습니다.");
+        return;
+      }
+      var ok = window.confirm("component 선택 " + done + "개를 모두 지웁니다. 계속할까요?");
+      if (!ok) return;
+      state = {};
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch (err) {
+        warn("저장소에서 선택을 지우지 못했습니다. 화면의 선택만 초기화되며, 새로 열면 이전 선택이 복원될 수 있습니다.");
+      }
+      groups.forEach(function (group) {
+        var inputs = group.row.querySelectorAll('input[name="' + group.name + '"]');
+        for (var i = 0; i < inputs.length; i++) inputs[i].checked = false;
+        updateRow(group);
+      });
+      updateProgress();
+      if (primaryBtn && primaryBtn.focus) primaryBtn.focus();
+    });
+  }
+
+  // 인쇄할 때는 접힌 카드도 모두 보이게 하고, 끝나면 원래 상태로 되돌린다.
+  var cards = document.querySelectorAll("details.card");
+  var reopened = [];
+
+  function expandForPrint() {
+    reopened = [];
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].open) {
+        cards[i].open = true;
+        reopened.push(cards[i]);
+      }
+    }
+  }
+
+  function restoreAfterPrint() {
+    for (var i = 0; i < reopened.length; i++) reopened[i].open = false;
+    reopened = [];
+  }
+
+  if (window.matchMedia) {
+    var printQuery = window.matchMedia("print");
+    var handler = function (event) {
+      if (event.matches) expandForPrint();
+      else restoreAfterPrint();
+    };
+    if (printQuery.addEventListener) printQuery.addEventListener("change", handler);
+    else if (printQuery.addListener) printQuery.addListener(handler);
+  }
+  window.addEventListener("beforeprint", expandForPrint);
+  window.addEventListener("afterprint", restoreAfterPrint);
+})();
+</script>
+
+</body>
+</html>
