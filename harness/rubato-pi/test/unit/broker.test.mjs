@@ -15,6 +15,7 @@ import {
   startBroker,
 } from "../../src/broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "../../src/broker-request.mjs";
+import { senpiNested } from "../../src/engine-paths.mjs";
 import { applyFxEvent, fxUsageToPi, parseSseBlock, settleBrokerOutput, streamBroker } from "../../src/broker-stream.mjs";
 
 async function nextOrTimeout(iter, ms, label) {
@@ -251,7 +252,7 @@ test("broker abort errors carry the assistant message, not a bare string", () =>
 
 test("aborting a broker turn does not crash invoke recovery", async () => {
   const { wrapStreamWithInvokeRecovery } = await import(
-    "../../node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-ai/dist/tool-call-middleware/recovery-stream-wrapper.js"
+    senpiNested("@earendil-works/pi-ai/dist/tool-call-middleware/recovery-stream-wrapper.js")
   );
   const rejections = [];
   const onReject = (reason) => rejections.push(reason);

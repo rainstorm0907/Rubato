@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripChangelog, withNoChangelog } from "../../src/no-changelog.mjs";
+import { senpiDir } from "../../src/engine-paths.mjs";
 
-const senpi = join(dirname(fileURLToPath(import.meta.url)), "../../node_modules/@code-yeongyu/senpi/dist");
+const senpi = join(senpiDir, "dist");
 
 test("strips the changelog command and startup dump from pinned senpi", () => {
   const slash = readFileSync(join(senpi, "core/slash-commands.js"), "utf8");

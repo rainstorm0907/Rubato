@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { routeCompletion } from "../../src/parent-route.mjs";
+import { omoTaskExtension } from "../../src/engine-paths.mjs";
 
 test("compacting buffers completions instead of dropping them", () => {
   assert.deepEqual(routeCompletion("compacting"), { kind: "buffer", reason: "compacting" });
@@ -13,6 +14,6 @@ test("compacting buffers completions instead of dropping them", () => {
 
 test("the pinned task bundle still routes compacting to buffer", () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
-  const bundle = readFileSync(join(root, "node_modules/omo-ai/plugin/extensions/omo-task.js"), "utf8");
+  const bundle = readFileSync(omoTaskExtension, "utf8");
   assert.match(bundle, /case"compacting":return\{kind:"buffer",reason:"compacting"\}/);
 });

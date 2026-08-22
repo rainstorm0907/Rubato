@@ -38,6 +38,17 @@ export const senpiDir = join(forkRoot, "node_modules", "@code-yeongyu", "senpi")
 export const senpiCli = join(senpiDir, "dist", "cli.js");
 export const senpiPackageJson = join(senpiDir, "package.json");
 export const senpiSkillsModule = join(senpiDir, "dist", "core", "skills.js");
+export const senpiSystemPromptModule = join(senpiDir, "dist", "core", "system-prompt.js");
+
+/**
+ * senpi 가 자기 node_modules 에 품고 있는 패키지. 워크스페이스 호이스팅 탓에
+ * 로컬에 올라오기도 하므로 둘 다 본다 — 먼저 발견되는 쪽을 돌려준다.
+ */
+export function senpiNested(...segments) {
+  const nested = join(senpiDir, "node_modules", ...segments);
+  if (existsSync(nested)) return nested;
+  return join(forkRoot, "node_modules", ...segments);
+}
 
 /** 없으면 세션이 못 뜨므로, 부팅 실패를 사유와 함께 세운다. */
 export function assertEngineBuilt() {

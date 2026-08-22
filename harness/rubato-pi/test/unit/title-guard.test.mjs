@@ -1,18 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import {
   injectTitleGuard,
   installTitleGuard,
   isTerminalModuleUrl,
 } from "../../src/title-guard.mjs";
+import { senpiNested } from "../../src/engine-paths.mjs";
 
-const piTui = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-tui/dist",
-);
+const piTui = senpiNested("@earendil-works/pi-tui/dist");
 
 function makeFakeTerminal() {
   const writes = [];

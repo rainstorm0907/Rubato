@@ -18,16 +18,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { extractHarnessExtras, loadRolePrompt } from "../../src/system-prompt.mjs";
+import { senpiSystemPromptModule } from "../../src/engine-paths.mjs";
 
 // senpi 의 package.json exports 가 하위 경로를 막아서 require.resolve 로는 못 뚫는다.
 // 레포의 다른 테스트들과 같은 방식으로 dist 를 직접 가리킨다.
-const ENGINE_SYSTEM_PROMPT = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../node_modules/@code-yeongyu/senpi/dist/core/system-prompt.js",
-);
+const ENGINE_SYSTEM_PROMPT = senpiSystemPromptModule;
 
 async function loadEngineBuilder() {
   const mod = await import(pathToFileURL(ENGINE_SYSTEM_PROMPT).href);

@@ -21,6 +21,10 @@ const repoRoot = join(here, "..", "..", "..", "..");
 const ALLOWED = [
   "harness/docs/",
   "test/unit/no-seat-jargon.test.mjs",
+  // harness/skills/ 는 ~/.agents/skills 를 그대로 뜼는 배포용 사본이다(생성물).
+  // 정본이 아니므로 여기서 고쳐도 다음 bundle-skills.sh 가 되돌린다.
+  // 스킬 쪽 은어는 정본(agent-taskforce)에서 잡는다.
+  "harness/skills/",
 ];
 
 function search(pattern) {
