@@ -13,6 +13,32 @@
 
 목표는 모델 인지 프로파일 칼럼(agent-taskforce `research/2026-08-20-model-cognition-column.md`)의 분업 구조 — Fable framing / Opus lead / Sol investigator / Grok builder — 를 최적 배치로 돌리는 것이다.
 
+## 설치 — 이 레포만으로
+
+```bash
+git clone --branch rubato/base https://github.com/keepitmello/Rubato.git
+cd Rubato
+
+bun install                          # 엔진(senpi). npm 은 workspace: 를 못 읽는다. bun 1.4+
+npm install --prefix harness         # bridge
+npm install --prefix harness/rubato-pi
+harness/prompts/build.sh             # 역할별 시스템 프롬프트 (생성물은 커밋 안 한다)
+ln -s "$PWD/harness/prompts" ~/.agents/rubato
+harness/scripts/install-skills.sh    # 번들 스킬 -> ~/.agents/skills
+```
+
+그리고 alias:
+
+```bash
+echo 'alias rubato="$HOME/<클론경로>/Rubato/harness/scripts/rubato-pi.sh"' >> ~/.zshrc
+```
+
+**요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다), Codex 경로를 쓸 때 `opencodex`.
+
+**크레덴셜은 각자 넣는다.** xAI OAuth(`~/.senpi/agent/auth.json`), Claude setup-token(macOS Keychain), OpenCodex 로그인. 설치는 이것들을 만들지 않는다.
+
+Claude Code 쪽 세팅(agent 정의, 컴팩션 훅, 스킬 심링크 배선)까지 원하면 agent-taskforce 의 `install.sh` 를 쓴다. 그 스크립트가 이 레포를 클론하고 위 단계를 대신 밟는다.
+
 ## 지금 구조
 
 기본 런타임은 **`rubato-pi`** — Senpi 엔진 계보 위에 얇게 얹는 오버레이다. 계보는 다섯 겹이다.
