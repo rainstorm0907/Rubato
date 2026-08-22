@@ -67,4 +67,4 @@ Keep the proposal short.
 이 배치로 띄울까?
 ```
 
-Wait for explicit confirmation. After approval, spawn only the approved seats and record the actual roster if a mission artifact is being used.
+Wait for explicit confirmation. After approval, spawn only the approved teammates and record the actual roster if a mission artifact is being used.

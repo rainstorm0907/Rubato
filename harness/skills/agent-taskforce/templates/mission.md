@@ -41,7 +41,7 @@ The state that must actually hold when this run ends.
 
 Update only on material restaffing. Record the actual model that ran.
 
-| Seat / outcome | Runtime / session | Model | Why this model | Verification relation |
+| Role / outcome | Runtime / session | Model | Why this model | Verification relation |
 |---|---|---|---|---|
 | Lead |  |  |  |  |
 | Owner: |  |  |  |  |

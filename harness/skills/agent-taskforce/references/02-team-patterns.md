@@ -9,7 +9,7 @@ The default when one deep context can carry the work efficiently.
 - owner: investigation, implementation, retries, local debugging, local verification
 - no resident verifier unless risk justifies one
 
-A team skill may still be active while only one owner is spawned; do not invent parallelism to fill seats.
+A team skill may still be active while only one owner is spawned; do not invent parallelism to fill roles.
 
 ## 2. Owner-verifier pair
 
