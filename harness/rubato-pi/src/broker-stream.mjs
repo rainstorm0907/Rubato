@@ -1,4 +1,12 @@
-import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { pathToFileURL } from "node:url";
+import { senpiNested } from "./engine-paths.mjs";
+
+// pi-ai 는 senpi 가 자기 node_modules 에 품고 있다. bare import 로 쓰면 이 패키지
+// 위쪽에 hoist 된 사본이 있어야만 풀리는데, 깨끗한 설치에는 그런 사본이 없다
+// (있던 기기는 예전 npm install 의 잔재였다). senpi 옆에서 직접 찾는다.
+const { createAssistantMessageEventStream } = await import(
+  pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/index.js")).href
+);
 import { brokerUrl, catalogId } from "./broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "./broker-request.mjs";
 

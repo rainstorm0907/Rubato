@@ -1,5 +1,14 @@
-import { createProvider } from "@earendil-works/pi-ai";
-import { builtinProviders, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { pathToFileURL } from "node:url";
+import { senpiNested } from "../engine-paths.mjs";
+
+// bare import 를 쓰지 않는 이유는 broker.mjs 와 같다 — pi-ai 는 senpi 안에만 있고
+// 위쪽에 hoist 된 사본은 깨끗한 설치에 없다.
+const { createProvider } = await import(
+  pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/index.js")).href
+);
+const { builtinProviders, getBuiltinProviders } = await import(
+  pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/providers/all.js")).href
+);
 import { ensureBroker, FALLBACK_CATALOG, groupCatalog, loadCatalog } from "../broker.mjs";
 import { streamBroker } from "../broker-stream.mjs";
 

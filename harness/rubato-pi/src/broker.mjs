@@ -3,7 +3,12 @@ import { closeSync, openSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
+import { pathToFileURL } from "node:url";
+import { senpiNested } from "./engine-paths.mjs";
+
+const { getBuiltinModel } = await import(
+  pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/providers/all.js")).href
+);
 import { CACHE_RETENTION } from "./defaults.mjs";
 
 export const DEFAULT_BROKER_URL = "http://127.0.0.1:8788";
