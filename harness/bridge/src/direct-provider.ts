@@ -9,6 +9,7 @@ import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-code
 import type { CacheRetention } from "./config.ts";
 import { emptyFxUsage, gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
 import { encodeSseData, encodeSseDone } from "./sse.ts";
+import { upstreamFetch } from "./upstream-dispatcher.ts";
 
 type JsonObject = Record<string, unknown>;
 type Credential = { type: "oauth"; access: string; refresh: string; expires: number; [key: string]: unknown };
@@ -297,6 +298,7 @@ export async function* directProviderToFxSse(args: {
   const context = fxPromptToPiContext(args.body.prompt, args.body.tools, selected.provider, selected.modelId);
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;
   const stream = models.streamSimple(model, context, {
+    fetch: upstreamFetch,
     signal: args.signal,
     sessionId: args.sessionId,
     affinitySessionId: args.sessionId,

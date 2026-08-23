@@ -8,6 +8,7 @@
     "test": "node --experimental-strip-types --test test/*.test.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "npm:@code-yeongyu/senpi-ai@2026.8.19"
+    "@earendil-works/pi-ai": "npm:@code-yeongyu/senpi-ai@2026.8.19",
+    "undici": "^8.10.0"
   }
 }
