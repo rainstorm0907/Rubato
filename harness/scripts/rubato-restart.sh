@@ -17,7 +17,19 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 PORT="${FX_BRIDGE_PORT:-8788}"
 URL="http://127.0.0.1:${PORT}"
-LOG="${RUBATO_BROKER_LOG:-${TMPDIR:-/tmp}/fx-bridge.log}"
+# 로그 자리는 broker.mjs 의 brokerLogPath() 와 같은 규칙이다. 한쪽만 고치면 재시작
+# 기록과 브리지 출력이 다른 파일로 갈라진다. $TMPDIR 을 떠난 이유는 재부팅이다 —
+# 거기 두면 "브리지가 왜 죽었나"를 뒤늦게 물을 때 볼 것이 남지 않는다.
+if [ -n "${RUBATO_BROKER_LOG-}" ]; then
+  LOG="$RUBATO_BROKER_LOG"
+elif [ -n "${HOME-}" ] && [ "$(uname -s)" = "Darwin" ]; then
+  LOG="$HOME/Library/Logs/rubato/bridge.log"
+elif [ -n "${HOME-}" ]; then
+  LOG="${XDG_STATE_HOME:-$HOME/.local/state}/rubato/bridge.log"
+else
+  LOG="${TMPDIR:-/tmp}/fx-bridge.log"
+fi
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 
 say() { printf '%s\n' "$*" >&2; }
 

@@ -5,6 +5,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brokerLogPath } from "../../src/broker.mjs";
 
 // 브리지는 세션 여러 개가 동시에 물고 있는 한 프로세스다. 여기 있는 것은
 // 전부 "살아 있는 브리지를 남의 사정으로 죽이지 않는다" 한 가지 계약이다.
@@ -162,4 +163,20 @@ test("the bridge answers a signal by draining, not by dying", () => {
   assert.match(source, /SIGINT/);
   assert.match(source, /inflight/);
   assert.match(source, /closeIdleConnections/);
+});
+
+test("the bridge log outlives a reboot", () => {
+  // $TMPDIR 에 두면 재부팅에 날아간다. 재시작 24회의 유발자를 뒤늦게 귀속하지
+  // 못한 이유가 그것이었다. 두 자리(broker.mjs 와 rubato-restart.sh)가 같은
+  // 규칙을 써야 재시작 기록과 브리지 출력이 한 파일에 모인다.
+  const home = "/home/someone";
+  const mac = brokerLogPath({ HOME: home, TMPDIR: "/tmp/volatile" });
+  assert.doesNotMatch(mac, /^\/tmp|volatile/, `로그가 휘발되는 자리에 있다: ${mac}`);
+  assert.ok(mac.startsWith(home), mac);
+  assert.equal(brokerLogPath({ RUBATO_BROKER_LOG: "/dev/null" }), "/dev/null");
+
+  const restart = read("rubato-restart.sh");
+  assert.doesNotMatch(restart, /LOG="\$\{RUBATO_BROKER_LOG:-\$\{TMPDIR/, "재시작 로그만 옛 자리에 남았다");
+  assert.match(restart, /Library\/Logs\/rubato|XDG_STATE_HOME/);
+  assert.match(restart, /mkdir -p "\$\(dirname "\$LOG"\)"/, "로그 디렉터리를 만들지 않는다");
 });

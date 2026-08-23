@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, openSync, readdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { closeSync, mkdirSync, openSync, readdirSync, statSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { senpiNested } from "./engine-paths.mjs";
@@ -82,8 +82,17 @@ export function brokerUp(url, { fetchImpl = fetch } = {}) {
     .catch(() => false);
 }
 
+// 브리지 로그는 재부팅을 넘겨야 한다. $TMPDIR 에 두면 재부팅에 날아가서, 뒤늦게
+// "브리지가 왜 죽었나"를 물을 때 볼 것이 남지 않는다 — 35시간 재시작 24회의
+// 유발자를 개별 귀속하지 못한 이유가 그것이었다.
+//
+// 규칙은 rubato-restart.sh 와 같아야 한다. 거기 주석도 같이 고쳐라.
 export function brokerLogPath(env = process.env) {
-  return env.RUBATO_BROKER_LOG ?? join(env.TMPDIR || tmpdir(), "fx-bridge.log");
+  if (env.RUBATO_BROKER_LOG) return env.RUBATO_BROKER_LOG;
+  const home = env.HOME || homedir();
+  if (!home) return join(env.TMPDIR || tmpdir(), "fx-bridge.log");
+  if (process.platform === "darwin") return join(home, "Library", "Logs", "rubato", "bridge.log");
+  return join(env.XDG_STATE_HOME || join(home, ".local", "state"), "rubato", "bridge.log");
 }
 
 function sleepSync(ms) {
@@ -91,7 +100,15 @@ function sleepSync(ms) {
 }
 
 export function startBroker({ env = process.env, spawn: spawnImpl = spawn } = {}) {
-  const fd = openSync(brokerLogPath(env), "a");
+  const logPath = brokerLogPath(env);
+  // 로그 디렉터리는 처음 한 번 만들어야 한다. 없으면 openSync 가 던지고 브리지가
+  // 뜨지 않는다 — 로그 자리를 옮긴 대가로 세션이 안 뜨는 것은 말이 안 된다.
+  try {
+    mkdirSync(dirname(logPath), { recursive: true });
+  } catch {
+    // 만들 수 없어도 아래 openSync 가 사유를 들고 실패한다.
+  }
+  const fd = openSync(logPath, "a");
   try {
     const child = spawnImpl("bash", [startScriptPath()], {
       env: { ...env, FX_CACHE_RETENTION: env.FX_CACHE_RETENTION ?? CACHE_RETENTION },
