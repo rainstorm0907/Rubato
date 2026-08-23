@@ -72,6 +72,98 @@ describe("도구 뭉치기", () => {
     }
   });
 
+  test("SKILL.md read 는 뭉치지 않는다", () => {
+    expect(ToolGroupComponent.canGroup("read", { path: "/Users/wy/.agents/skills/keep-simple/SKILL.md" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("read", { file_path: "skills/dispatching/SKILL.md" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("read", { path: "C:\\Users\\wy\\skills\\model-guide\\SKILL.md" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("read", { path: "src/a.ts" })).toBe(true);
+    expect(ToolGroupComponent.canGroup("read", { path: "notes/skill.md.bak" })).toBe(true);
+    expect(ToolGroupComponent.canGroup("bash", { path: "skills/keep-simple/SKILL.md" })).toBe(true);
+  });
+
+  test("뭉침에서 뺀 SKILL.md read 는 그룹에 남지 않는다", () => {
+    const g = new ToolGroupComponent(ui);
+    const ls = tool("ls", { path: "." }, "a");
+    const skill = tool("read", { path: "skills/keep-simple/SKILL.md" }, "# Keep Simple");
+    const grep = tool("grep", { pattern: "x" }, "hit");
+    g.addTool(ls);
+    g.addTool(skill);
+    g.addTool(grep);
+    expect(g.size).toBe(3);
+    expect(g.removeTool(skill)).toBe(true);
+    expect(g.size).toBe(2);
+    expect(g.tools).toEqual([ls, grep]);
+    expect((skill as { toolGroup?: unknown }).toolGroup).toBeUndefined();
+    expect(g.removeTool(skill)).toBe(false);
+    g.dispose();
+  });
+
+  test("같은 도구가 연달아 나오면 횟수로 묶는다", () => {
+    const g = new ToolGroupComponent(ui);
+    g.addTool(tool("apply_patch", { input: "a" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "b" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "c" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "d" }, "ok"));
+    g.addTool(tool("bash", { command: "bun test" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "e" }, "ok"));
+    const text = stripAnsi(g.render(92).join(""));
+    expect(text).toContain("6 tools");
+    expect(text).toContain("apply_patch (4)");
+    expect(text).toContain("bash");
+    expect(text).not.toContain("apply_patch·apply_patch");
+    g.dispose();
+  });
+
+  test("실패한 연속 호출은 성공 횟수와 섞지 않는다", () => {
+    const g = new ToolGroupComponent(ui);
+    g.addTool(tool("apply_patch", { input: "a" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "b" }, "ok"));
+    g.addTool(tool("apply_patch", { input: "c" }, "FAIL", true));
+    const raw = g.render(92).join("");
+    const text = stripAnsi(raw);
+    expect(text).toContain("apply_patch (2)");
+    expect(text).toContain("apply_patch");
+    const failed = raw.match(/\x1b\[38;2;196;116;110m([^\x1b]+)/)?.[1];
+    expect(failed).toBe("apply_patch");
+    g.dispose();
+  });
+
+  test("git bash 는 뭉치지 않는다", () => {
+    expect(ToolGroupComponent.canGroup("bash", { command: "git status" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("bash", { command: "GIT_DIR=.git git commit -m x" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("bash", { command: "sudo git push" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("bash", { command: "/usr/bin/git log" })).toBe(false);
+    expect(ToolGroupComponent.canGroup("bash", { command: "bun test" })).toBe(true);
+    expect(ToolGroupComponent.canGroup("bash", { command: "echo git status" })).toBe(true);
+    expect(ToolGroupComponent.canGroup("read", { path: "README.md" })).toBe(true);
+  });
+
+  test("늦게 스킬인 줄 알면 앞뒤 그룹을 그 자리에서 가른다", () => {
+    const children: unknown[] = [];
+    const g = new ToolGroupComponent(ui);
+    children.push(g);
+    const ls = tool("ls", { path: "." }, "a");
+    const skill = tool("read", { path: "src/a.ts" }, "x");
+    const grep = tool("grep", { pattern: "x" }, "hit");
+    g.addTool(ls);
+    g.addTool(skill);
+    g.addTool(grep);
+    skill.updateArgs({ path: "skills/keep-simple/SKILL.md" });
+    const next = g.extractAt(skill, children, () => new ToolGroupComponent(ui));
+    expect(children).toHaveLength(3);
+    expect(children[0]).toBe(g);
+    expect(children[1]).toBe(skill);
+    expect(children[2]).toBe(next);
+    expect(g.size).toBe(1);
+    expect(g.tools).toEqual([ls]);
+    expect(next?.size).toBe(1);
+    expect(next?.tools).toEqual([grep]);
+    expect((skill as { toolGroup?: unknown }).toolGroup).toBeUndefined();
+    expect((grep as { toolGroup?: unknown }).toolGroup).toBe(next);
+    g.dispose();
+    next?.dispose();
+  });
+
   test("숨긴 줄 수는 적지 않는다 — 노이즈를 줄이는 게 목적이다", () => {
     const g = new ToolGroupComponent(ui);
     g.addTool(tool("ls", { path: "." }, Array.from({ length: 12 }, (_, i) => `f${i}`).join("\n")));

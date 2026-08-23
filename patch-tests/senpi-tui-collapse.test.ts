@@ -56,6 +56,30 @@ describe("Senpi local collapse patch", () => {
     component.dispose();
   });
 
+  test("SKILL.md read 는 접혀도 [skill] 이름처럼 보인다", async () => {
+    const { createReadToolDefinition } = await import("../node_modules/@code-yeongyu/senpi/dist/core/tools/read.js");
+    const definition = createReadToolDefinition(process.cwd());
+    const component = new ToolExecutionComponent(
+      "read",
+      "tool-skill",
+      { path: "/Users/wy/.agents/skills/keep-simple/SKILL.md" },
+      {},
+      definition,
+      ui,
+      process.cwd(),
+    );
+    component.setArgsComplete();
+    component.updateResult({ content: [{ type: "text", text: "# Keep Simple\nDo less." }], details: {}, isError: false });
+
+    const collapsed = component.render(80);
+    const text = stripAnsi(collapsed.join("\n"));
+    expect(text).toContain("[skill]");
+    expect(text).toContain("keep-simple");
+    expect(text).not.toContain("Do less.");
+    expect(text).not.toMatch(/\bread\b/);
+    component.dispose();
+  });
+
   test("todo renders fully expanded with no toggle needed", () => {
     const component = new ToolExecutionComponent(
       "todo",
