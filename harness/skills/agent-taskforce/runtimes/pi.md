@@ -19,4 +19,4 @@ The system prompt is replaced, not appended: lead gets `~/.agents/rubato/.build/
 
 **Confirm where a model id actually lands before you staff it.** A catalog listing is not a live model. An independent verifier that silently shares the owner's model is not independent.
 
-Launcher: `harness/scripts/rubato-pi.sh` (`rubato` / `rubato-pi`). State: `~/.rubato-pi/agent`. Do not reuse `~/.omo`. The fx harness is `rubato-fx`. Show the user a role+model roster and wait for yes in chat. `/login` is the broker. TUI `Tip:` lines are off. `/changelog` is removed. `team_create` category is a model short name (`grok`/`sol`/`opus`).
+Launcher: `harness/scripts/rubato-pi.sh` (`rubato` / `rubato-pi`). State: `~/.rubato-pi/agent`. Do not reuse `~/.omo`. The fx harness is `rubato-fx`. A one-off `task` child needs no approval; show the user a role+model roster and wait for yes in chat before `team_create`. `/login` is the broker. TUI `Tip:` lines are off. `/changelog` is removed. `team_create` category is a model short name (`grok`/`sol`/`opus`).

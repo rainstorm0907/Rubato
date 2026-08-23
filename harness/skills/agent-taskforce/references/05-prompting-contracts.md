@@ -18,7 +18,7 @@ Be precise about outcome, boundary, authority, and evidence. Leave the order of 
 
 ## Staffing a role
 
-A role requires a capability profile, not a permanent model name. The human chooses the lead model; the lead proposes workstream models and waits for approval. `references/08-model-allocation.md` contains the current soft roster and the bottleneck-based selection guide.
+A role requires a capability profile, not a permanent model name. The human chooses the lead model; the lead proposes workstream models and waits for approval. Skill(model-guide) contains the current soft roster and the bottleneck-based selection guide; `references/08-model-allocation.md` holds only the team proposal format.
 
 | Role | What it must have |
 |---|---|

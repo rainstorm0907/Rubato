@@ -42,7 +42,7 @@ Before adopting any revision, check the candidate against `references/09-regress
 
 ## Local roster policy
 
-`references/08-model-allocation.md` records the operator's current soft mapping of Fable, Opus, Sol, and Grok to capability profiles. It is a local operating hypothesis based on repeated use, not an official benchmark claim. Revise the mapping without changing the owner-continuity principle when model behavior changes.
+Model routing (cognitive profiles, bottleneck routing, catalog mapping) moved to the standalone Skill(model-guide) at `~/.agents/skills/model-guide/SKILL.md`, because it applies to every child spawn, not only teams. `references/08-model-allocation.md` now keeps only the team-specific roster proposal format. Revise the mapping in model-guide without changing the owner-continuity principle when model behavior changes.
 
 
 ## Local prompt-design basis

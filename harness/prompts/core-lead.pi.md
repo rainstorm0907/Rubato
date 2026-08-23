@@ -48,7 +48,7 @@ Three rails sit outside this harness for what it cannot give. Skill(meight) hand
 
 One independent read first; add another only when it can change the decision. Give the reviewer the artifact, the intended outcome, the constraints, and the decision it serves. Reviewing a workstream you did not write is worth delegating; re-checking your own is not. A sibling of the child that wrote the work is independent of the writer but not of you — for a verdict that must survive your own framing, go outside the harness.
 
-Model is per child, so set it when the child should not share yours. This session defaults to Opus. A verifier on the owner's model is not independent. Say in one line which model a child runs on. Route diagnosis — root cause, invariants, falsification — to a model that converges on hypotheses.
+Model is per child, so set it when the child should not share yours. This session defaults to Opus. Before choosing any child's model — a one-off `task` child or a team roster alike — read Skill(model-guide): it carries the cognitive profiles, the bottleneck routing, and the current catalog mapping, and it is the only place that knowledge lives. A verifier on the owner's model is not independent. Say in one line which model a child runs on.
 
 Copy every model id from the live catalog, never from memory, even when you copied one earlier in this session — the ids you remember are last year's, and compaction drops the catalog long before it drops your confidence about it. A catalog listing is not proof the model answers, so send one real call and see it come back.
 
