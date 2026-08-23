@@ -99,25 +99,13 @@ if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
 fi
 
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
-SELECT="$ROOT/scripts/select-node.mjs"
-if [ -x "$HOME/.nvm/versions/node/v24.18.0/bin/node" ]; then
-  NODE="$HOME/.nvm/versions/node/v24.18.0/bin/node"
-elif command -v node >/dev/null 2>&1; then
-  NODE="$(command -v node)"
-else
+# node 를 찾는 곳은 한 군데다. 예전에는 여기서 nvm 경로를 박아 뒀는데, 그 버전이
+# 사라지면 조용히 PATH 의 아무 node 로 떨어졌고 start.sh 는 아예 PATH 만 봤다.
+splash step "node"
+. "$HERE/find-node.sh"
+if ! NODE="$(rubato_find_node)"; then
   echo "rubato-pi needs Node.js 24+ already installed. Default Node was not changed." >&2
   exit 2
-fi
-# 이미 24 경로를 집었으면 후보를 다시 훑지 않는다. select-node 는
-# 하드코딩한 nvm 경로가 없을 때 다른 24 를 찾는 용도다.
-if [ -f "$SELECT" ]; then
-  case "$NODE" in
-    */v24.*/bin/node) ;;
-    *)
-      splash step "node"
-      NODE="$("$NODE" "$SELECT" --print)"
-      ;;
-  esac
 fi
 
 # 엔진 산출물을 레포 밖에 준비한다. 이미 신선하면 즉시 끝나고(해시 비교만

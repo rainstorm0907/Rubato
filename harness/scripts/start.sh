@@ -14,4 +14,13 @@ if [ ! -d "$ROOT/node_modules/@earendil-works/pi-ai" ]; then
   npm install --prefix "$ROOT" >&2
 fi
 
-exec node --experimental-strip-types "$ROOT/bridge/src/server.ts"
+# `node` 를 PATH 에서 집으면 launchd 아래에서 다른 node 가 잡힌다 — 그쪽 PATH 에는
+# nvm 이 없고, 시스템 node 는 --experimental-strip-types 를 몰라 브리지가 조용히
+# 죽는다. 세션 런처와 같은 자리에서 고른다.
+. "$ROOT/scripts/find-node.sh"
+if ! NODE="$(rubato_find_node)"; then
+  echo "fx-v3-bridge needs Node.js 24+ (set RUBATO_NODE to point at one)" >&2
+  exit 2
+fi
+
+exec "$NODE" --experimental-strip-types "$ROOT/bridge/src/server.ts"
