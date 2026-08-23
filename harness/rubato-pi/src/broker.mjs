@@ -46,6 +46,9 @@ export function catalogLimits(provider, id) {
   return {
     contextWindow: builtin?.contextWindow || 200_000,
     maxTokens: builtin?.maxTokens || 16_384,
+    // 이미지 첨부는 이 배열로 판정된다. builtin 이 아는 모달리티를 그대로 쓴다.
+    // 여기서 ["text"] 로 깎으면 read 도구가 이미지를 조용히 버린다.
+    input: builtin?.input?.length ? [...builtin.input] : ["text"],
   };
 }
 
@@ -58,7 +61,7 @@ export function groupCatalog(entries) {
       id,
       name: entry.name ?? id,
       reasoning: true,
-      input: ["text"],
+      input: limits.input,
       contextWindow: limits.contextWindow,
       maxTokens: limits.maxTokens,
       ...(provider === "anthropic" ? { cacheRetention: CACHE_RETENTION } : {}),

@@ -49,6 +49,22 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol").contextWindow, 400_000);
 });
 
+test("catalog models keep the image modality so read does not drop attachments", () => {
+  // read 도구는 model.input 에 "image" 가 없으면 이미지를 조용히 버린다.
+  // 예전에 groupCatalog 가 전부 ["text"] 로 깎아서 경로로 넘긴 PNG 가 모델에 안 닿았다.
+  const grouped = groupCatalog(FALLBACK_CATALOG);
+  for (const models of Object.values(grouped)) {
+    for (const model of models) {
+      assert.ok(model.input.includes("image"), `${model.id} lost the image modality`);
+    }
+  }
+});
+
+test("an unknown model falls back to text instead of claiming vision", () => {
+  const grouped = groupCatalog([{ id: "rubato/not-a-real-model", name: "Nope" }]);
+  assert.deepEqual(grouped.rubato[0].input, ["text"]);
+});
+
 test("ensureBroker starts the existing relay only when it is down", () => {
   const started = [];
   let up = false;
