@@ -8,7 +8,7 @@ import type { TaskCategoryInfo } from "./types"
 export const TASK_PROMPT_SNIPPET = "Spawn one child or fan out a batch; use task_send to continue an existing child."
 
 export const TASK_PROMPT_GUIDELINES: readonly string[] = [
-  "Use run_in_background=true only for parallel independent work; the default waits and returns the result.",
+  "Spawns run in the background by default and return a task id immediately; pass run_in_background=false only when this turn genuinely cannot continue without the child's result.",
   "NEVER pass model together with category: category-routed tasks take their model from omo.json (categories.<name>.models).",
   "Continue an existing child with task_send(to=\"st_...\", message=\"...\"); task always spawns.",
   "Use task_output for one midpoint status or transcript peek; use task_cancel to end a child.",
@@ -56,7 +56,7 @@ ${renderCategoryList(categories)}
 - subagent_type invokes a loaded agent directly. Available agents: ${agentNames}${gatedLine}${momusNotice}
 
 Blank provider padding is normalized automatically; do not add filler values.
-load_skills prepends named skills. run_in_background=true returns task ids for parallel work; false waits for results.
+load_skills prepends named skills. run_in_background defaults to true: the spawn returns task ids immediately and completion arrives as a notification. Pass run_in_background=false to block this turn until the child finishes.
 name is an optional stable handle. model is an explicit override for subagent_type spawns ONLY.
 NEVER combine model with category: a category-routed task always takes its model from omo.json (categories.<name>.models), so passing both fails with invalid_arguments.
   CORRECT: task(subagent_type="momus", model="openai/gpt-5.6-sol", prompt="...")

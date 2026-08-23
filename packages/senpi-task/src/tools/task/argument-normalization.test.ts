@@ -205,3 +205,41 @@ describe("task argument normalization", () => {
     expect(resolved.error.code).toBe("prompt_and_tasks")
   })
 })
+
+describe("run_in_background default", () => {
+  test("#given no run_in_background #when arguments are prepared #then it defaults to background", () => {
+    // given
+    const prepareArguments = createTool().prepareArguments
+    if (prepareArguments === undefined) throw new Error("task prepareArguments is missing")
+
+    // when
+    const prepared = prepareArguments({ prompt: "TASK: Inspect the module.", category: "quick" })
+
+    // then
+    expect(prepared.run_in_background).toBe(true)
+  })
+
+  test("#given an explicit false #when arguments are prepared #then the foreground opt-out is preserved", () => {
+    // given
+    const prepareArguments = createTool().prepareArguments
+    if (prepareArguments === undefined) throw new Error("task prepareArguments is missing")
+
+    // when
+    const prepared = prepareArguments({ prompt: "TASK: Inspect the module.", category: "quick", run_in_background: false })
+
+    // then
+    expect(prepared.run_in_background).toBe(false)
+  })
+
+  test("#given a non-boolean run_in_background #when arguments are prepared #then it falls back to background", () => {
+    // given
+    const prepareArguments = createTool().prepareArguments
+    if (prepareArguments === undefined) throw new Error("task prepareArguments is missing")
+
+    // when
+    const prepared = prepareArguments({ prompt: "TASK: Inspect the module.", category: "quick", run_in_background: "no" })
+
+    // then
+    expect(prepared.run_in_background).toBe(true)
+  })
+})

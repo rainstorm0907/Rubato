@@ -24,7 +24,7 @@ export const TaskToolParams = Type.Object({
     Type.String({ description: "Agent name to invoke directly (e.g. momus). Mutually exclusive with category; required unless category is given." }),
   ),
   run_in_background: Type.Optional(
-    Type.Boolean({ description: "true returns a child task id immediately; false (default) waits and returns the final response." }),
+    Type.Boolean({ description: "true (default) returns a child task id immediately and delivers completion as a notification; false waits and returns the final response." }),
   ),
   name: Type.Optional(Type.String({ description: "Optional stable name for this task within the current session; must be unique within the session." })),
   model: Type.Optional(Type.String({ description: "Explicit model override, e.g. anthropic/claude-opus-4. Only valid with subagent_type; mutually exclusive with category — category-routed tasks take their model from omo.json (categories.<name>.models)." })),

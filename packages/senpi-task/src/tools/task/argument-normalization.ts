@@ -87,7 +87,10 @@ export function normalizeTaskToolArguments(raw: unknown): TaskToolParamsStatic {
   const name = identifier(raw.name)
   const model = identifier(raw.model)
   const loadSkills = stringList(raw.load_skills)
-  const runInBackground = typeof raw.run_in_background === "boolean" ? raw.run_in_background : undefined
+  // Background is the default: an unspecified run_in_background would otherwise fall through every
+  // `=== true` check downstream and block the parent turn on the child. Only an explicit false opts
+  // back into the foreground wait.
+  const runInBackground = typeof raw.run_in_background === "boolean" ? raw.run_in_background : true
 
   return {
     ...(prompt === undefined ? {} : { prompt }),
@@ -95,7 +98,7 @@ export function normalizeTaskToolArguments(raw: unknown): TaskToolParamsStatic {
     ...(description === undefined ? {} : { description }),
     ...(category === undefined ? {} : { category }),
     ...(subagentType === undefined ? {} : { subagent_type: subagentType }),
-    ...(runInBackground === undefined ? {} : { run_in_background: runInBackground }),
+    run_in_background: runInBackground,
     ...(name === undefined ? {} : { name }),
     ...(model === undefined ? {} : { model }),
     ...(loadSkills === undefined ? {} : { load_skills: loadSkills }),
