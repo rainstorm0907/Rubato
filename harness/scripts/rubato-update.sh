@@ -128,23 +128,52 @@ STASH_TAG="rubato-update $(date +%s)"
 
 # 중간에 죽어도(Ctrl-C, 터미널 닫기) 치운 작업을 그대로 두지 않는다.
 # 성공 경로에서는 restore_stash 가 이미 돌아 STASHED 가 0 이라 아무 일도 없다.
+# 우리가 치운 항목을 이름으로 찾는다. `git stash pop` 은 무조건 stash@{0} 을
+# 꾼는데, 그게 우리 것이라는 보장은 없다 — 이 레포는 여러 세션이 같이 쓰고,
+# 우리가 치운 뒤에 다른 세션이 하나 더 치우면 순서가 밀린다. 그 상태로 pop 하면
+# 남의 작업을 내 워킹트리에 풀어놓고 내 것은 stash 에 갇힌다.
+find_our_stash() {
+  git stash list --format='%gd %gs' 2>/dev/null \
+    | while IFS= read -r line; do
+        case "$line" in
+          *"$STASH_TAG"*) printf '%s' "${line%% *}"; break ;;
+        esac
+      done
+}
+
 restore_stash() {
   [ "$STASHED" = 1 ] || return 0
   STASHED=0
+
+  REF="$(find_our_stash)"
+  if [ -z "$REF" ]; then
+    warn "치워둔 수정을 stash 에서 찾지 못했습니다. 직접 확인해 주세요:"
+    printf '    git stash list   %s"%s" 항목입니다%s\n' "$DIM" "$STASH_TAG" "$RST" >&2
+    return 1
+  fi
+
   # --index 는 쓰지 않는다. 스테이징 상태까지 동시에 되돌리려다가 살짝만
   # 어긋나도 전체가 실패한다(git 스스로 "Try without --index" 를 권한다).
-  # 여기서 지켜야 하는 것은 작업 내용이지 무엇을 add 해둥느냐가 아니다.
-  if git stash pop >/dev/null 2>&1; then
+  # 여기서 지켜야 하는 것은 작업 내용이지 무엇을 add 해두느냐가 아니다.
+  if git stash pop "$REF" >/dev/null 2>&1; then
     ok "작업하던 수정을 되돌렸습니다"
     return 0
   fi
   # pop 이 충돌해도 stash 는 스택에 남아 있다. 잃은 것은 없다.
   warn "수정을 되돌리는 중 충돌이 났습니다. 작업은 stash 에 그대로 있어요:"
-  printf '    git stash list   %s최근 항목이 그것입니다%s\n' "$DIM" "$RST" >&2
-  printf '    git stash pop    %s충돌을 정리한 뒤 다시 불러오면 됩니다%s\n' "$DIM" "$RST" >&2
+  printf '    git stash list        %s"%s" 항목입니다%s\n' "$DIM" "$STASH_TAG" "$RST" >&2
+  printf '    git stash pop %-7s %s충돌을 정리한 뒤 불러오면 됩니다%s\n' "$REF" "$DIM" "$RST" >&2
   return 1
 }
-trap 'restore_stash >/dev/null 2>&1 || true' INT TERM HUP
+# 중단 신호를 받으면 치운 것을 되돌리고 **거기서 멈춘다**. 복원만 하고
+# 리턴하면 사용자가 Ctrl-C 를 눌렀는데도 머지와 빌드가 그대로 굴러간다.
+# 종료 코드는 신호 관례를 따른다(128 + 신호번호).
+trap 'restore_stash >/dev/null 2>&1 || true; trap - INT;  exit 130' INT
+trap 'restore_stash >/dev/null 2>&1 || true; trap - TERM; exit 143' TERM
+trap 'restore_stash >/dev/null 2>&1 || true; trap - HUP;  exit 129' HUP
+# 예상 못한 종료(set -e 로 죽는 경우 포함)에도 치운 것을 남기지 않는다.
+# 성공 경로에서는 이미 restore_stash 가 돌아 STASHED 가 0 이라 아무 일도 없다.
+trap 'restore_stash >/dev/null 2>&1 || true' EXIT
 
 if [ "$MODE" != yes ]; then
   # tty 가 없으면(파이프, CI) 묻지 않고 빠진다. 매달리면 안 된다.

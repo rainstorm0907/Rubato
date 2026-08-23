@@ -68,10 +68,16 @@ async function sourcesNewerThanOutput() {
     return true;
   }
 
+  // 번들의 입력뿐 아니라 **밖으로 베끼는 것들**도 본다. runtime 과 skills 는
+  // 빌드 산출물이 아니라 복사 대상이라, 감시에서 빼면 원본이 바뀌어도
+  // 사본이 영영 낡은 채로 남는다.
   const roots = [
     join(forkRoot, "packages", "omo-senpi", "src"),
     join(forkRoot, "packages", "senpi-task", "src"),
     join(srcPluginRoot, "scripts"),
+    join(srcPluginRoot, "runtime"),
+    join(srcPluginRoot, "skills"),
+    join(srcPluginRoot, "package.json"),
   ];
 
   const skipDirs = new Set(["node_modules", ".git", "dist", ".omo"]);
@@ -99,6 +105,16 @@ async function sourcesNewerThanOutput() {
   }
 
   for (const root of roots) {
+    // roots 에는 디렉터리도 파일도 들어있다(package.json). 파일이면 walk 가
+    // readdir 에서 조용히 false 를 돌려서 그냥 누락된다 — 직접 본다.
+    try {
+      if ((await stat(root)).isFile()) {
+        if ((await stat(root)).mtimeMs > outputTime) return true;
+        continue;
+      }
+    } catch {
+      continue;
+    }
     if (await walk(root)) return true;
   }
   return false;
@@ -108,8 +124,34 @@ async function sourcesNewerThanOutput() {
  * 산출물이 소스와 맞는지. 첫 줄 `// omo:<소스해시>` 가 소스 전체를 덮으므로
  * 신선도 판단은 이미 엔진 쪽에 있다. 여기서 새로 만들지 않고 그것을 쓴다.
  */
+/**
+ * 산출물 한 장만 보면 모자란다. 번들은 여섯 장이고, 그 옆에 runtime 과
+ * skills, package.json, 그리고 senpi 로더 별칭을 푸는 링크까지 있어야 세션이
+ * 온전하다. runtime 을 빼먹었을 때 세션은 그대로 뜨고 ast-grep 과 lsp 만
+ * 조용히 꺼졌다 — 빠진 것을 물어보지 않으면 늦게 발견된다.
+ */
+function mirrorComplete() {
+  const required = [
+    join(extensionsDir, "omo.js"),
+    join(extensionsDir, "omo-task.js"),
+    join(extensionsDir, "omo-member.js"),
+    join(extensionsDir, "omo-memory-mcp.js"),
+    join(extensionsDir, "memory-run-supervisor.mjs"),
+    join(extensionsDir, "omo-init-deep-advisor.js"),
+    join(engineRoot, "package.json"),
+    join(engineRoot, "skills"),
+    join(engineRoot, "runtime"),
+    join(engineRoot, "node_modules"),
+    join(extensionsDir, "node_modules"),
+  ];
+  return required.every((path) => existsSync(path));
+}
+
 async function isFresh() {
   if (!existsSync(mainOutput)) return false;
+  // 산출물이 아니라 미러링한 것이 빠졌을 수도 있다. 그때는 소스가
+  // 그대로여도 다시 만들어야 한다.
+  if (!mirrorComplete()) return false;
   if (!await sourcesNewerThanOutput()) return true;
 
   const { checkExtensionCurrent } = await loadBuilder();
