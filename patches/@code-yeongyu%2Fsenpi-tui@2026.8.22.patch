@@ -1,0 +1,102 @@
+diff --git a/dist/autocomplete.js b/dist/autocomplete.js
+--- a/dist/autocomplete.js
++++ b/dist/autocomplete.js
+@@ -4,6 +4,29 @@
+ import { basename, dirname, join } from "path";
+ import { getDollarInvocationContext, getDollarInvocationSuggestions } from "./dollar-invocation-autocomplete.js";
+ import { getSlashCommandSuggestions } from "./slash-command-autocomplete.js";
++// 문장 중간에서 커맨드 메뉴를 열 자격이 있는 토큰인지 가리는 한 곳.
++//
++// 열림(editor)과 삽입(autocomplete)이 서로 다른 판정을 쓰면 "메뉴는 떴는데
++// 고르면 슬래시가 사라지는" 어긋남이 생긴다. 그래서 정본을 하나만 둔다.
++//
++// 중간에서는 `/skill:` 만 연다. `/compact` 같은 빌트인은 메시지가 그것으로
++// 시작할 때만 실행되므로 중간에 넣어 주면 글자로만 남기 때문이다. 경로
++// (`/usr/bin`, `./src`)와 맨 슬래시도 이 규칙에 자연히 걸러진다.
++const INLINE_SKILL_TOKEN_PREFIX = "/skill:";
++export function inlineSlashTokenAt(textBeforeCursor) {
++    const tokenStart = textBeforeCursor.search(/\S+$/);
++    if (tokenStart <= 0)
++        return null;
++    // 탭·비분리공백도 토큰 경계다. 공백을 " " 로만 보면 삽입이 어긋난다.
++    if (!/\s/.test(textBeforeCursor[tokenStart - 1]))
++        return null;
++    const token = textBeforeCursor.slice(tokenStart);
++    if (token.startsWith(INLINE_SKILL_TOKEN_PREFIX))
++        return token;
++    // 타이핑 중(`/sk`)에도 열려야 하므로 접두 일치를 받는다.
++    return INLINE_SKILL_TOKEN_PREFIX.startsWith(token) ? token : null;
++}
++
+ const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
+ function toDisplayPath(value) {
+     return value.replace(/\\/g, "/");
+@@ -213,6 +236,10 @@
+         if (!options.force && textBeforeCursor.startsWith("/")) {
+             const spaceIndex = textBeforeCursor.indexOf(" ");
+             if (spaceIndex === -1) {
++                // `//`, `/a/b` 같은 경로 꼴은 커맨드가 아니다. 중간 토큰과 같은
++                // 기준을 맨 앞에도 적용해 같은 글자가 자리에 따라 다르게 굴지 않게 한다.
++                if (textBeforeCursor.slice(1).includes("/"))
++                    return null;
+                 const prefix = textBeforeCursor.slice(1);
+                 const filtered = getSlashCommandSuggestions(this.commands, prefix);
+                 if (filtered.length === 0)
+@@ -256,6 +283,21 @@
+                 prefix: argumentText,
+             };
+         }
++        // 문장 중간의 `/skill:` — 위의 맨 앞 처리와 `/cmd <인자>` 완성이 모두
++        // 끝난 뒤에 본다. 그래야 `/model /skill:x` 의 인자 완성을 가로채지 않는다.
++        if (!options.force) {
++            const inlineToken = inlineSlashTokenAt(textBeforeCursor);
++            if (inlineToken) {
++                const skillCommands = this.commands.filter((command) => {
++                    const name = "name" in command ? command.name : command.value;
++                    return name.startsWith("skill:");
++                });
++                const filtered = getSlashCommandSuggestions(skillCommands, inlineToken.slice(1));
++                if (filtered.length > 0)
++                    return { items: filtered, prefix: inlineToken };
++            }
++        }
++
+         const pathMatch = this.extractPathPrefix(textBeforeCursor, options.force ?? false);
+         if (pathMatch === null) {
+             return null;
+@@ -291,6 +333,8 @@
+         const isSlashCommand = prefix.startsWith("/") &&
+             !prefix.slice(1).includes("/") &&
+             (beforePrefix.trim() === "" ||
++                // 중간 삽입은 열림과 같은 판정을 쓴다. 다르면 "떴는데 못 넣는" 어긋남이 난다.
++                (prefix.startsWith("/skill:") && /\s$/.test(beforePrefix)) ||
+                 (prefix.startsWith("/skill:") && this.isLeadingKnownSkillCommandRun(beforePrefix)));
+         if (isSlashCommand) {
+             // This is a command name completion
+diff --git a/dist/components/editor.js b/dist/components/editor.js
+--- a/dist/components/editor.js
++++ b/dist/components/editor.js
+@@ -8,6 +8,7 @@
+ import { cjkBreakRegex, getGraphemeSegmenter, getWordSegmenter, isWhitespaceChar, sliceByColumn, visibleWidth, } from "../utils.js";
+ import { findWordBackward, findWordForward } from "../word-navigation.js";
+ import { SelectList } from "./select-list.js";
++import { inlineSlashTokenAt } from "../autocomplete.js";
+ const graphemeSegmenter = getGraphemeSegmenter();
+ const wordSegmenter = getWordSegmenter();
+ /** Atomic-marker predicate covering every marker family the editor treats as one grapheme. */
+@@ -1933,7 +1934,14 @@
+         return beforeCursor.trim() === "" || beforeCursor.trim() === "/";
+     }
+     isInSlashCommandContext(textBeforeCursor) {
+-        return this.isSlashMenuAllowed() && textBeforeCursor.trimStart().startsWith("/");
++        if (!this.isSlashMenuAllowed())
++            return false;
++        // 줄 맨 앞은 종래대로 모든 커맨드를 연다.
++        if (textBeforeCursor.trimStart().startsWith("/"))
++            return true;
++        // 문장 중간에서는 `/skill:` 만 연다. 빌트인은 메시지가 그것으로 시작할
++        // 때만 실행되므로, 중간에 넣어 주면 글자로만 남는다.
++        return inlineSlashTokenAt(textBeforeCursor) !== null;
+     }
+     // Autocomplete methods
+     /**

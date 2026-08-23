@@ -235,6 +235,10 @@
     "oh-my-opencode-windows-x64": "5.0.0-beta.16",
     "oh-my-opencode-windows-x64-baseline": "5.0.0-beta.16"
   },
+  "patchedDependencies": {
+    "@code-yeongyu/senpi@2026.8.22": "patches/@code-yeongyu%2Fsenpi@2026.8.22.patch",
+    "@code-yeongyu/senpi-tui@2026.8.22": "patches/@code-yeongyu%2Fsenpi-tui@2026.8.22.patch"
+  },
   "overrides": {
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",

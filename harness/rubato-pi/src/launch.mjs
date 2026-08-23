@@ -11,6 +11,7 @@ import { listNodeCandidates, pickNode } from "./select-node.mjs";
 import { withNoChangelog } from "./no-changelog.mjs";
 import { argvHasModel, ensureSessionDefaults } from "./session-defaults.mjs";
 import { replaceSystemPrompt } from "./system-prompt.mjs";
+import { SKILL_DIRS } from "./skills-section.mjs";
 import { enginePackageJson, senpiCli, senpiPackageJson } from "./engine-paths.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,6 +60,19 @@ export function resolveNode24() {
   return picked;
 }
 
+// 시스템 프롬프트의 스킬 목록은 skills-section.mjs 가 SKILL_DIRS 를 직접 읽어
+// 만든다. 그런데 senpi 자신의 레지스트리(resourceLoader)는 `agentDir/skills` 만
+// 보므로, 루바토처럼 agentDir 밑에 skills/ 가 없는 배치에서는 그쪽이 0개가 된다.
+// 그 레지스트리가 곧 TUI 자동완성 목록이라, 모델은 스킬을 아는데 화면에는
+// 아무것도 안 뜨는 상태가 됐다.
+//
+// `--skill` 은 그 목록에 경로를 더해 주는 공식 통로다. 같은 SKILL_DIRS 를 넘겨
+// 프롬프트와 UI 가 한 정본을 보게 한다. 중복은 senpi 가 realpath 로 걸러내므로
+// 심링크로 같은 스킬이 두 번 들어와도 안전하다.
+export function skillPathArgs(dirs = SKILL_DIRS) {
+  return dirs.flatMap(({ dir }) => (existsSync(dir) ? ["--skill", dir] : []));
+}
+
 export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
   const modelArgs = argvHasModel(userArgs) ? [] : ["--model", DEFAULT_MODEL];
   const interactiveTuiArgs = userArgs.some((token) => token === "--mode" || token.startsWith("--mode=")) ||
@@ -71,6 +85,7 @@ export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
     replaceSystemPrompt("", resolveRole({ env }), { env }),
     ...modelArgs,
     ...interactiveTuiArgs,
+    ...skillPathArgs(),
     "-e",
     leadOverlayPath(),
     "-e",

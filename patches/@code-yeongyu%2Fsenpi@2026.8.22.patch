@@ -310,3 +310,39 @@ index 608424ca..b853605b 100644
          });
          await consumeStreamWithIdleTimeout(responseStream, {
              idleTimeoutMs: DEFAULT_SUMMARIZATION_IDLE_TIMEOUT_MS,
+diff --git a/dist/core/agent-session.js b/dist/core/agent-session.js
+--- a/dist/core/agent-session.js
++++ b/dist/core/agent-session.js
+@@ -121,13 +121,14 @@
+ }
+ export const MAX_SKILL_INVOCATION_TOKENS_PER_PROMPT = 64;
+ const LEADING_SKILL_INVOCATION_PATTERN = /^(?:\/skill:([a-zA-Z][a-zA-Z0-9:_-]*)|\$([a-zA-Z][a-zA-Z0-9:_-]*))(?=\s|$)/;
+-const INLINE_DOLLAR_SKILL_INVOCATION_PATTERN = /(^|\s)\$skill:([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s|$)/g;
++const INLINE_DOLLAR_SKILL_INVOCATION_PATTERN = /(^|\s)([$\/])skill:([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s|$)/g;
+ /**
+  * Find explicit skill invocation tokens without treating ordinary inline dollar
+  * prose (for example `$HOME`) as executable.
+  *
+  * Leading runs accept `/skill:name`, `$name`, and `$skill:name`. Outside the
+- * leading run only the desktop's explicit `$skill:name` token is executable.
++ * leading run both explicit `$skill:name` and `/skill:name` are executable;
++ * the bare `$name` shorthand stays leading-only so prose is not swallowed.
+  */
+ export function parseSkillInvocationTokens(text) {
+     const tokens = [];
+@@ -157,11 +158,12 @@
+     INLINE_DOLLAR_SKILL_INVOCATION_PATTERN.lastIndex = cursor;
+     for (const match of text.matchAll(INLINE_DOLLAR_SKILL_INVOCATION_PATTERN)) {
+         const start = (match.index ?? 0) + match[1].length;
++        const sigil = match[2];
+         tokens.push({
+-            name: match[2],
+-            syntax: "dollar",
++            name: match[3],
++            syntax: sigil === "/" ? "slash" : "dollar",
+             start,
+-            end: start + `$skill:${match[2]}`.length,
++            end: start + `${sigil}skill:${match[3]}`.length,
+             position: "inline",
+         });
+         if (tokens.length >= MAX_SKILL_INVOCATION_TOKENS_PER_PROMPT)
