@@ -251,7 +251,32 @@ async function proxyChat(
   }
 }
 
-export function startBridge(env: NodeJS.ProcessEnv = process.env) {
+/**
+ * `listen` 이 실패했을 때 무엇을 할지. 포트를 이미 누가 잡고 있는 것은 사고가
+ * 아니라 **이미 브리지가 있다**는 뜻이다 — 세션들은 그쪽에 붙어 있고, 우리가
+ * 할 일은 없다. 조용히 물러나되 exit 0 으로 나간다: supervisor 를 붙였을 때
+ * 실패로 읽히면 재기동 루프가 되고, 그 루프가 `rubato-restart.sh` 가 띄운
+ * 인스턴스와 포트를 두고 계속 다툰다.
+ *
+ * 그 밖의 listen 오류(권한, 잘못된 주소)는 진짜 실패다. 1 로 나가서 보이게 한다.
+ */
+export function listenErrorAction(error: NodeJS.ErrnoException, bind: string, port: number): { exitCode: number; message: string } {
+  if (error.code === "EADDRINUSE") {
+    return {
+      exitCode: 0,
+      message: `fx-v3-bridge: ${bind}:${port} is already served by another bridge; leaving it alone\n`,
+    };
+  }
+  return { exitCode: 1, message: `fx-v3-bridge: cannot listen on ${bind}:${port}: ${error.message}\n` };
+}
+
+export function startBridge(
+  env: NodeJS.ProcessEnv = process.env,
+  {
+    log = (message: string) => process.stderr.write(message),
+    exit = (code: number) => process.exit(code),
+  } = {},
+) {
   const config = loadConfig(env);
   // 값이 잘못됐으면 종료할 때가 아니라 지금 안다.
   drainTimeoutMs(env);
@@ -309,12 +334,20 @@ export function startBridge(env: NodeJS.ProcessEnv = process.env) {
     void closeUpstreamAgent();
   });
 
+  // 핸들러가 없으면 listen 실패가 unhandled 'error' 로 프로세스를 죽인다.
+  // 포트 경합은 흔한 일이라 그 죽음이 곧 크래시 루프가 된다.
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    const { exitCode, message } = listenErrorAction(error, config.bind, config.port);
+    log(message);
+    exit(exitCode);
+  });
+
   server.listen(config.port, config.bind, () => {
     // 실제로 잡은 포트를 찍는다. 설정값을 찍으면 포트 0(자동 할당)일 때
     // 로그가 거짓말을 한다.
     const address = server.address();
     const port = address && typeof address !== "string" ? address.port : config.port;
-    process.stderr.write(`fx-v3-bridge listening on http://${config.bind}:${port} (pid ${process.pid})\n`);
+    log(`fx-v3-bridge listening on http://${config.bind}:${port} (pid ${process.pid})\n`);
   });
   bridgeState(server);
   return server;
