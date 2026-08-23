@@ -1,3 +1,5 @@
+import { BRAND_NAME } from "./brand.mjs";
+
 const FAMILIES = [
   ["opus", "Opus"],
   ["sonnet", "Sonnet"],
@@ -12,6 +14,27 @@ const FAMILIES = [
 
 export function stripAnsi(text) {
   return String(text).replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+/** 모바일급 폭에선 워터마크를 빼고, 이 너비부터 오른쪽에 붙인다. */
+export const BRAND_MARK_MIN_WIDTH = 80;
+
+export function visibleColumns(text) {
+  return [...stripAnsi(text)].length;
+}
+
+/**
+ * 폭이 충분하면 워터마크를 오른쪽 끝에 붙인다.
+ * 좁으면 빼고, 넓으면 왼쪽을 접어서라도 마크는 남긴다.
+ */
+export function appendBrandMark(left, width, mark = BRAND_NAME) {
+  if (width < BRAND_MARK_MIN_WIDTH) return truncateToWidth(left, width);
+  const markCols = visibleColumns(mark);
+  const budget = width - markCols;
+  if (budget <= 1) return truncateToWidth(left, width);
+  const clipped = truncateToWidth(left, budget - 1);
+  const pad = Math.max(1, width - visibleColumns(clipped) - markCols);
+  return `${clipped}${" ".repeat(pad)}${mark}`;
 }
 
 const VARIANTS = [
@@ -162,7 +185,8 @@ export function formatCacheHit(cache) {
 }
 
 export function formatStatusline(input) {
-  return `${statuslineSegments(input).join(" · ")}${formatCacheHit(input.cache)}`;
+  const left = `${statuslineSegments(input).join(" · ")}${formatCacheHit(input.cache)}`;
+  return input.width == null ? left : appendBrandMark(left, input.width);
 }
 
 // ── 배경 작업 요약 ─────────────────────────────────────────────────

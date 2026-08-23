@@ -1,4 +1,5 @@
 import {
+  appendBrandMark,
   cacheHitPercent,
   formatBackgroundLine,
   formatCacheHit,
@@ -9,6 +10,7 @@ import {
   repoBasename,
   truncateToWidth,
 } from "../statusline.mjs";
+import { BRAND_NAME } from "../brand.mjs";
 import {
   createBackgroundTracker,
   WAKE_SOURCE_STATE_EVENT,
@@ -87,7 +89,8 @@ export function installStatusline(pi) {
           const painted = parts
             .map((part) => (theme?.fg ? theme.fg(part.color, part.text) : part.text))
             .join(" · ");
-          const lines = [truncateToWidth(painted, width)];
+          const mark = theme?.fg ? theme.fg("dim", BRAND_NAME) : BRAND_NAME;
+          const lines = [appendBrandMark(painted, width, mark)];
 
           syncTimer();
           const background = formatBackgroundLine(tracker.groups(), Date.now(), width);

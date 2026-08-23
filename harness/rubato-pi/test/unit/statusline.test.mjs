@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  appendBrandMark,
   cacheHitPercent,
   formatContext,
   formatModelWithEffort,
@@ -11,11 +12,13 @@ import {
   repoBasename,
   shortModelLabel,
   statuslineSegments,
+  visibleColumns,
   formatElapsedClock,
   formatBackgroundEntry,
   formatBackgroundLine,
   backgroundEntriesFromEvent,
 } from "../../src/statusline.mjs";
+import { BRAND_NAME } from "../../src/brand.mjs";
 import { installStatusline, extensionStatusLine } from "../../src/extensions/statusline.mjs";
 import { createBackgroundTracker } from "../../src/background-tracker.mjs";
 
@@ -149,8 +152,23 @@ test("installStatusline paints effort and the model context window", () => {
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
   // Cache is a `·` segment now: glued to the repo it read as a repo-owned number.
-  assert.deepEqual(footer.render(120), ["✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80%"]);
+  const left = "✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80%";
+  assert.deepEqual(footer.render(120), [appendBrandMark(left, 120)]);
+  assert.match(footer.render(120)[0], new RegExp(`${BRAND_NAME}$`));
+  assert.equal(visibleColumns(footer.render(120)[0]), 120);
+  assert.equal(footer.render(70)[0], left);
+  assert.ok(!footer.render(70)[0].includes(BRAND_NAME));
   assert.equal(colors.at(-1), "dim");
+});
+
+test("the brand mark sits on the right only when the terminal is wide", () => {
+  const left = "✦ Opus 5 high · 60%(1M)";
+  assert.equal(appendBrandMark(left, 40), left);
+  const wide = appendBrandMark(left, 80);
+  assert.match(wide, new RegExp(`${BRAND_NAME}$`));
+  assert.equal(visibleColumns(wide), 80);
+  assert.ok(wide.startsWith(left));
+  assert.ok(wide.includes(" "));
 });
 
 test("elapsed time is a clock, not a relative age", () => {
