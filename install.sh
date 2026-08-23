@@ -16,15 +16,23 @@ APPLY=0
 # 업데이트가 이걸 부른다 — alias 목록을 두 군데 두면 어깋나기 때문에
 # 정본은 여기 하나로 둔다. 의존성·빌드는 건드리지 않는다.
 ONLY_SHELL=0
+# supervisor 는 브리지를 로그인 때 한 번 띄운다. 되살리는 장치가 아니다 —
+# 자세한 것은 harness/scripts/install-supervisor.sh 머리 주석에 있다.
+ONLY_SUPERVISOR=0
+UNINSTALL_SUPERVISOR=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
     --only-shell) ONLY_SHELL=1 ;;
+    --only-supervisor) ONLY_SUPERVISOR=1 ;;
+    --uninstall-supervisor) UNINSTALL_SUPERVISOR=1 ;;
     --help|-h)
-      printf '%s\n' '사용법: ./install.sh [--apply] [--only-shell]' '' \
-        '  인자 없음    설치 계획만 출력한다' \
-        '  --apply      이 클론에서 Rubato를 설치하고 검증한다' \
-        '  --only-shell 셸 alias 블록과 cmux 세션 복원만 다시 심는다'
+      printf '%s\n' '사용법: ./install.sh [--apply] [--only-shell] [--only-supervisor] [--uninstall-supervisor]' '' \
+        '  인자 없음               설치 계획만 출력한다' \
+        '  --apply                 이 클론에서 Rubato를 설치하고 검증한다' \
+        '  --only-shell            셸 alias 블록과 cmux 세션 복원만 다시 심는다' \
+        '  --only-supervisor       브리지 supervisor(launchd/systemd)만 다시 심는다' \
+        '  --uninstall-supervisor  그 supervisor 를 뗀다'
       exit 0 ;;
     *) printf '모르는 옵션: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -85,6 +93,21 @@ shell_rc() {
 
 head_ "단계 0 · 사전 점검"
 [ "$APPLY" -eq 1 ] || warn "dry-run 이다. 아무것도 바뀌지 않는다 (적용: ./install.sh --apply)"
+
+# supervisor 만 손보는 경로. 나머지 설치는 건드리지 않는다.
+supervisor() {
+  args=""
+  [ "$APPLY" -eq 1 ] && args="--apply"
+  [ "$UNINSTALL_SUPERVISOR" -eq 1 ] && args="--uninstall $args"
+  # shellcheck disable=SC2086
+  "$HARNESS/scripts/install-supervisor.sh" $args
+}
+if [ "$ONLY_SUPERVISOR" -eq 1 ] || [ "$UNINSTALL_SUPERVISOR" -eq 1 ]; then
+  head_ "브리지 supervisor"
+  supervisor
+  if [ "$APPLY" -eq 0 ]; then say "계획만 보였다. 적용하려면 --apply 를 붙여라."; fi
+  exit 0
+fi
 
 NODE24="$(find_node24)"
 if [ -n "$NODE24" ]; then ok "Node 24+ : $NODE24 ($("$NODE24" -v))"
@@ -300,6 +323,13 @@ else
 fi
 
 fi   # ONLY_SHELL 스킵 끝
+
+# 브리지를 로그인 때 한 번 띄운다. 없어도 첫 세션이 띄우지만, 그 세션이 기동을
+# 떠안으면 npm install 이 필요한 날 세션 자체가 안 뜬다.
+if [ "$ONLY_SHELL" -eq 0 ]; then
+  head_ "브리지 supervisor"
+  supervisor || add_manual "supervisor 등록에 실패했다: ./install.sh --only-supervisor --apply 로 다시 시도해라"
+fi
 
 head_ "요약"
 if [ "$APPLY" -eq 0 ]; then

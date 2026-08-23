@@ -189,6 +189,34 @@ Cursor는 이 중계기에 없다. 밖의 `cs-agent`(`~/.claude/cs-agent/`)에�
 rubato               # = rubato-pi. 보통 alias 가 harness/scripts/rubato-pi.sh
 ```
 
+브리지는 첫 세션이 알아서 띄운다(`ensureBroker`). 아래 supervisor 를 심어두면 로그인 때 이미 떠 있어서 그 몫이 사라진다. 둘 중 무엇이든 코드는 같다 — `ensureBroker` 가 "살아 있으면 아무것도 안 한다"로 시작하므로 자연히 no-op 이 된다.
+
+### 로그인 때 브리지를 띄운다 (supervisor)
+
+```bash
+./install.sh --only-supervisor --apply      # macOS launchd / Linux systemd user unit
+./install.sh --uninstall-supervisor --apply # 뗀다
+```
+
+`./install.sh --apply` 에도 포함돼 있다. 인자 없이 부르면 무엇을 할지만 보여준다.
+
+**되살리는 장치가 아니다.** macOS 는 `KeepAlive=false`, Linux 는 `Restart=no` 다. 브리지가 죽는 경우의 대부분은 우리가 보낸 SIGTERM(재기동)이라 supervisor 로 막히지 않고, 되살리기를 켜면 `rubato-restart.sh` 의 kill/start 와 포트를 두고 경쟁한다. 얻는 것은 하나다 — **재부팅·로그아웃 뒤 첫 세션이 브리지 기동을 떠안지 않는 것.** 지금은 그 첫 세션이 `npm install` 까지 기다리다 못 뜰 수 있다.
+
+systemd 가 없는 곳(WSL 일부, 컨테이너)에는 아무것도 심지 않고 lazy start 로 남는다. `loginctl enable-linger` 는 권하지 않는다 — 브리지가 사용자 인증 파일을 읽으므로 로그인 세션 밖에서 도는 것은 득보다 실이 크다.
+
+한 머신에서 클론을 여럿 돌린다면 `FX_BRIDGE_PORT` 와 함께 `RUBATO_SUPERVISOR_LABEL`(macOS) 또는 `RUBATO_SUPERVISOR_UNIT`(Linux)도 다르게 준다.
+
+> **supervisor 를 쓸 때 Claude setup-token 은 파일로 두는 편이 안전하다.** 브리지는 `~/.claude/auth/setup-token-<계정>` 을 먼저 보고 없으면 Keychain(`security find-generic-password`)으로 떨어지는데, 로그인 직후 launchd 가 띄우는 시점에 키체인이 잠겨 있으면 그 폴백이 실패할 수 있다. 이 경로는 **아직 실측하지 못했다** — 이 머신은 파일 토큰이 먼저 잡혀 확인할 기회가 없었다.
+
+### 로그
+
+```
+macOS  ~/Library/Logs/rubato/bridge.log
+그 외   ${XDG_STATE_HOME:-~/.local/state}/rubato/bridge.log
+```
+
+`RUBATO_BROKER_LOG` 로 덮을 수 있다. 예전에는 `$TMPDIR` 에 뒀는데 재부팅에 날아가서, 뒤늦게 "브리지가 왜 죽었나"를 물을 때 볼 것이 남지 않았다. `rubato-restart.sh` 는 재기동마다 시각·호출자·사유를 한 줄 남긴다.
+
 세션 상태는 `~/.rubato-pi/agent`다. `~/.omo`는 건드리지 않는다. `.build/lead.pi.md`와 `.build/teammate.pi.md`가 없으면 거절한다 — 시스템 프롬프트 없이 도는 것이 과거의 실제 버그였기 때문에 조용히 넘어가지 않는다. 조각을 고친 뒤에는 `prompts/build.sh`를 다시 돌린다.
 
 확인:
