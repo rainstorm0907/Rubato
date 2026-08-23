@@ -592,3 +592,220 @@ index 0000000..72eefbb
 +    actions.get(url)?.();
 +    return true;
 +}
+diff --git a/dist/modes/interactive/components/progressive-transcript-container.js b/dist/modes/interactive/components/progressive-transcript-container.js
+--- a/dist/modes/interactive/components/progressive-transcript-container.js
++++ b/dist/modes/interactive/components/progressive-transcript-container.js
+@@ -1,112 +1,118 @@
+ import { Container } from "@earendil-works/pi-tui";
+-/** Trailing children painted on the first frame; roughly two tall viewports of messages. */
++
+ export const DEFAULT_TAIL_BUDGET = 60;
+-/** Earlier children warmed per macrotask during background hydration. */
+ export const DEFAULT_WARM_CHUNK_SIZE = 100;
+-/** Watermark sentinel: no frame has been painted yet, so nothing is proven renderable. */
+ const PENDING_FIRST_PAINT = -1;
++
+ /**
+- * A transcript container that paints a bounded, fully-styled tail on its first
+- * frame and warms the earlier history in bounded `setImmediate` chunks.
+- *
+- * Resuming a long session used to Markdown-render every persisted message
+- * before the first paint, so `/resume` blocked for hundreds of milliseconds on
+- * work the user could not see. Children are still the real message and tool
+- * components and are still rendered by their own `render(width)`, so the
+- * visible tail is pixel-identical to the eager path; only the render *order*
+- * changes. Once hydration completes the container behaves exactly like its
+- * `Container` base, which keeps scrolling, history, and full-transcript output
+- * unchanged.
++ * Old transcript rows are immutable once settled. Cache them here so every
++ * editor keystroke does not rebuild the entire history line array.
+  */
+ export class ProgressiveTranscriptContainer extends Container {
+     constructor(options) {
+         super();
+-        /**
+-         * Index of the first child proven renderable, or `PENDING_FIRST_PAINT` before
+-         * any frame has been painted. Walks down to 0 as hydration warms the history.
+-         * A distinct sentinel is required because 0 legitimately means "fully
+-         * hydrated", which is also the state of a freshly cleared transcript.
+-         */
+         this.hydratedFrom = PENDING_FIRST_PAINT;
+         this.hydrationScheduled = false;
+         this.hydrationGeneration = 0;
+-        /**
+-         * Deliberately NOT named `disposed`: `Container` keeps a private `disposed`
+-         * own-property guard, and a same-named subclass field lands in the same slot,
+-         * so setting it before `super.dispose()` would make the base early-return and
+-         * silently skip disposing every child.
+-         */
+         this.hydrationHalted = false;
+-        this.tailBudget = options.tailBudget;
+-        this.warmChunkSize = options.warmChunkSize;
++        this.lastRenderWidth = undefined;
++        this.cachedWidth = undefined;
++        this.childLineCache = new Map();
++        this.cacheableBefore = 0;
++        this.tailBudget = options.tailBudget ?? DEFAULT_TAIL_BUDGET;
++        this.warmChunkSize = options.warmChunkSize ?? DEFAULT_WARM_CHUNK_SIZE;
+         this.requestRender = options.requestRender;
+     }
+-    /** True when every child has been rendered at least once and no work is pending. */
+     get isFullyHydrated() {
+         return this.hydratedFrom === 0 && !this.hydrationScheduled;
+     }
+     render(width) {
+         this.lastRenderWidth = width;
++        if (this.cachedWidth !== width) {
++            this.childLineCache.clear();
++            this.cachedWidth = width;
++        }
+         const total = this.children.length;
+         if (this.hydratedFrom === 0 || total === 0) {
+             this.hydratedFrom = 0;
+-            return super.render(width);
++            return this.renderRange(0, total, width);
+         }
+         const firstVisible = Math.max(0, total - this.tailBudget);
+         if (firstVisible === 0) {
+-            // Whole transcript fits the visible budget: nothing is worth deferring.
+             this.hydratedFrom = 0;
+-            return super.render(width);
++            return this.renderRange(0, total, width);
+         }
+-        // Never move the watermark forward: a child warmed by an earlier chunk must
+-        // stay warm even when later frames only need the tail.
+-        this.hydratedFrom =
+-            this.hydratedFrom === PENDING_FIRST_PAINT ? firstVisible : Math.min(this.hydratedFrom, firstVisible);
++        this.hydratedFrom = this.hydratedFrom === PENDING_FIRST_PAINT
++            ? firstVisible
++            : Math.min(this.hydratedFrom, firstVisible);
+         this.scheduleHydration();
+         return this.renderRange(this.hydratedFrom, total, width);
+     }
+-    // `addChild` is inherited: a live message appended before hydration finishes
+-    // sits past the watermark, so it paints on the very next frame.
++    addChild(component) {
++        super.addChild(component);
++        this.childLineCache.delete(component);
++    }
++    markSettled() {
++        this.cacheableBefore = this.children.length;
++    }
++    removeChild(component) {
++        this.childLineCache.delete(component);
++        const index = this.children.indexOf(component);
++        if (index >= 0 && index < this.cacheableBefore) this.cacheableBefore -= 1;
++        super.removeChild(component);
++    }
++    detachChild(component) {
++        this.childLineCache.delete(component);
++        const index = this.children.indexOf(component);
++        if (index >= 0 && index < this.cacheableBefore) this.cacheableBefore -= 1;
++        return super.detachChild(component);
++    }
+     clear() {
+         this.cancelHydration();
+         this.hydratedFrom = PENDING_FIRST_PAINT;
++        this.cacheableBefore = 0;
++        this.childLineCache.clear();
+         super.clear();
+     }
+     detachAll() {
+         this.cancelHydration();
+         this.hydratedFrom = PENDING_FIRST_PAINT;
++        this.cacheableBefore = 0;
++        this.childLineCache.clear();
+         super.detachAll();
+     }
+     dispose() {
+         this.hydrationHalted = true;
+         this.cancelHydration();
++        this.childLineCache.clear();
+         super.dispose();
+     }
+-    // `invalidate` is inherited: `Container.invalidate` already walks every child,
+-    // so a theme switch reaches the un-warmed head and it cannot warm with a stale palette.
++    invalidate() {
++        this.childLineCache.clear();
++        super.invalidate();
++    }
+     renderRange(from, to, width) {
+         const lines = [];
+         for (let index = from; index < to; index++) {
+             const child = this.children[index];
+-            if (child === undefined)
+-                continue;
+-            let childLines;
+-            try {
+-                childLines = child.render(width);
++            if (child === undefined) continue;
++            const cacheable = index < this.cacheableBefore;
++            let childLines = cacheable ? this.childLineCache.get(child) : undefined;
++            if (childLines === undefined) {
++                try {
++                    childLines = child.render(width);
++                } catch {
++                    const componentName = child.constructor.name || "AnonymousComponent";
++                    childLines = [`[render error: ${componentName}]`];
++                }
++                if (cacheable) this.childLineCache.set(child, childLines);
+             }
+-            catch {
+-                const componentName = child.constructor.name || "AnonymousComponent";
+-                childLines = [`[render error: ${componentName}]`];
+-            }
+-            for (const line of childLines) {
+-                lines.push(line);
+-            }
++            for (const line of childLines) lines.push(line);
+         }
+         return lines;
+     }
+     scheduleHydration() {
+-        if (this.hydrationScheduled || this.hydrationHalted)
+-            return;
++        if (this.hydrationScheduled || this.hydrationHalted) return;
+         this.hydrationScheduled = true;
+         const generation = this.hydrationGeneration;
+         setImmediate(() => {
+@@ -114,37 +120,22 @@
+             this.warmNextChunk(generation);
+         });
+     }
+-    /**
+-     * Warm one bounded chunk of the deferred head. Each child is actually rendered
+-     * here so its own line cache is populated off the critical path; the eventual
+-     * full-history frame then pays for cache hits instead of one burst of Markdown
+-     * work. Without this the deferred cost would merely be moved, not spread.
+-     */
+     warmNextChunk(generation) {
+-        if (this.hydrationHalted || generation !== this.hydrationGeneration)
+-            return;
+-        if (this.hydratedFrom === 0)
+-            return;
++        if (this.hydrationHalted || generation !== this.hydrationGeneration) return;
++        if (this.hydratedFrom === 0) return;
+         const chunkEnd = this.hydratedFrom;
+         const chunkStart = Math.max(0, chunkEnd - this.warmChunkSize);
+         const width = this.lastRenderWidth;
+-        if (width !== undefined) {
+-            // Discard the lines: this pass exists only to fill each child's cache.
+-            this.renderRange(chunkStart, chunkEnd, width);
+-        }
++        if (width !== undefined) this.renderRange(chunkStart, chunkEnd, width);
+         this.hydratedFrom = chunkStart;
+         if (chunkStart === 0) {
+-            // The whole transcript is renderable now; ask the TUI to repaint it.
+             this.requestRender();
+             return;
+         }
+         this.scheduleHydration();
+     }
+     cancelHydration() {
+-        // Bumping the generation makes any already-queued macrotask a no-op, so a
+-        // clear + rebuild cannot warm components that no longer belong to the tree.
+         this.hydrationGeneration += 1;
+         this.hydrationScheduled = false;
+     }
+ }
+-//# sourceMappingURL=progressive-transcript-container.js.map

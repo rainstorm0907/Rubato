@@ -12,7 +12,7 @@ import { withNoChangelog } from "./no-changelog.mjs";
 import { argvHasModel, ensureSessionDefaults } from "./session-defaults.mjs";
 import { replaceSystemPrompt } from "./system-prompt.mjs";
 import { SKILL_DIRS } from "./skills-section.mjs";
-import { syncTuiPatch } from "./sync-tui-patch.mjs";
+import { syncSenpiTranscriptPatch, syncTuiPatch } from "./sync-tui-patch.mjs";
 import { enginePackageJson, senpiCli, senpiPackageJson } from "./engine-paths.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -102,6 +102,7 @@ export async function spawnRubatoPi({ args = process.argv.slice(2), env = proces
   // bun 패치는 루트의 pi-tui 만 고치는데 senpi 는 자기 안에 중첩된 사본을 읽는다.
   // 맞춰 두지 않으면 패치가 화면에 도달하지 못한다.
   syncTuiPatch();
+  syncSenpiTranscriptPatch();
   ensureBroker({ env });
   const node = resolveNode24();
   mkdirSync(agentDir, { recursive: true });

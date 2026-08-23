@@ -10,7 +10,7 @@
 //
 // 그래서 세션이 뜰 때마다 둘을 맞춘다. 내용이 같으면 아무것도 하지 않으므로
 // 평상시 비용은 파일 네 개를 읽는 정도다.
-import { copyFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { forkRoot, senpiDir } from "./engine-paths.mjs";
 
@@ -21,6 +21,13 @@ const PATCHED_FILES = Object.freeze([
   "slash-command-autocomplete.js",
   join("components", "editor.js"),
 ]);
+
+/** Senpi 자체에서 실제 대화 히스토리를 그리는 패치. */
+const PATCHED_SENPI_FILES = Object.freeze([
+  join("dist", "modes", "interactive", "components", "progressive-transcript-container.js"),
+]);
+const SETTLE_ANCHOR = "                this.clearPendingTools();\n                this.ui.requestRender();";
+const SETTLE_PATCH = "                this.clearPendingTools();\n                this.chatContainer.markSettled();\n                this.ui.requestRender();";
 
 // bun 이 패치를 적용해 주는 자리.
 //
@@ -61,6 +68,38 @@ export function syncTuiPatch({ from = patchedTuiDir(), to = liveTuiDir() } = {})
     } catch {
       // 맞추지 못해도 세션은 떠야 한다. 원본으로 도는 것이 안 뜨는 것보다 낫다.
     }
+  }
+  return copied;
+}
+
+/** 긴 세션 최적화는 pi-tui가 아니라 Senpi transcript 컨테이너가 소유한다. */
+export function syncSenpiTranscriptPatch({
+  from = join(forkRoot, "harness", "patch-src", "progressive-transcript-container.js"),
+  toRoot = senpiDir,
+} = {}) {
+  if (!existsSync(from) || !existsSync(toRoot)) return [];
+  const copied = [];
+  for (const rel of PATCHED_SENPI_FILES) {
+    const dst = join(toRoot, rel);
+    if (!existsSync(dst)) continue;
+    try {
+      const source = readFileSync(from, "utf8");
+      if (source === readFileSync(dst, "utf8")) continue;
+      copyFileSync(from, dst);
+      copied.push(rel);
+    } catch {
+      // 렌더 최적화 실패가 세션 시작 자체를 막아서는 안 된다.
+    }
+  }
+  const interactive = join(toRoot, "dist", "modes", "interactive", "interactive-mode.js");
+  try {
+    const source = readFileSync(interactive, "utf8");
+    if (!source.includes("this.chatContainer.markSettled();") && source.includes(SETTLE_ANCHOR)) {
+      writeFileSync(interactive, source.replace(SETTLE_ANCHOR, SETTLE_PATCH));
+      copied.push(join("dist", "modes", "interactive", "interactive-mode.js"));
+    }
+  } catch {
+    // 위와 같은 best-effort 경계다.
   }
   return copied;
 }
