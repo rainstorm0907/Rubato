@@ -234,9 +234,13 @@ export function streamBroker(model, context, options = {}) {
   ;(async () => {
     stream.push({ type: "start", partial: output });
     let settled = false;
+    // 이미 화면에 나간 것이 있으면 같은 턴을 다시 보낼 수 없다 — 업스트림은 이미
+    // 토큰을 태웠고, 재시도하면 같은 텍스트가 두 번 나온다.
+    let emittedDelta = false;
     const emit = (event) => {
       if ((event.type === "done" || event.type === "error") && settled) return;
       if (event.type === "done" || event.type === "error") settled = true;
+      else emittedDelta = true;
       stream.push(event);
     };
     try {
@@ -278,12 +282,18 @@ export function streamBroker(model, context, options = {}) {
       }
     } catch (error) {
       if (settled) return;
-      if (settleBrokerOutput(output)) {
+      // 사용자가 멈춘 턴만 도구 호출을 살려 넘긴다. 전송이 끊긴 것을 같이 살리면
+      // 엔진이 성공한 턴으로 읽어 재시도도 폴백도 걸지 않고, 잘린 인자로 도구가
+      // 그대로 실행된다.
+      if (options.signal?.aborted && settleBrokerOutput(output)) {
         emit({ type: "done", reason: output.stopReason, message: output });
         return;
       }
       output.stopReason = options.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = error instanceof Error ? error.message : String(error);
+      const reason = error instanceof Error ? error.message : String(error);
+      // 엔진은 이 접두사를 재시도 금지 신호로 읽는다(agent-session 의
+      // TURN_RETRY_SUPPRESSION_PREFIX). 델타 전 실패만 안전하게 다시 보낸다.
+      output.errorMessage = emittedDelta ? `senpi:no-turn-retry:${reason}` : reason;
       emit({ type: "error", reason: output.stopReason, error: output });
     } finally {
       stream.end();

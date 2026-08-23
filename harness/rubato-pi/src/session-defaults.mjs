@@ -36,6 +36,9 @@ export function ensureSessionDefaults(
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL_ID,
     hideThinkingBlock: current.hideThinkingBlock ?? true,
+    // 기본 3회(2+4+8초)는 브리지가 npm install 을 끼고 다시 뜨는 경우를 못 덮는다.
+    // 5회면 약 62초까지 버틴다. 사용자가 적어 둔 값은 건드리지 않는다.
+    retry: { maxRetries: 5, ...current.retry },
     tips: false,
     disabledBuiltinExtensions: [...disabled],
   };
