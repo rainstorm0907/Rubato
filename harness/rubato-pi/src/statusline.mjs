@@ -14,12 +14,18 @@ export function stripAnsi(text) {
   return String(text).replace(/\x1b\[[0-9;]*m/g, "");
 }
 
+const VARIANTS = [
+  ["sol", "Sol"],
+  ["luna", "Luna"],
+  ["terra", "Terra"],
+];
+
 export function shortModelLabel(modelId) {
   if (!modelId) return "unknown";
   const bare = String(modelId).split("/").pop();
   const lc = bare.toLowerCase();
-  const sol = solLabel(lc);
-  if (sol) return sol;
+  const variant = variantLabel(lc);
+  if (variant) return variant;
   for (const [key, label] of FAMILIES) {
     const idx = lc.indexOf(key);
     if (idx < 0) continue;
@@ -31,13 +37,16 @@ export function shortModelLabel(modelId) {
   return colon >= 0 ? bare.slice(0, colon) : bare;
 }
 
-function solLabel(lc) {
-  const idx = lc.lastIndexOf("sol");
-  if (idx < 0) return "";
-  if (idx > 0 && lc[idx - 1] !== "-" && lc[idx - 1] !== ".") return "";
-  const before = lc.slice(0, idx).replace(/[-.]$/, "").replace(/^gpt[-.]/, "");
-  const version = parseVersion(before.replace(/^[a-z]+[-.]/, "")) || parseVersion(before);
-  return version ? `${version} Sol` : "Sol";
+function variantLabel(lc) {
+  for (const [key, label] of VARIANTS) {
+    const idx = lc.lastIndexOf(key);
+    if (idx < 0) continue;
+    if (idx > 0 && lc[idx - 1] !== "-" && lc[idx - 1] !== ".") continue;
+    const before = lc.slice(0, idx).replace(/[-.]$/, "").replace(/^gpt[-.]/, "");
+    const version = parseVersion(before.replace(/^[a-z]+[-.]/, "")) || parseVersion(before);
+    return version ? `${version} ${label}` : label;
+  }
+  return "";
 }
 
 export function formatEffort(level) {

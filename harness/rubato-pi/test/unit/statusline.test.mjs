@@ -21,6 +21,11 @@ test("shortens Claude-style model ids the way the statusline does", () => {
   assert.equal(shortModelLabel("xai/grok-4.6"), "Grok 4.6");
   assert.equal(shortModelLabel("gpt-5.6-sol"), "5.6 Sol");
   assert.equal(shortModelLabel("openai-codex/gpt-5.6-sol"), "5.6 Sol");
+  assert.equal(shortModelLabel("gpt-5.6-luna"), "5.6 Luna");
+  assert.equal(shortModelLabel("openai-codex/gpt-5.6-luna"), "5.6 Luna");
+  assert.equal(shortModelLabel("gpt-5.6-terra"), "5.6 Terra");
+  assert.equal(shortModelLabel("openai-codex/gpt-5.6-terra"), "5.6 Terra");
+  assert.equal(shortModelLabel("quotio-openai/gpt-5.6-luna-fast"), "5.6 Luna");
   assert.equal(shortModelLabel("unknown-model:high"), "unknown-model");
 });
 
@@ -28,6 +33,8 @@ test("appends reasoning effort next to the short model name", () => {
   assert.equal(formatModelWithEffort("anthropic/claude-opus-5", "high"), "Opus 5 high");
   assert.equal(formatModelWithEffort("xai/grok-4.6", "xhigh"), "Grok 4.6 Xhigh");
   assert.equal(formatModelWithEffort("gpt-5.6-sol", "high"), "5.6 Sol high");
+  assert.equal(formatModelWithEffort("openai-codex/gpt-5.6-luna", "high"), "5.6 Luna high");
+  assert.equal(formatModelWithEffort("openai-codex/gpt-5.6-terra", "medium"), "5.6 Terra medium");
   assert.equal(formatModelWithEffort("anthropic/claude-opus-5:high"), "Opus 5 high");
   assert.equal(formatModelWithEffort("claude-opus-5", "off"), "Opus 5");
 });
