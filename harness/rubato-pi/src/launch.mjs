@@ -61,11 +61,16 @@ export function resolveNode24() {
 
 export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
   const modelArgs = argvHasModel(userArgs) ? [] : ["--model", DEFAULT_MODEL];
+  const interactiveTuiArgs = userArgs.some((token) => token === "--mode" || token.startsWith("--mode=")) ||
+    userArgs.some((token) => token === "--tui-mode" || token.startsWith("--tui-mode="))
+    ? []
+    : ["--tui-mode", "fullscreen"];
   return [
     senpiCliPath(),
     "--system-prompt",
     replaceSystemPrompt("", resolveRole({ env }), { env }),
     ...modelArgs,
+    ...interactiveTuiArgs,
     "-e",
     leadOverlayPath(),
     "-e",

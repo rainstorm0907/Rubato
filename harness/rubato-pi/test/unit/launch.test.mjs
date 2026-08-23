@@ -47,3 +47,15 @@ test("an explicit --model is not overwritten", () => {
   assert.equal(args.filter((token) => token === "--model").length, 1);
   assert.equal(args[args.indexOf("--model") + 1], "xai/grok-4.6");
 });
+
+test("interactive sessions default to fullscreen without overriding explicit modes", () => {
+  const interactive = buildSenpiArgs([]);
+  assert.equal(interactive[interactive.indexOf("--tui-mode") + 1], "fullscreen");
+
+  const regular = buildSenpiArgs(["--tui-mode", "regular"]);
+  assert.equal(regular.filter((token) => token === "--tui-mode").length, 1);
+  assert.equal(regular[regular.indexOf("--tui-mode") + 1], "regular");
+
+  assert.equal(buildSenpiArgs(["--mode", "rpc"]).includes("--tui-mode"), false);
+  assert.equal(buildSenpiArgs(["--mode=print"]).includes("--tui-mode"), false);
+});
