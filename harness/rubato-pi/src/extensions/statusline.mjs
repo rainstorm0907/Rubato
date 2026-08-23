@@ -1,5 +1,3 @@
-import { join } from "node:path";
-
 import {
   cacheHitPercent,
   formatBackgroundLine,
@@ -13,7 +11,6 @@ import {
 } from "../statusline.mjs";
 import {
   createBackgroundTracker,
-  createTaskModelReader,
   WAKE_SOURCE_STATE_EVENT,
 } from "../background-tracker.mjs";
 
@@ -37,9 +34,7 @@ export function installStatusline(pi) {
   pi.on("session_start", (_event, ctx) => {
     if (typeof ctx.ui?.setFooter !== "function") return;
 
-    const tracker = createBackgroundTracker({
-      modelFor: createTaskModelReader({ stateDir: join(ctx.cwd ?? ".", ".omo", "senpi-task") }),
-    });
+    const tracker = createBackgroundTracker();
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       const rerender = () => tui.requestRender?.();

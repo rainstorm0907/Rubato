@@ -167,13 +167,12 @@ export function formatStatusline(input) {
 
 // ── 배경 작업 요약 ─────────────────────────────────────────────────
 //
-// 셸, 모니터, 서브에이전트는 모두 엔진의 `wake_source_state` 이벤트로 온다.
-// 셋 다 `{ id, description, startedAtMs }` 로 모양이 같아서 한 줄에 합칠 수 있다.
-// 모델 이름만 이벤트에 없어서 태스크 레코드를 따로 읽어 붙인다.
+// 셸과 모니터는 엔진의 `wake_source_state` 이벤트로 온다.
+// 둘 다 `{ id, description, startedAtMs }` 로 모양이 같아서 한 줄에 합칠 수 있다.
+// 서브에이전트는 에디터 위 위젯이 그린다.
 
-/** 이벤트의 source 값과 화면에 쓸 글리프. 순서가 곧 표시 순서다. */
+/** 이벤트의 source 값과 화면에 쓸 글리프. 순서가 곧 표시 순서다. 서브에이전트는 위젯이 그린다. */
 export const BACKGROUND_SOURCES = Object.freeze([
-  { source: "senpi-task", glyph: "▸", field: "channels" },
   { source: "terminal-background-sessions", glyph: "⌘", field: "items" },
   { source: "terminal-monitors", glyph: "◉", field: "monitors" },
 ]);

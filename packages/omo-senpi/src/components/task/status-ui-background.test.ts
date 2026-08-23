@@ -129,10 +129,10 @@ describe("createTaskStatusUi.background progress", () => {
     const second = ui.widgetCalls.at(-1)?.content?.[0] ?? ""
 
     // then
-    expect(first).toContain("turn 1 (2 tools)")
+    expect(first).not.toContain("turn ")
     expect(first).toContain("40 tok/s")
     expect(first).toContain("0s")
-    expect(second).toContain("turn 2 (3 tools)")
+    expect(second).not.toContain("turn ")
     expect(second).toContain("42 tok/s")
     expect(second).toContain("1s")
     expect(second[0]).not.toBe(first[0])
@@ -176,7 +176,7 @@ describe("createTaskStatusUi.background progress", () => {
     expect(ui.widgetCalls.at(-1)?.content).toBeUndefined()
   })
 
-  it("#given two background children #when latest events arrive #then rows show identity, model, stats, activity, and elapsed time", () => {
+  it("#given two background children #when latest events arrive #then rows show title, short model, elapsed, and tps", () => {
     const active = new Map<number, () => void>()
     let nextHandle = 1
     const timers: StatusUiTimers = {
@@ -257,8 +257,8 @@ describe("createTaskStatusUi.background progress", () => {
     for (const callback of [...active.values()]) callback()
 
     expect(ui.widgetCalls.at(-1)?.content).toEqual([
-      "⠋ Investigate the unexpectedly long background child description · category:quick(quotio-openai/gpt-5.6-luna-fast:high) · fallback:2 · turn 3 (7 tools) · 42 tok/s · read src/foo.ts · 1m 5s",
-      "⠋ Review tests · agent:explore(quotio-openai/gpt-5.6-luna-fast) · turn 1 (2 tools) · bash bun test · 1m 5s",
+      "⠋ Investigate the unexpectedly ... · 5.6 Luna high · 1m 5s · 42 tok/s",
+      "⠋ Review tests · 5.6 Luna · 1m 5s",
     ])
     // C1: the duplicated footer task status line is gone; widget rows are the only task surface.
     expect(ui.statusCalls).toHaveLength(0)

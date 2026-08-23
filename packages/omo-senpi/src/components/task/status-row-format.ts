@@ -1,13 +1,10 @@
 import {
   excerptRendererText,
-  formatLiveSpend,
   formatStatusTarget,
-  formatTargetWithModel,
   normalizeRendererText,
   parseTeamMemberTaskIdentity,
   rendererVisibleWidth,
   taskIdentityLabel,
-  toolCountSuffix,
   type ResidencyState,
   type TaskRecord,
   type TaskRunStats,
@@ -18,13 +15,27 @@ const MAX_WIDGET_ROWS = 5
 const WIDGET_LINE_MAX = 70
 const LIVE_WIDGET_LINE_MAX = 220
 const PROGRESS_HEAD_MAX = 60
-const LIVE_IDENTITY_MAX = 80
-const LIVE_IDENTITY_MIN = 12
-const LIVE_TARGET_MIN = 20
-const LIVE_ACTIVITY_MIN = 8
-const LIVE_SEPARATOR_WIDTH = 3
+const LIVE_TITLE_MAX = 32
 export const LIVE_STATUS_REFRESH_MS = 250
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const
+
+const MODEL_FAMILIES: ReadonlyArray<readonly [string, string]> = [
+  ["opus", "Opus"],
+  ["sonnet", "Sonnet"],
+  ["haiku", "Haiku"],
+  ["fable", "Fable"],
+  ["mythos", "Mythos"],
+  ["grok", "Grok"],
+  ["gemini", "Gemini"],
+  ["kimi", "Kimi"],
+  ["gpt", "GPT"],
+]
+
+const MODEL_VARIANTS: ReadonlyArray<readonly [string, string]> = [
+  ["sol", "Sol"],
+  ["luna", "Luna"],
+  ["terra", "Terra"],
+]
 
 const TERMINAL_STATUSES: ReadonlySet<TaskStatus> = new Set(["completed", "error", "cancelled", "interrupted", "lost"])
 
@@ -99,51 +110,21 @@ export function buildWidgetRows(records: readonly TaskRecord[], residentTaskIds:
   return shown
 }
 
-function liveStatsTokens(stats: TaskRunStats | undefined): string[] {
-  if (stats === undefined) return []
-  const tokens = [`turn ${stats.turns}${toolCountSuffix(stats.tool_calls)}`]
-  const spend = formatLiveSpend(stats)
-  if (spend !== undefined) tokens.push(spend)
-  if (stats.tokens_per_second !== undefined) tokens.push(`${stats.tokens_per_second} tok/s`)
-  return tokens
-}
-
 function formatLiveBackgroundRow(
   record: TaskRecord,
-  activity: string,
   now: number,
   maxWidth: number,
   stats?: TaskRunStats,
 ): string {
-  const elapsed = formatElapsed(record.created_at, now)
   const frame = SPINNER_FRAMES[Math.floor(now / LIVE_STATUS_REFRESH_MS) % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0]
-  const fullIdentity = liveTaskIdentity(record)
-  const fullTarget = recordStatusTarget(record)
-  const fullActivity = isSuspended(record) ? "suspended" : normalizeRendererText(activity)
-  const minimumPartsWidth = rendererVisibleWidth(
-    `${frame} ${excerptRendererText(fullIdentity, LIVE_IDENTITY_MIN)} · ${excerptRendererText(fullTarget, LIVE_TARGET_MIN)} · ${excerptRendererText(fullActivity, LIVE_ACTIVITY_MIN)} · ${elapsed}`,
-  )
-  let remainingWidth = Math.max(0, maxWidth - minimumPartsWidth)
-  const statsTokens = liveStatsTokens(stats).filter((token) => {
-    const tokenWidth = rendererVisibleWidth(token) + LIVE_SEPARATOR_WIDTH
-    if (tokenWidth > remainingWidth) return false
-    remainingWidth -= tokenWidth
-    return true
-  })
-  const activityWidth = Math.min(rendererVisibleWidth(fullActivity), LIVE_ACTIVITY_MIN + remainingWidth)
-  remainingWidth -= Math.max(0, activityWidth - LIVE_ACTIVITY_MIN)
-  const targetWidth = Math.min(rendererVisibleWidth(fullTarget), LIVE_TARGET_MIN + remainingWidth)
-  remainingWidth -= Math.max(0, targetWidth - LIVE_TARGET_MIN)
-  const identityWidth = Math.min(LIVE_IDENTITY_MAX, LIVE_IDENTITY_MIN + remainingWidth)
-  const context = [
-    excerptRendererText(fullTarget, targetWidth),
-    ...statsTokens,
-    excerptRendererText(fullActivity, activityWidth),
-    elapsed,
-  ]
-  const contextText = context.join(" · ")
-  const identity = excerptRendererText(fullIdentity, identityWidth)
-  return excerptRendererText(`${frame} ${identity} · ${contextText}`, maxWidth)
+  const tokens = [
+    liveTaskTitle(record),
+    liveModelLabel(record),
+    isSuspended(record) ? "suspended" : undefined,
+    formatElapsed(record.created_at, now),
+    stats?.tokens_per_second === undefined ? undefined : `${stats.tokens_per_second} tok/s`,
+  ].filter((token): token is string => token !== undefined && token.length > 0)
+  return excerptRendererText(`${frame} ${tokens.join(" · ")}`, maxWidth)
 }
 
 export function taskStatusDescription(record: TaskRecord): string {
@@ -153,8 +134,99 @@ export function taskStatusDescription(record: TaskRecord): string {
     ?? normalizeRendererText(record.task_id)
 }
 
-function liveTaskIdentity(record: TaskRecord): string {
-  return taskStatusDescription(record)
+function liveTaskTitle(record: TaskRecord): string {
+  const raw = optionalRendererText(record.description)
+    ?? optionalRendererText(record.task_summary)
+    ?? optionalRendererText(record.name)
+    ?? normalizeRendererText(record.task_id)
+  const cleaned = raw
+    .replace(/[\r\n]+/gu, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/^["'`]+|["'`.!?]+$/gu, "")
+    .trim()
+  return excerptRendererText(cleaned.length === 0 ? normalizeRendererText(record.task_id) : cleaned, LIVE_TITLE_MAX)
+}
+
+function liveModelLabel(record: TaskRecord): string | undefined {
+  const resolved = record.resolved_model
+  const modelId = optionalRendererText(resolved?.display)
+    ?? (resolved === undefined ? undefined : `${resolved.provider}/${resolved.model_id}`)
+    ?? optionalRendererText(record.model)
+  if (modelId === undefined) return undefined
+  const effort = optionalRendererText(resolved?.reasoning)
+    ?? optionalRendererText(resolved?.reasoning_effort)
+  const label = formatModelWithEffort(modelId, effort)
+  return label.length === 0 ? undefined : label
+}
+
+function formatModelWithEffort(modelId: string, level: string | undefined): string {
+  const model = shortModelLabel(modelId)
+  const effort = formatEffort(level) || effortFromModelId(modelId)
+  return effort ? `${model} ${effort}` : model
+}
+
+function shortModelLabel(modelId: string): string {
+  const bare = modelId.split("/").pop() ?? modelId
+  const lc = bare.toLowerCase()
+  const variant = variantLabel(lc)
+  if (variant) return variant
+  for (const [key, label] of MODEL_FAMILIES) {
+    const idx = lc.indexOf(key)
+    if (idx < 0) continue
+    const tail = lc.slice(idx + key.length).replace(/^[-.]/u, "")
+    const version = parseVersion(tail)
+    return version ? `${label} ${version}` : label
+  }
+  const colon = bare.indexOf(":")
+  return colon >= 0 ? bare.slice(0, colon) : bare
+}
+
+function variantLabel(lc: string): string {
+  for (const [key, label] of MODEL_VARIANTS) {
+    const idx = lc.lastIndexOf(key)
+    if (idx < 0) continue
+    if (idx > 0 && lc[idx - 1] !== "-" && lc[idx - 1] !== ".") continue
+    const before = lc.slice(0, idx).replace(/[-.]$/u, "").replace(/^gpt[-.]/u, "")
+    const version = parseVersion(before.replace(/^[a-z]+[-.]/u, "")) || parseVersion(before)
+    return version ? `${version} ${label}` : label
+  }
+  return ""
+}
+
+function formatEffort(level: string | undefined): string {
+  if (!level || level === "off") return ""
+  if (level === "xhigh") return "Xhigh"
+  if (level === "max") return "Max"
+  return level
+}
+
+function effortFromModelId(modelId: string): string {
+  const bare = modelId.split("/").pop() ?? modelId
+  const colon = bare.lastIndexOf(":")
+  if (colon < 0) return ""
+  return formatEffort(bare.slice(colon + 1).toLowerCase())
+}
+
+function parseVersion(tail: string): string {
+  const parts: string[] = []
+  let part = ""
+  for (const ch of tail) {
+    if (ch >= "0" && ch <= "9") {
+      part += ch
+    } else if ((ch === "-" || ch === ".") && part) {
+      parts.push(part)
+      part = ""
+    } else {
+      break
+    }
+  }
+  if (part) parts.push(part)
+  while (parts.length > 0 && (parts.at(-1)?.length ?? 0) >= 6) parts.pop()
+  if (parts.length === 0) return ""
+  if (parts.length >= 2) return `${parts[0]}.${parts[1]}`
+  return parts[0] ?? ""
 }
 
 function formatElapsed(createdAt: string, now: number): string {
@@ -167,7 +239,7 @@ function formatElapsed(createdAt: string, now: number): string {
 
 export function backgroundWidgetRows(
   records: readonly TaskRecord[],
-  activity: ReadonlyMap<string, string>,
+  _activity: ReadonlyMap<string, string>,
   now: number,
   liveStats?: (taskId: string) => TaskRunStats | undefined,
   maxWidth = LIVE_WIDGET_LINE_MAX,
@@ -181,7 +253,7 @@ export function backgroundWidgetRows(
   const shown = selected.slice(0, MAX_WIDGET_ROWS).map((record) =>
     record.status === "completed"
       ? formatCompactTaskRow(record, boundedWidth, true)
-      : formatLiveBackgroundRow(record, activity.get(record.task_id) ?? "running", now, boundedWidth, liveStats?.(record.task_id)),
+      : formatLiveBackgroundRow(record, now, boundedWidth, liveStats?.(record.task_id)),
   )
   const overflow = selected.length - MAX_WIDGET_ROWS
   if (overflow > 0) shown.push(`+${overflow} more`)

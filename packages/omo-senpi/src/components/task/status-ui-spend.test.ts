@@ -22,7 +22,7 @@ function record(overrides: Partial<TaskRecord> & { task_id: string; status: Task
 }
 
 describe("createTaskStatusUi spend", () => {
-  it("#given live solo and process-member rows with cost facts #when rendered #then cost sits before tps without cache rate", () => {
+  it("#given live solo and process-member rows with cost facts #when rendered #then cost is omitted and tps remains last", () => {
     // given
     const timers: StatusUiTimers = {
       set: () => 1,
@@ -82,8 +82,10 @@ describe("createTaskStatusUi spend", () => {
 
     // then
     const rows = widgetCalls.at(-1) ?? []
-    expect(rows[0]).toContain("$0.4213 · 40 tok/s")
-    expect(rows[1]).toContain("$0.0170 · 12 tok/s")
+    expect(rows[0]).toEndWith("40 tok/s")
+    expect(rows[1]).toEndWith("12 tok/s")
+    expect(rows.join("\n")).not.toContain("$0.4213")
+    expect(rows.join("\n")).not.toContain("$0.0170")
     expect(rows.join("\n")).not.toContain("CH:")
   })
 })
