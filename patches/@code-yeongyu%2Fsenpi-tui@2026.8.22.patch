@@ -84,9 +84,28 @@ diff --git a/dist/components/editor.js b/dist/components/editor.js
  const graphemeSegmenter = getGraphemeSegmenter();
  const wordSegmenter = getWordSegmenter();
  /** Atomic-marker predicate covering every marker family the editor treats as one grapheme. */
-@@ -1933,7 +1934,14 @@
+@@ -1113,7 +1114,7 @@
+         // Check if we should trigger or update autocomplete
+         if (!this.autocompleteState) {
+             // Auto-trigger for "/" at the start of a line (slash commands)
+-            if (char === "/" && this.isAtStartOfMessage()) {
++            if (char === "/" && (this.isAtStartOfMessage() || this.isInlineSkillSlash())) {
+                 this.tryTriggerAutocomplete();
+             }
+             // Auto-trigger for symbol-based completion like @, #, or provider triggers at token boundaries
+@@ -1932,8 +1933,24 @@
+         const beforeCursor = currentLine.slice(0, this.state.cursorCol);
          return beforeCursor.trim() === "" || beforeCursor.trim() === "/";
      }
++    // `/` 를 갓 친 순간, 그 자리가 문장 중간의 스킬 토큰 자리인지.
++    // isAtStartOfMessage 는 줄 맨 앞만 보므로 중간에서는 팝업이 아예 열리지 않았다.
++    isInlineSkillSlash() {
++        if (!this.isSlashMenuAllowed())
++            return false;
++        const currentLine = this.state.lines[this.state.cursorLine] || "";
++        const beforeCursor = currentLine.slice(0, this.state.cursorCol);
++        return inlineSlashTokenAt(beforeCursor) !== null;
++    }
      isInSlashCommandContext(textBeforeCursor) {
 -        return this.isSlashMenuAllowed() && textBeforeCursor.trimStart().startsWith("/");
 +        if (!this.isSlashMenuAllowed())
@@ -100,3 +119,38 @@ diff --git a/dist/components/editor.js b/dist/components/editor.js
      }
      // Autocomplete methods
      /**
+diff --git a/dist/dollar-invocation-autocomplete.js b/dist/dollar-invocation-autocomplete.js
+--- a/dist/dollar-invocation-autocomplete.js
++++ b/dist/dollar-invocation-autocomplete.js
+@@ -1,6 +1,9 @@
+ import { fuzzyFilter } from "./fuzzy.js";
+ const SKILL_COMMAND_PREFIX = "skill:";
+ const LEADING_DOLLAR_RUN_PATTERN = /^((?:\$[a-zA-Z][a-zA-Z0-9:_-]*\s+)*)\$([a-zA-Z0-9:_-]*)$/;
++// 문장 중간의 `$` — 앞이 공백이면 연다. `$HOME` 같은 셸 변수와 섞이지 않도록
++// 중간에서는 스킬만 보여 준다(skillsOnly). 맨 앞 실행 규칙은 위 패턴이 그대로 맡는다.
++const INLINE_DOLLAR_PATTERN = /(?:^|\s)\$([a-zA-Z0-9:_-]*)$/;
+ function commandName(command) {
+     return "name" in command ? command.name : command.value;
+ }
+@@ -21,8 +24,19 @@
+     if (cursorLine !== 0)
+         return null;
+     const match = textBeforeCursor.match(LEADING_DOLLAR_RUN_PATTERN);
+-    if (!match)
+-        return null;
++    if (!match) {
++        // 맨 앞 런이 아니면 문장 중간의 `$` 로 본다.
++        const inline = textBeforeCursor.match(INLINE_DOLLAR_PATTERN);
++        if (!inline)
++            return null;
++        const raw = inline[1];
++        const explicit = raw.startsWith(SKILL_COMMAND_PREFIX);
++        return {
++            prefix: `$${raw}`,
++            query: explicit ? raw.slice(SKILL_COMMAND_PREFIX.length) : raw,
++            skillsOnly: true,
++        };
++    }
+     const knownSkills = new Set(commands.flatMap((command) => {
+         const name = skillName(commandName(command));
+         return name ? [name] : [];
