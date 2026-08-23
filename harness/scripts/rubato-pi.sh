@@ -39,16 +39,31 @@ trap 'printf "\033[?25h"' EXIT INT TERM
 splash step "프롬프트"
 "$HERE/../prompts/build.sh" >/dev/null
 
-# 하루 한 번, 원격에 새 커밋이 있으면 한 줄 알린다. 받는 것은 `rubato update`.
-# 실패해도 세션 시작을 막지 않는다.
+# 매 실행마다 원격에 새 커밋이 있는지 본다. 있으면 스플래시를 닫은 뒤에
+# 받을지 물어본다. 실패해도 세션 시작을 막지 않는다.
 #
-# --check 는 새 커밋이 있으면 stderr 로 한 줄 알리는데, 그게 스플래시
-# 한가운데를 뚫고 나오면 지울 줄 수가 어긋난다. 그래서 붙잡아 두었다가
-# 스플래시를 닫은 뒤에 내보낸다.
+# --check 는 새 커밋이 있으면 stderr 로 한 줄 알리고 10 으로 끝난다. 그게
+# 스플래시 한가운데를 뚫고 나오면 지울 줄 수가 어긋나므로 붙잡아 둔다.
+# 묻는 것도 마찬가지라 여기서는 있는지만 알아두고, 스플래시를 닫은 다음에
+# 화면을 쓴다.
 UPDATE_NOTE=""
+UPDATE_COUNT=""
 if [ -z "${RUBATO_NO_UPDATE_CHECK-}" ] && [ -x "$HERE/rubato-update.sh" ]; then
   splash step "업데이트 확인"
-  UPDATE_NOTE="$("$HERE/rubato-update.sh" --check 2>&1 >/dev/null || true)"
+  # set -e 아래라 종료 코드를 직접 받는다. 10 이 "새 것이 있다" 이고,
+  # 그 외의 실패는 업데이트가 없는 것과 같이 취급한다.
+  UPDATE_RC=0
+  UPDATE_NOTE="$("$HERE/rubato-update.sh" --check 2>&1 >/dev/null)" || UPDATE_RC=$?
+  if [ "$UPDATE_RC" != 10 ]; then
+    UPDATE_NOTE=""
+  else
+    # 몇 개인지는 이미 받은 문구에서 뽑는다. 다시 물으면 fetch 가 한 번 더 돈다.
+    # 문구에는 색 코드가 섞여 있고 그 안에도 숫자가 있다(\033[33m). 그대로
+    # 숫자만 긁으면 "3개" 가 "3330개" 로 둔갑한다. 색부터 벗긴다.
+    UPDATE_COUNT="$(printf '%s' "$UPDATE_NOTE" \
+      | sed 's/\033\[[0-9;]*m//g' \
+      | sed -n 's/.*업데이트 \([0-9][0-9]*\)개.*/\1/p')"
+  fi
 fi
 
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
@@ -79,6 +94,32 @@ fi
 splash step "엔진"
 splash close "엔진 시작"
 trap - EXIT INT TERM
+
+# 새 커밋이 있으면 받을지 물어본다. 예면 받아서 다시 만들고, 그 뒤에
+# 새 코드로 세션을 시작한다. 아니오면 알림 한 줄만 남기고 그대로 간다.
+#
+# 묻는 것 자체가 안 되는 곳(파이프, CI, TERM=dumb)에서는 confirm 이 스스로
+# 1 로 빠지므로 예전처럼 한 줄 알림만 남는다.
+if [ -n "$UPDATE_NOTE" ] && [ -z "${RUBATO_NO_UPDATE_PROMPT-}" ]; then
+  QUESTION="rubato 업데이트 ${UPDATE_COUNT:-여러}개를 받을까?"
+  if "$NODE" "$HERE/rubato-confirm.mjs" "$QUESTION" --default-no; then
+    UPDATE_NOTE=""
+    # 받기로 했으면 여기서 끝까지 보여준다. 받기·빌드는 길면 몇 분이라
+    # 진행을 감추면 멈춘 것처럼 보인다.
+    if "$HERE/rubato-update.sh" --yes; then
+      # 받은 뒤에는 새 코드로 다시 시작한다. 이 스크립트 자체도 바뀌었을 수
+      # 있으므로 이어서 도는 대신 처음부터 다시 들어간다. 무한루프를 막기
+      # 위해 두 번째부터는 묻지 않는다.
+      # 재실행이라 스플래시를 또 그리면 로고가 두 번 뜼고 어수선해진다.
+      # 두 번째는 조용히 들어간다.
+      RUBATO_NO_UPDATE_PROMPT=1 RUBATO_NO_SPLASH=1
+      export RUBATO_NO_UPDATE_PROMPT RUBATO_NO_SPLASH
+      exec "$HERE/rubato-pi.sh" "$@"
+    fi
+    printf '\n'
+  fi
+fi
+
 if [ -n "$UPDATE_NOTE" ]; then printf '%s\n\n' "$UPDATE_NOTE" >&2; fi
 
 exec "$NODE" "$ROOT/bin/rubato-pi.mjs" "$@"
