@@ -35,6 +35,7 @@ export function ensureSessionDefaults(
     ...current,
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL_ID,
+    hideThinkingBlock: current.hideThinkingBlock ?? true,
     tips: false,
     disabledBuiltinExtensions: [...disabled],
   };

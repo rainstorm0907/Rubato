@@ -1,0 +1,261 @@
+diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+index bcd492cd..699163f0 100644
+--- a/dist/modes/interactive/components/assistant-message.d.ts
++++ b/dist/modes/interactive/components/assistant-message.d.ts
+@@ -15,9 +15,12 @@ export declare class AssistantMessageComponent extends Container {
+     private hasToolCalls;
+     private expanded;
+     private isStreaming;
++    private thinkingExpanded;
++    private readonly thinkingAction;
+     constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     invalidate(): void;
+     setHideThinkingBlock(hide: boolean): void;
++    dispose(): void;
+     setHiddenThinkingLabel(label: string): void;
+     setExpanded(expanded: boolean): void;
+     setOutputPad(padding: number): void;
+diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+index 638080c4..947324d8 100644
+--- a/dist/modes/interactive/components/assistant-message.js
++++ b/dist/modes/interactive/components/assistant-message.js
+@@ -1,5 +1,6 @@
+-import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
++import { Container, hyperlink, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+ import { getMarkdownTheme, theme } from "../theme/theme.js";
++import { registerInternalAction } from "../internal-actions.js";
+ import { createAssistantRenderDescriptors } from "./assistant-render-descriptors.js";
+ import { createMarkdownTransform } from "./markdown-transform.js";
+ import { createBoundedRenderSignature } from "./render-signature.js";
+@@ -16,7 +17,12 @@ export class AssistantMessageComponent extends Container {
+         this.hasToolCalls = false;
+         this.expanded = false;
+         this.isStreaming = false;
++        this.thinkingExpanded = false;
+         this.hideThinkingBlock = hideThinkingBlock;
++        this.thinkingAction = registerInternalAction(() => {
++            this.thinkingExpanded = !this.thinkingExpanded;
++            this.refreshContent();
++        });
+         this.markdownTheme = markdownTheme;
+         this.hiddenThinkingLabel = hiddenThinkingLabel;
+         this.outputPad = outputPad;
+@@ -39,6 +45,10 @@ export class AssistantMessageComponent extends Container {
+         this.hideThinkingBlock = hide;
+         this.refreshContent();
+     }
++    dispose() {
++        this.thinkingAction.dispose();
++        super.dispose();
++    }
+     setHiddenThinkingLabel(label) {
+         if (this.hiddenThinkingLabel === label)
+             return;
+@@ -88,7 +98,7 @@ export class AssistantMessageComponent extends Container {
+         const descriptors = createAssistantRenderDescriptors(message, {
+             expanded: this.expanded,
+             hiddenThinkingLabel: this.hiddenThinkingLabel,
+-            hideThinkingBlock: this.hideThinkingBlock,
++            hideThinkingBlock: this.hideThinkingBlock && !this.thinkingExpanded,
+             hasToolCalls: this.hasToolCalls,
+         });
+         this.reconcileRenderDescriptors(descriptors);
+@@ -133,6 +143,7 @@ export class AssistantMessageComponent extends Container {
+                     transform: createMarkdownTransform("assistant-thinking", this.isStreaming, this.markdownTransformers),
+                 });
+             case "thinking-label":
++                return new Text(hyperlink(descriptor.text, this.thinkingAction.url), this.outputPad, 0);
+             case "error-text":
+                 return new Text(descriptor.text, this.outputPad, 0);
+             case "provider-native-summary":
+diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/interactive/components/tool-execution.d.ts
+index 5a144f64..27ebd6c1 100644
+--- a/dist/modes/interactive/components/tool-execution.d.ts
++++ b/dist/modes/interactive/components/tool-execution.d.ts
+@@ -14,6 +14,7 @@ export declare class ToolExecutionComponent extends Container {
+     private readonly images;
+     private readonly grokRow;
+     private readonly presentation;
++    private readonly toggleAction;
+     private args;
+     private expanded;
+     private showImages;
+diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
+index ff051a21..3f0a3a19 100644
+--- a/dist/modes/interactive/components/tool-execution.js
++++ b/dist/modes/interactive/components/tool-execution.js
+@@ -1,7 +1,8 @@
+-import { Container, Spacer } from "@earendil-works/pi-tui";
++import { Container, hyperlink, Spacer } from "@earendil-works/pi-tui";
+ import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
+ import { GrokToolRow } from "../grok/tool-row.js";
+ import { theme } from "../theme/theme.js";
++import { registerInternalAction } from "../internal-actions.js";
+ import { readToolProgress } from "../tool-progress.js";
+ import { keyHint } from "./keybinding-hints.js";
+ import { createBoundedRenderSignature } from "./render-signature.js";
+@@ -37,29 +38,17 @@ export class ToolExecutionComponent extends Container {
+         this.imageWidthCells = options.imageWidthCells ?? 60;
+         this.ui = ui;
+         this.presentation = presentation;
++        this.toggleAction = registerInternalAction(() => {
++            this.setExpanded(!this.expanded);
++            this.ui.requestRender();
++        });
+         const initialState = this.createRenderState();
+-        if (this.presentation === "grok") {
+-            this.grokRow = new GrokToolRow({
+-                toolName: this.identity.toolName,
+-                isPartial: initialState.isPartial,
+-                result: initialState.result,
+-            });
+-            this.addChild(new Spacer(1));
+-            this.addChild(this.grokRow);
+-        }
+-        else {
+-            this.renderer = new ToolExecutionRenderer(this.identity, initialState, () => {
+-                this.invalidate();
+-                this.ui.requestRender();
+-            });
+-            this.images = new ToolExecutionImages(() => {
+-                this.invalidateRenderCache();
+-                this.ui.requestRender();
+-            });
+-            this.addChild(new Spacer(1));
+-            this.addChild(this.renderer);
+-            this.addChild(this.images);
+-        }
++        this.grokRow = new GrokToolRow({
++            toolName: this.identity.toolName,
++            isPartial: initialState.isPartial,
++            result: initialState.result,
++        });
++        this.addChild(this.grokRow);
+         this.updateSpinnerAnimation();
+         this.updateDisplay();
+     }
+@@ -99,6 +88,7 @@ export class ToolExecutionComponent extends Container {
+     }
+     dispose() {
+         this.stopAnimation();
++        this.toggleAction.dispose();
+         super.dispose();
+     }
+     setExpanded(expanded) {
+@@ -120,6 +110,9 @@ export class ToolExecutionComponent extends Container {
+         this.updateDisplay();
+     }
+     render(width) {
++        if (!this.expanded) {
++            return super.render(width).map((line) => hyperlink(line, this.toggleAction.url));
++        }
+         if (this.presentation === "grok")
+             return super.render(width);
+         const signature = this.createRenderSignature();
+@@ -157,14 +150,34 @@ export class ToolExecutionComponent extends Container {
+                 isPartial: state.isPartial,
+                 result: state.result,
+             });
+-            return;
++            if (!state.expanded) {
++                if (this.renderer) {
++                    this.removeChild(this.renderer);
++                    this.removeChild(this.images);
++                    this.renderer = undefined;
++                    this.images = undefined;
++                }
++                return;
++            }
++            if (!this.renderer) {
++                this.renderer = new ToolExecutionRenderer(this.identity, state, () => {
++                    this.invalidate();
++                    this.ui.requestRender();
++                });
++                this.images = new ToolExecutionImages(() => {
++                    this.invalidateRenderCache();
++                    this.ui.requestRender();
++                });
++                this.addChild(this.renderer);
++                this.addChild(this.images);
++            }
+         }
+         const renderer = this.renderer;
+         const renderState = renderer.hasRendererDefinition && !renderer.hasResultRenderer
+             ? { ...state, result: collapseFallbackResult(state.result, state.showImages, state.expanded) }
+             : state;
+         renderer.update(renderState);
+-        this.images.updateOptions({
++        this.images?.updateOptions({
+             showImages: state.showImages,
+             maxWidthCells: this.imageWidthCells,
+             showRendererFallback: renderer.hasResultRenderer,
+@@ -264,4 +277,4 @@ export class ToolExecutionComponent extends Container {
+         this.cachedWidth = undefined;
+     }
+ }
+-//# sourceMappingURL=tool-execution.js.map
+\ No newline at end of file
++//# sourceMappingURL=tool-execution.js.map
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index 8cd3c563..c58e2de8 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -86,6 +86,7 @@ import { expandEditorSubmission, expandSubmittedText, transferEditorContent } fr
+ import { formatExtensionErrorHeadline, sanitizeTuiErrorMessage } from "./extension-error-format.js";
+ import { editFileInExternalEditor, editInExternalEditor } from "./external-editor.js";
+ import { GrokChrome } from "./grok/chrome.js";
++import { dispatchInternalAction } from "./internal-actions.js";
+ import { restoreInteractiveStderr, takeOverInteractiveStderr } from "./interactive-stderr-guard.js";
+ import { applyKeybindingsFileEdit, seedKeybindingsFile } from "./keybindings-command.js";
+ import { refreshModelCatalogs } from "./model-catalog-refresh.js";
+@@ -415,7 +416,10 @@ export function createInteractiveTui(options) {
+         return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, {
+             searchMatchStyle: (text) => theme.underline(styleSearchMatch(text)),
+             searchCurrentMatchStyle: (text) => theme.bold(theme.inverse(styleSearchMatch(text))),
+-            openUrl: openBrowser,
++            openUrl: (url) => {
++                if (!dispatchInternalAction(url))
++                    openBrowser(url);
++            },
+             onRightClickPaste: options.onRightClickPaste,
+             copySelection: async (text) => {
+                 try {
+diff --git a/dist/modes/interactive/internal-actions.d.ts b/dist/modes/interactive/internal-actions.d.ts
+new file mode 100644
+index 00000000..0d544c07
+--- /dev/null
++++ b/dist/modes/interactive/internal-actions.d.ts
+@@ -0,0 +1,6 @@
++export interface InternalActionRegistration {
++    url: string;
++    dispose(): void;
++}
++export declare function registerInternalAction(action: () => void): InternalActionRegistration;
++export declare function dispatchInternalAction(url: string): boolean;
+diff --git a/dist/modes/interactive/internal-actions.js b/dist/modes/interactive/internal-actions.js
+new file mode 100644
+index 00000000..72eefbb1
+--- /dev/null
++++ b/dist/modes/interactive/internal-actions.js
+@@ -0,0 +1,21 @@
++const INTERNAL_ACTION_PREFIX = "senpi-action:";
++const actions = new Map();
++let nextActionId = 0;
++
++export function registerInternalAction(action) {
++    const url = `${INTERNAL_ACTION_PREFIX}${++nextActionId}`;
++    actions.set(url, action);
++    return {
++        url,
++        dispose() {
++            actions.delete(url);
++        },
++    };
++}
++
++export function dispatchInternalAction(url) {
++    if (!url.startsWith(INTERNAL_ACTION_PREFIX))
++        return false;
++    actions.get(url)?.();
++    return true;
++}

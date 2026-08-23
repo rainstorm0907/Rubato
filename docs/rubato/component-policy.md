@@ -88,3 +88,24 @@
 2. **`component-list.ts` 충돌을 먼저 본다.** 늘어난 이름이 있으면 새 component다.
 3. 새 component는 기본적으로 **끈 채로** 둔다(배열에 넣지 않는다). 무엇을 하는지 읽고 결정한 뒤 넣는다. upstream은 새 component를 켜진 상태로 추가하므로, 아무 판단 없이 배열에 넣으면 우리가 고르지 않은 것이 돌게 된다.
 4. 결정을 이 문서의 목록에 반영한다.
+
+### Senpi dependency patch
+
+Senpi 런타임의 작고 경계가 분명한 수정은 별도 포크 대신 Bun dependency patch로 관리한다.
+
+- 추적되지 않은 `node_modules/` 수정에 의존하지 않는다.
+- `bun patch @code-yeongyu/senpi`로 임시 패키지를 열고, 출력된 경로에서 최소 수정한 뒤 `bun patch --commit <임시-패키지-경로>`로 고정한다.
+- 생성된 `patches/@code-yeongyu%2Fsenpi@<version>.patch`와 Bun이 `patchedDependencies`를 기록한 lockfile 변경을 함께 커밋한다. 현재 Bun 1.4에서는 `bun.lock`이 등록 위치다.
+- Rubato 소유 테스트는 `node_modules/` 밖에 두고, patch가 바꾼 동작을 직접 확인한다.
+
+Senpi 버전을 올릴 때는 다음 순서로 갱신한다.
+
+1. 의존성을 바꾸기 전에 기존 Senpi 버전과 patch 파일명을 기록한다.
+2. 새 버전을 설치한다. patch 적용 실패는 우회할 오류가 아니라 새 소스에 맞춰 다시 얹으라는 신호다.
+3. 새 버전에 `bun patch @code-yeongyu/senpi`를 다시 열고 의도를 재적용한다. upstream이 이미 흡수했거나 구조를 바꿨는지 먼저 보고, 옛 hunk를 기계적으로 복사하지 않는다.
+4. `bun patch --commit <임시-패키지-경로>`를 실행한 뒤에만 구버전 patch를 제거한다.
+5. patch 전용 테스트, Rubato launcher 테스트, Senpi QA smoke를 실행하고 `.omo/evidence/omo-senpi-adapter/`에 증거를 남긴다.
+6. 깨끗한 설치 상태에서 `bun install --frozen-lockfile`을 실행하고 patch의 표식과 동작이 남는지 확인한다. 남아 있던 `node_modules/` 수정이 아니라 커밋된 patch가 공급원임을 증명하는 단계다.
+7. 업데이트 커밋에는 각 patch가 upstream 흡수로 제거됐는지, 새 소스에 맞춰 갱신됐는지, 그대로 유지됐는지 적는다.
+
+patch가 여러 하위 시스템에 걸치거나 빌드 산출물 재생성을 요구하거나 업데이트마다 반복 충돌하면 Senpi 포크로 올린다. 기준은 단순 줄 수가 아니라 유지보수 소유권이다.
