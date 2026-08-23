@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { loadConfig } from "./config.ts";
 import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
-import { opencodexModelsToFxCatalog } from "./models.ts";
+import { opencodexModelsToFxCatalog, removeDirectCodexDuplicates } from "./models.ts";
 import { DIRECT_CATALOG, directProviderToFxSse, isDirectModel } from "./direct-provider.ts";
 
 const SENSITIVE = /authorization|api[-_]?key|token|secret|refresh/i;
@@ -46,10 +46,14 @@ async function proxyModels(config: ReturnType<typeof loadConfig>, res: ServerRes
     const upstream = await fetch(`${config.opencodexBaseUrl}/v1/models`);
     const payload = await upstream.json();
     const proxied = opencodexModelsToFxCatalog(payload);
-    catalog.data = proxied.data.filter((entry) => {
+    const foreignModels = proxied.data.filter((entry) => {
       const id = String(entry.id);
       return !id.startsWith("xai/") && !id.startsWith("anthropic/") && !id.startsWith("openai-codex/");
     });
+    catalog.data = removeDirectCodexDuplicates(
+      foreignModels,
+      DIRECT_CATALOG.map((model) => model.id),
+    );
   } catch {
     // OpenCodex 가 안 뗴 뿐이다. 직접 프로바이더만 내려준다.
   }

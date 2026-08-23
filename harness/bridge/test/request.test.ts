@@ -24,6 +24,23 @@ test("fx session becomes the OpenCodex prompt cache key", () => {
   assert.equal(request.prompt_cache_key, "session-123");
 });
 
+test("fx system prompts use Responses instructions instead of a system message", () => {
+  const request = fxRequestToResponses("openai/gpt-5.6-sol", {
+    prompt: [
+      { role: "system", content: "Summarize faithfully." },
+      { role: "user", content: [{ type: "text", text: "Conversation text" }] },
+    ],
+  });
+  assert.equal(request.instructions, "Summarize faithfully.");
+  assert.deepEqual(request.input, [
+    {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Conversation text" }],
+    },
+  ]);
+});
+
 test("fx tool history and schema survive conversion", () => {
   const body = fixtureJson("fx-tool-request.json");
   const request = fxRequestToResponses("openai/gpt-5.6-sol", body);

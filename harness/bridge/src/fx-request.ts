@@ -12,6 +12,7 @@ export type FxGatewayRequest = {
 export type ResponsesRequest = {
   model: string;
   stream: true;
+  instructions?: string;
   input: unknown[];
   tools?: unknown[];
   tool_choice?: unknown;
@@ -100,8 +101,9 @@ function mapTools(tools: unknown): unknown[] | undefined {
   return mapped;
 }
 
-function mapPrompt(prompt: unknown): unknown[] {
+function mapPrompt(prompt: unknown): { instructions?: string; input: unknown[] } {
   const items: unknown[] = [];
+  const instructions: string[] = [];
   const messages = Array.isArray(prompt) ? prompt : [];
   for (const message of messages) {
     if (!isObject(message)) continue;
@@ -109,11 +111,8 @@ function mapPrompt(prompt: unknown): unknown[] {
     const content = message.content;
 
     if (role === "system") {
-      items.push({
-        type: "message",
-        role: "system",
-        content: textFromContent(content),
-      });
+      const text = textFromContent(content);
+      if (text) instructions.push(text);
       continue;
     }
 
@@ -187,15 +186,19 @@ function mapPrompt(prompt: unknown): unknown[] {
       }
     }
   }
-  return items;
+  return {
+    ...(instructions.length > 0 ? { instructions: instructions.join("\n\n") } : {}),
+    input: items,
+  };
 }
 
 export function fxRequestToResponses(model: string, body: FxGatewayRequest, sessionId?: string): ResponsesRequest {
   if (!model) throw new Error("missing ai-language-model-id");
+  const prompt = mapPrompt(body.prompt);
   const request: ResponsesRequest = {
     model,
     stream: true,
-    input: mapPrompt(body.prompt),
+    ...prompt,
   };
   const tools = mapTools(body.tools);
   if (tools && tools.length > 0) request.tools = tools;
