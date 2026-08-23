@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnRubatoPi } from "../src/launch.mjs";
 
-const child = spawnRubatoPi();
+const child = await spawnRubatoPi();
 child.on("exit", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
   process.exit(code ?? 1);

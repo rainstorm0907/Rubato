@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultAgentDir, launchEnv } from "./brand.mjs";
-import { ensureBroker } from "./broker.mjs";
+import { ensureBroker, loadCatalog } from "./broker.mjs";
 import { DEFAULT_MODEL } from "./defaults.mjs";
 import { PIN } from "./policy.mjs";
 import { resolveRole } from "./role-contract.mjs";
@@ -76,12 +76,15 @@ export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
   ];
 }
 
-export function spawnRubatoPi({ args = process.argv.slice(2), env = process.env, agentDir = defaultAgentDir() } = {}) {
+export async function spawnRubatoPi({ args = process.argv.slice(2), env = process.env, agentDir = defaultAgentDir() } = {}) {
   assertExactPin();
   ensureBroker({ env });
   const node = resolveNode24();
   mkdirSync(agentDir, { recursive: true });
-  ensureSessionDefaults(agentDir);
+  // 브로커가 지금 실제로 내려주는 카탈로그로 disabledProviders 를 계산한다.
+  // 폴백으로만 계산하면 브로커가 주는 프로바이더를 남이 보고 꺼버린다.
+  const catalog = await loadCatalog({ env });
+  ensureSessionDefaults(agentDir, { catalog });
   if (!existsSync(senpiCliPath())) {
     throw new Error("pinned senpi CLI is missing; run npm install in harness/rubato-pi");
   }
