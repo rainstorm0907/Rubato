@@ -15,13 +15,17 @@ D="$(cd "$(dirname "$0")" && pwd)"
 OUT="$D/.build"
 mkdir -p "$OUT"
 
+# 헤더에 절대경로를 박지 않는다. 산출물은 git 에 추적되는데, 절대경로를 넣으면
+# 빌드한 머신마다 값이 달라져서 파일이 항상 dirty 로 남는다. 그러면
+# rubato 를 한 번 켜는 것만으로 업데이트가 영원히 막힌다 — 세션마다 build.sh 가
+# 자동으로 돌기 때문이다. 위치는 저장소 안에서 고정이라 상대경로로 충분하다.
 emit() {  # emit <산출파일명> <조각...>
   local out="$OUT/$1"; shift
   {
-    echo "<!-- 생성물이다. 고치지 마라. 정본은 $D 의 조각들이고 build.sh 로 다시 만든다. -->"
+    echo "<!-- 생성물입니다. 고치지 마세요. 정본은 harness/prompts 의 조각들이고 build.sh 로 다시 만듭니다. -->"
     echo
     for f in "$@"; do
-      [[ -f "$D/$f" ]] || { echo "build: 조각이 없다 - $D/$f" >&2; exit 1; }
+      [[ -f "$D/$f" ]] || { echo "build: 조각이 없습니다 - $D/$f" >&2; exit 1; }
       cat "$D/$f"
       echo
     done

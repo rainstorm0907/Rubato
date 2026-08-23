@@ -62,3 +62,8 @@ plans/
 !.claude/settings.json
 .dys/
 .build-extension-test-shared-*/
+
+# 프롬프트 합성물. 정본은 harness/prompts 의 조각들이고 build.sh 가 만든다.
+# 세션을 띄울 때마다 자동으로 다시 돌므로 추적하면 항상 diff 로 남고,
+# 그 상태로는 rubato update 가 dirty 게이트에 걸려 영원히 막회다.
+harness/prompts/.build/

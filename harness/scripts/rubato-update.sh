@@ -33,7 +33,7 @@ cd "$REPO"
 CURRENT="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 if [ "$CURRENT" != "$BRANCH" ]; then
   [ "$MODE" = check ] && exit 0
-  warn "지금 브랜치가 $CURRENT 다. $BRANCH 가 아니면 업데이트하지 않는다."
+  warn "지금 브랜치가 $CURRENT 입니다. $BRANCH 가 아니면 업데이트하지 않습니다."
   exit 0
 fi
 
@@ -54,7 +54,7 @@ if [ "$MODE" = check ]; then
   mkdir -p "$(dirname "$STAMP")"
   date +%s > "$STAMP"
 else
-  fetch_now || { err "원격을 받지 못했다. 네트워크를 확인해라."; exit 1; }
+  fetch_now || { err "원격을 받지 못했습니다. 네트워크를 확인해 주세요."; exit 1; }
 fi
 
 LOCAL="$(git rev-parse HEAD)"
@@ -62,7 +62,7 @@ REMOTE="$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "$LOCAL")"
 
 if [ "$LOCAL" = "$REMOTE" ]; then
   [ "$MODE" = check ] && exit 0
-  ok "이미 최신이다."
+  ok "이미 최신입니다."
   exit 0
 fi
 
@@ -71,12 +71,12 @@ BEHIND="$(git rev-list --count "HEAD..origin/$BRANCH")"
 AHEAD="$(git rev-list --count "origin/$BRANCH..HEAD")"
 if [ "$BEHIND" -eq 0 ]; then
   [ "$MODE" = check ] && exit 0
-  ok "받을 것이 없다. 로컬이 $AHEAD 커밋 앞서 있다."
+  ok "받을 것이 없습니다. 로컬이 $AHEAD 커밋 앞서 있습니다."
   exit 0
 fi
 
 if [ "$MODE" = check ]; then
-  printf '%s✦ rubato 업데이트 %s개%s  %s`rubato update` 로 받는다%s\n' \
+  printf '%s✦ rubato 업데이트 %s개%s  %s`rubato update` 로 받으세요%s\n' \
     "$YEL" "$BEHIND" "$RST" "$DIM" "$RST" >&2
   exit 10
 fi
@@ -102,8 +102,8 @@ printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 [ "$need_prompts" = 1 ] && echo "  시스템 프롬프트 합성"
 [ "$need_skills" = 1 ]  && echo "  번들 스킬 → ~/.agents/skills"
 [ "$need_shell" = 1 ]   && echo "  셸 alias 블록 · cmux 세션 복원"
-[ "$need_engine" = 1 ]  && echo "  엔진 플러그인 빌드 ${DIM}(몇 분 걸린다)${RST}"
-[ "$need_deps$need_prompts$need_skills$need_engine$need_shell" = "00000" ] && echo "  ${DIM}없음 — 소스만 받으면 된다${RST}"
+[ "$need_engine" = 1 ]  && echo "  엔진 플러그인 빌드 ${DIM}(몇 분 걸려요)${RST}"
+[ "$need_deps$need_prompts$need_skills$need_engine$need_shell" = "00000" ] && echo "  ${DIM}없음 — 소스만 받으면 돼요${RST}"
 
 # 로컬 수정이 있으면 멈춘다. 남의 작업을 덮지 않는다.
 #
@@ -112,32 +112,68 @@ printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 # upstream 증거 파일이고 실행과 무관하므로 판단에서 뺀다.
 DIRTY="$(git status --porcelain -- . ':(exclude).omo/evidence' 2>/dev/null || true)"
 if [ -n "$DIRTY" ]; then
+  # 수정된 파일이 이번 업데이트가 건드리는 파일과 겹치는지 본다.
+  # 겹치면 받는 순간 진짜로 충돌하고, 겹치지 않으면 fast-forward 는
+  # 사실 깔끔하게 된다 — 같은 "수정이 있음" 이어도 무게가 다르다.
+  # 프로세스 치환(<(...))은 bash 문법이다. 이 스크립트는 #!/bin/sh 로 돌고
+  # 머신에 따라 sh 가 dash 라 깨진다. 임시파일로 받는다.
+  DIRTY_FILES="$(printf '%s\n' "$DIRTY" | awk '{print $NF}' | sort -u)"
+  CHANGED_LIST="$(mktemp)"
+  printf '%s\n' "$CHANGED" > "$CHANGED_LIST"
+  OVERLAP="$(printf '%s\n' "$DIRTY_FILES" | grep -Fxf "$CHANGED_LIST" - 2>/dev/null || true)"
+  rm -f "$CHANGED_LIST"
+
   printf '\n'
-  err "커밋하지 않은 수정이 있다. 정리한 뒤 다시 해라."
-  printf '%s\n' "$DIRTY" | sed 's/^/  /'
+  if [ -n "$OVERLAP" ]; then
+    err "수정 중인 파일이 이번 업데이트와 겹칩니다. 그대로 받으면 충돌해요."
+    printf '\n  %s겹치는 파일%s\n' "$BOLD" "$RST" >&2
+    printf '%s\n' "$OVERLAP" | sed 's/^/    /' >&2
+  else
+    err "커밋하지 않은 수정이 있어서 멈췄습니다."
+    printf '\n  %s이번 업데이트와 겹치지는 않아요 — 따로 둔 뒤 받으면 그대로 돌아옵니다.%s\n' \
+      "$DIM" "$RST" >&2
+  fi
+
+  printf '\n  %s수정된 파일%s\n' "$BOLD" "$RST" >&2
+  printf '%s\n' "$DIRTY" | sed 's/^/    /' >&2
+
+  # 덮지 않는다. 어떤 것도 자동으로 치우거나 치워두지 않고,
+  # 고를 수 있게 길만 보여준다. 판단은 사람 자리다.
+  printf '\n  %s이렇게 할 수 있어요%s\n' "$BOLD" "$RST" >&2
+  printf '    %s커밋하기%s        git add -p && git commit\n' "$DIM" "$RST" >&2
+  printf '    %s잠시 치우기%s      git stash push -u   %s(받은 뒤 git stash pop)%s\n' \
+    "$DIM" "$RST" "$DIM" "$RST" >&2
+  printf '    %s버리기%s          git restore .       %s(되돌릴 수 없어요)%s\n' \
+    "$DIM" "$RST" "$DIM" "$RST" >&2
+  printf '\n' >&2
   exit 1
 fi
 
 if [ "$MODE" != yes ]; then
   # tty 가 없으면(파이프, CI) 묻지 않고 빠진다. 매달리면 안 된다.
   if [ ! -r /dev/tty ] || [ ! -t 1 ]; then
-    printf '\n  %s비대화 환경이다. 받으려면: rubato update --yes%s\n' "$DIM" "$RST"
+    printf '\n  %s비대화 환경입니다. 받으려면: rubato update --yes%s\n' "$DIM" "$RST"
     exit 0
   fi
-  printf '\n받을까? [y/N] '
+  printf '\n받을까요? [y/N] '
   read -r answer </dev/tty || answer=n
-  case "$answer" in y|Y|yes|YES) ;; *) echo "  아무것도 하지 않았다."; exit 0 ;; esac
+  case "$answer" in y|Y|yes|YES) ;; *) echo "  아무것도 하지 않았습니다."; exit 0 ;; esac
 fi
 
 printf '\n%s== 받는 중 ==%s\n' "$BOLD" "$RST"
-git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || { err "fast-forward 실패. 손으로 확인해라."; exit 1; }
+git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || {
+  err "fast-forward 가 안 됩니다. 로컬에만 있는 커밋과 갈라졌을 수 있어요."
+  printf '    %s갈라진 지점을 보려면: git log --oneline --graph HEAD origin/%s%s\n' \
+    "$DIM" "$BRANCH" "$RST" >&2
+  exit 1
+}
 ok "소스 $BEHIND 커밋"
 
 BUN="$(command -v bun || true)"
 
 if [ "$need_deps" = 1 ]; then
   [ -n "$BUN" ] && { (cd "$REPO" && "$BUN" install >/dev/null 2>&1) && ok "엔진 의존성" || warn "bun install 경고"; } \
-                || warn "bun 이 없다. 엔진 의존성은 건너뛴다"
+                || warn "bun 이 없어서 엔진 의존성은 건너뜁니다"
   npm install --prefix "$HARNESS" >/dev/null 2>&1 && ok "bridge 의존성" || warn "bridge 설치 경고"
   npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 && ok "rubato-pi 의존성" || warn "rubato-pi 설치 경고"
 fi
@@ -146,9 +182,9 @@ if [ "$need_engine" = 1 ]; then
   if [ -n "$BUN" ]; then
     printf '  %s… 엔진 빌드 중%s\n' "$DIM" "$RST"
     (cd "$REPO" && "$BUN" run build:senpi-plugin >/dev/null 2>&1) && ok "엔진 플러그인" \
-      || { err "엔진 빌드 실패. 손으로: bun run build:senpi-plugin"; exit 1; }
+      || { err "엔진 빌드에 실패했습니다. 손으로: bun run build:senpi-plugin"; exit 1; }
   else
-    warn "bun 이 없다. 엔진 빌드를 건너뛴다 — 새 component 는 안 돈다"
+    warn "bun 이 없어서 엔진 빌드를 건너뜁니다 — 새 component 는 동작하지 않아요"
   fi
 fi
 
@@ -166,7 +202,7 @@ if [ "$need_shell" = 1 ]; then
   ALIAS_OUT="$("$REPO/install.sh" --apply --only-shell 2>&1 || true)"
   case "$ALIAS_OUT" in
     *"이미 맞다"*)  ok "셸 alias — 그대로" ;;
-    *"alias 블록"*) ok "셸 alias 블록을 갱신했다 ${DIM}(새 셸부터)${RST}" ;;
+    *"alias 블록"*) ok "셸 alias 블록을 갱신했습니다 ${DIM}(새 셸부터)${RST}" ;;
     *)               warn "셸 alias 갱신 경고" ;;
   esac
 
@@ -182,4 +218,4 @@ fi
 # 이미 허락했다 — 스킬과 프롬프트도 여기서 다시 깔린다.
 # cmux.json 은 JSONC 라 쓰면 주석을 잃는다. 그래서 백업을 반드시 남긴다.
 date +%s > "$STAMP"
-printf '\n%s✓%s 업데이트 끝. %s다음 세션부터 적용된다.%s\n\n' "$GRN" "$RST" "$DIM" "$RST"
+printf '\n%s✓%s 업데이트를 마쳤습니다. %s다음 세션부터 적용돼요.%s\n\n' "$GRN" "$RST" "$DIM" "$RST"
