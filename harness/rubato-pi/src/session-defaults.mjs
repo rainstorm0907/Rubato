@@ -1,11 +1,7 @@
 import { existsSync as existsSyncFs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_MODEL_ID, DEFAULT_PROVIDER } from "./defaults.mjs";
-import { builtinProviderIds, foreignProviderIds, providerConfigs } from "./extensions/broker-overlay.mjs";
-
-function ourProviderIds(catalog) {
-  return providerConfigs(catalog).map((config) => config.id);
-}
+import { builtinProviderIds, foreignProviderIds, ourProviderIds } from "./provider-ids.mjs";
 
 export function settingsPath(agentDir) {
   return join(agentDir, "settings.json");
@@ -21,12 +17,55 @@ export function argvHasModel(argv) {
 
 const DISABLED_OAUTH_EXTENSIONS = ["claude-sdk-oauth", "cursor-cli-oauth"];
 
+function readJson(path, { exists, readFile }) {
+  if (!exists(path)) return {};
+  try {
+    const parsed = JSON.parse(readFile(path, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function settingsLookCurrent(current) {
+  if (!current || typeof current !== "object") return false;
+  if (current.defaultProvider !== DEFAULT_PROVIDER) return false;
+  if (current.defaultModel !== DEFAULT_MODEL_ID) return false;
+  if (current.tips !== false) return false;
+  if (typeof current.hideThinkingBlock !== "boolean") return false;
+  if (!Array.isArray(current.disabledBuiltinExtensions)) return false;
+  if (!DISABLED_OAUTH_EXTENSIONS.every((id) => current.disabledBuiltinExtensions.includes(id))) return false;
+  if (current.retry?.maxRetries == null) return false;
+  return true;
+}
+
+export function modelsLookCurrent(current, catalog) {
+  if (!current || typeof current !== "object") return false;
+  if (!Array.isArray(current.disabledProviders) || current.disabledProviders.length === 0) return false;
+  if (!current.disabledProviders.includes("vercel-ai-gateway")) return false;
+  return !ourProviderIds(catalog).some((id) => current.disabledProviders.includes(id));
+}
+
+export function sessionDefaultsLookCurrent(
+  agentDir,
+  { exists = existsSyncFs, readFile = readFileSync, catalog } = {},
+) {
+  return (
+    settingsLookCurrent(readJson(settingsPath(agentDir), { exists, readFile })) &&
+    modelsLookCurrent(readJson(modelsPath(agentDir), { exists, readFile }), catalog)
+  );
+}
+
 export function ensureSessionDefaults(
   agentDir,
   { exists = existsSyncFs, readFile = readFileSync, writeFile = writeFileSync, catalog } = {},
 ) {
   const path = settingsPath(agentDir);
-  const current = exists(path) ? JSON.parse(readFile(path, "utf8")) : {};
+  const current = readJson(path, { exists, readFile });
+  const models = readJson(modelsPath(agentDir), { exists, readFile });
+  if (settingsLookCurrent(current) && modelsLookCurrent(models, catalog)) {
+    return current;
+  }
   const disabled = new Set([
     ...(current.disabledBuiltinExtensions ?? []),
     ...DISABLED_OAUTH_EXTENSIONS,

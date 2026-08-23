@@ -6,10 +6,9 @@ import { senpiNested } from "../engine-paths.mjs";
 const { createProvider } = await import(
   pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/index.js")).href
 );
-const { builtinProviders, getBuiltinProviders } = await import(
-  pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/providers/all.js")).href
-);
 import { ensureBroker, FALLBACK_CATALOG, groupCatalog, loadCatalog } from "../broker.mjs";
+import { builtinProviderIds, foreignProviderIds } from "../provider-ids.mjs";
+export { builtinProviderIds, foreignProviderIds };
 import { streamBroker } from "../broker-stream.mjs";
 
 const COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -112,22 +111,6 @@ export function providerConfigs(catalog = FALLBACK_CATALOG) {
       ...(THINKING_LEVEL_MAPS[model.id] ? { thinkingLevelMap: THINKING_LEVEL_MAPS[model.id] } : {}),
     })),
   }));
-}
-
-/**
- * Built-in pi-ai providers the model picker must never show. Rubato routes every model through the
- * broker, so a provider id we did not register ourselves is a direct-vendor lane with no credentials
- * behind it. Ids the broker also uses (anthropic, openai, xai) stay: our registration replaced them.
- */
-export function builtinProviderIds() {
-  // getBuiltinProviders() only lists ids present in the generated catalog, which misses
-  // credential-only lanes like cursor/ollama/radius. Union both so nothing survives.
-  return [...getBuiltinProviders(), ...builtinProviders().map((provider) => provider.id)];
-}
-
-export function foreignProviderIds(builtinIds, catalog = FALLBACK_CATALOG) {
-  const ours = new Set(providerConfigs(catalog).map((config) => config.id));
-  return [...new Set(builtinIds)].filter((id) => typeof id === "string" && id.length > 0 && !ours.has(id));
 }
 
 export function brokerProviders(catalog = FALLBACK_CATALOG) {

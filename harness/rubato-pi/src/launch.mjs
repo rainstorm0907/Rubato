@@ -7,9 +7,9 @@ import { ensureBroker, loadCatalog } from "./broker.mjs";
 import { DEFAULT_MODEL } from "./defaults.mjs";
 import { PIN } from "./policy.mjs";
 import { resolveRole } from "./role-contract.mjs";
-import { listNodeCandidates, pickNode } from "./select-node.mjs";
+import { listNodeCandidates, pickNode, runningNode } from "./select-node.mjs";
 import { withNoChangelog } from "./no-changelog.mjs";
-import { argvHasModel, ensureSessionDefaults } from "./session-defaults.mjs";
+import { argvHasModel, ensureSessionDefaults, sessionDefaultsLookCurrent } from "./session-defaults.mjs";
 import { replaceSystemPrompt } from "./system-prompt.mjs";
 import { SKILL_DIRS } from "./skills-section.mjs";
 import { syncSenpiTranscriptPatch } from "./sync-tui-patch.mjs";
@@ -54,6 +54,8 @@ export function assertExactPin() {
 }
 
 export function resolveNode24() {
+  const running = runningNode();
+  if (running) return running;
   const picked = pickNode(listNodeCandidates(undefined, [process.execPath]));
   if (!picked) {
     throw new Error("rubato-pi needs Node.js 24+ already installed. Default Node was not changed.");
@@ -103,10 +105,13 @@ export async function spawnRubatoPi({ args = process.argv.slice(2), env = proces
   ensureBroker({ env });
   const node = resolveNode24();
   mkdirSync(agentDir, { recursive: true });
-  // 브로커가 지금 실제로 내려주는 카탈로그로 disabledProviders 를 계산한다.
-  // 폴백으로만 계산하면 브로커가 주는 프로바이더를 남이 보고 꺼버린다.
+  // 카탈로그는 매번 받는다. 파일이 "이미 맞다"를 폴백 id 로만 보면
+  // 브로커가 새로 연 프로바이더가 disabled 에 영영 남는다.
+  // 쓰기를 건너뛰는 판단도 방금 받은 목록 기준이다.
   const catalog = await loadCatalog({ env });
-  ensureSessionDefaults(agentDir, { catalog });
+  if (!sessionDefaultsLookCurrent(agentDir, { catalog })) {
+    ensureSessionDefaults(agentDir, { catalog });
+  }
   if (!existsSync(senpiCliPath())) {
     throw new Error("pinned senpi CLI is missing; run npm install in harness/rubato-pi");
   }

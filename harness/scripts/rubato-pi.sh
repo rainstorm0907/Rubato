@@ -31,8 +31,37 @@ splash() { [ -x "$SPLASH" ] && "$SPLASH" "$@" || true; }
 splash open
 
 # 스플래시를 켜 둔 채로 죽으면 커서가 사라진 터미널이 남는다. 어떻게
-# 끝나든 커서는 되돌린다.
-trap 'printf "\033[?25h"' EXIT INT TERM
+# 끝나든 커서는 되돌린다. 업데이트 확인을 백그라운드로 돌리면 그 임시
+# 파일도 같이 치운다.
+UPDATE_NOTE=""
+UPDATE_COUNT=""
+UPDATE_PID=""
+UPDATE_OUT=""
+cleanup() {
+  if [ -n "${UPDATE_PID-}" ]; then
+    kill "$UPDATE_PID" 2>/dev/null || true
+    wait "$UPDATE_PID" 2>/dev/null || true
+  fi
+  [ -n "${UPDATE_OUT-}" ] && rm -f "$UPDATE_OUT"
+  printf '\033[?25h'
+}
+trap cleanup EXIT INT TERM
+
+# fetch 는 0.5초라 프롬프트·브리지·엔진 준비와 겹친다. 결과는 스플래시를
+# 닫기 직전에 받는다. 묻는 시점과 문구는 예전과 같다.
+if [ -z "${RUBATO_NO_UPDATE_CHECK-}" ] && [ -x "$HERE/rubato-update.sh" ]; then
+  UPDATE_OUT="$(mktemp "${TMPDIR:-/tmp}/rubato-update.XXXXXX")" || UPDATE_OUT=""
+  if [ -n "$UPDATE_OUT" ]; then
+    (
+      set +e
+      note=$("$HERE/rubato-update.sh" --check 2>&1 >/dev/null)
+      rc=$?
+      printf '%s\n' "$rc"
+      printf '%s' "$note"
+    ) >"$UPDATE_OUT" 2>/dev/null &
+    UPDATE_PID=$!
+  fi
+fi
 
 # 로컬에서 프롬프트 조각을 고친 뒤 build.sh 를 잊어도 새 세션에는 바로
 # 반영한다. 합성은 보통 0.01초고, 실패하면 낡은 프롬프트로 시작하지 않는다.
@@ -69,33 +98,6 @@ if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
   fi
 fi
 
-# 매 실행마다 원격에 새 커밋이 있는지 본다. 있으면 스플래시를 닫은 뒤에
-# 받을지 물어본다. 실패해도 세션 시작을 막지 않는다.
-#
-# --check 는 새 커밋이 있으면 stderr 로 한 줄 알리고 10 으로 끝난다. 그게
-# 스플래시 한가운데를 뚫고 나오면 지울 줄 수가 어긋나므로 붙잡아 둔다.
-# 묻는 것도 마찬가지라 여기서는 있는지만 알아두고, 스플래시를 닫은 다음에
-# 화면을 쓴다.
-UPDATE_NOTE=""
-UPDATE_COUNT=""
-if [ -z "${RUBATO_NO_UPDATE_CHECK-}" ] && [ -x "$HERE/rubato-update.sh" ]; then
-  splash step "업데이트 확인"
-  # set -e 아래라 종료 코드를 직접 받는다. 10 이 "새 것이 있다" 이고,
-  # 그 외의 실패는 업데이트가 없는 것과 같이 취급한다.
-  UPDATE_RC=0
-  UPDATE_NOTE="$("$HERE/rubato-update.sh" --check 2>&1 >/dev/null)" || UPDATE_RC=$?
-  if [ "$UPDATE_RC" != 10 ]; then
-    UPDATE_NOTE=""
-  else
-    # 몇 개인지는 이미 받은 문구에서 뽑는다. 다시 물으면 fetch 가 한 번 더 돈다.
-    # 문구에는 색 코드가 섞여 있고 그 안에도 숫자가 있다(\033[33m). 그대로
-    # 숫자만 긁으면 "3개" 가 "3330개" 로 둔갑한다. 색부터 벗긴다.
-    UPDATE_COUNT="$(printf '%s' "$UPDATE_NOTE" \
-      | sed 's/\033\[[0-9;]*m//g' \
-      | sed -n 's/.*업데이트 \([0-9][0-9]*\)개.*/\1/p')"
-  fi
-fi
-
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 SELECT="$ROOT/scripts/select-node.mjs"
 if [ -x "$HOME/.nvm/versions/node/v24.18.0/bin/node" ]; then
@@ -106,9 +108,16 @@ else
   echo "rubato-pi needs Node.js 24+ already installed. Default Node was not changed." >&2
   exit 2
 fi
+# 이미 24 경로를 집었으면 후보를 다시 훑지 않는다. select-node 는
+# 하드코딩한 nvm 경로가 없을 때 다른 24 를 찾는 용도다.
 if [ -f "$SELECT" ]; then
-  splash step "node"
-  NODE="$("$NODE" "$SELECT" --print)"
+  case "$NODE" in
+    */v24.*/bin/node) ;;
+    *)
+      splash step "node"
+      NODE="$("$NODE" "$SELECT" --print)"
+      ;;
+  esac
 fi
 
 # 엔진 산출물을 레포 밖에 준비한다. 이미 신선하면 즉시 끝나고(해시 비교만
@@ -130,6 +139,29 @@ fi
 if [ -z "${RUBATO_NO_VAULT-}" ] && [ -f "$HOME/.config/cmux/cmux.json" ]; then
   splash step "세션 복원"
   "$NODE" "$HERE/cmux-vault.mjs" --apply >/dev/null 2>&1 || true
+fi
+
+# fetch 가 아직이면 여기서 받는다. 이미 끝났으면 wait 은 즉시 돌아온다.
+if [ -n "${UPDATE_PID-}" ]; then
+  splash step "업데이트 확인"
+  wait "$UPDATE_PID" || true
+  UPDATE_PID=""
+  if [ -n "$UPDATE_OUT" ] && [ -f "$UPDATE_OUT" ]; then
+    UPDATE_RC="$(sed -n '1p' "$UPDATE_OUT")"
+    UPDATE_NOTE="$(sed '1d' "$UPDATE_OUT")"
+    rm -f "$UPDATE_OUT"
+    UPDATE_OUT=""
+    if [ "$UPDATE_RC" != 10 ]; then
+      UPDATE_NOTE=""
+    else
+      # 몇 개인지는 이미 받은 문구에서 뽑는다. 다시 물으면 fetch 가 한 번 더 돈다.
+      # 문구에는 색 코드가 섞여 있고 그 안에도 숫자가 있다(\033[33m). 그대로
+      # 숫자만 긁으면 "3개" 가 "3330개" 로 둔갑한다. 색부터 벗긴다.
+      UPDATE_COUNT="$(printf '%s' "$UPDATE_NOTE" \
+        | sed 's/\033\[[0-9;]*m//g' \
+        | sed -n 's/.*업데이트 \([0-9][0-9]*\)개.*/\1/p')"
+    fi
+  fi
 fi
 
 # 그린 것을 지우고 한 줄만 남긴다. 엔진은 이 다음부터 화면을 잡는다.

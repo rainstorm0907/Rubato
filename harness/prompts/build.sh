@@ -33,11 +33,28 @@ emit() {  # emit <산출파일명> <조각...>
   echo "wrote $out ($(wc -l < "$out" | tr -d ' ') lines)"
 }
 
+# 조각과 이 스크립트가 산출물보다 오래됐으면 다시 쓰지 않는다. 세션마다
+# 돌리는데 내용은 거의 안 바뀌어서, 있을 때는 비교만 한다.
+fresh() {
+  local out="$1"; shift
+  [[ -f "$out" ]] || return 1
+  [[ "$0" -nt "$out" ]] && return 1
+  for f in "$@"; do
+    [[ -f "$D/$f" ]] || return 1
+    [[ "$D/$f" -nt "$out" ]] && return 1
+  done
+  return 0
+}
+
 # 시스템 프롬프트 = 공통 운영 계약 + 역할 + 말투. 말투가 마지막인 것은 의도다 — 앞의 영어 산문에
 # 눌리지 않아야 하고, 역할마다 읽는 사람이 달라서 갈리는 것이 말투 하나뿐이기 때문이다.
 #
 # 역할은 셋(lead/owner/verifier)이지만 파일은 둘이다. owner 와 verifier 는 같은
 # teammate 파일을 쓴다 — 검증도 하나의 워크스트림이고, verifier 는 산출물이 판단인
 # owner 다. 둘을 가르는 것은 부팅 프롬프트가 아니라 받는 브리프다.
-emit lead.pi.md     base.pi.md core-lead.pi.md     voice-lead.md
-emit teammate.pi.md base.pi.md core-teammate.pi.md voice-teammate.md
+if ! fresh "$OUT/lead.pi.md" base.pi.md core-lead.pi.md voice-lead.md; then
+  emit lead.pi.md     base.pi.md core-lead.pi.md     voice-lead.md
+fi
+if ! fresh "$OUT/teammate.pi.md" base.pi.md core-teammate.pi.md voice-teammate.md; then
+  emit teammate.pi.md base.pi.md core-teammate.pi.md voice-teammate.md
+fi

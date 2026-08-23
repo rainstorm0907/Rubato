@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { argvHasModel, ensureModelsConfig, ensureSessionDefaults } from "../../src/session-defaults.mjs";
+import {
+  argvHasModel,
+  ensureModelsConfig,
+  ensureSessionDefaults,
+  modelsLookCurrent,
+  sessionDefaultsLookCurrent,
+  settingsLookCurrent,
+} from "../../src/session-defaults.mjs";
 
 test("launch keeps an explicit model flag and fills Opus otherwise", () => {
   assert.equal(argvHasModel(["--mode", "rpc"]), false);
@@ -73,6 +80,68 @@ test("models.json reclaims a provider that became ours after it was disabled", (
   });
   assert.ok(!next.disabledProviders.includes("openai-codex"), "stale openai-codex must be reclaimed");
   assert.ok(next.disabledProviders.includes("vercel-ai-gateway"), "genuinely foreign ids stay disabled");
+});
+
+test("already-current session files are left untouched", () => {
+  const written = {};
+  const settings = {
+    defaultProvider: "anthropic",
+    defaultModel: "claude-opus-5",
+    hideThinkingBlock: true,
+    tips: false,
+    retry: { maxRetries: 5 },
+    disabledBuiltinExtensions: ["claude-sdk-oauth", "cursor-cli-oauth"],
+    theme: "dark",
+  };
+  const models = {
+    providers: {},
+    disabledProviders: ["vercel-ai-gateway", "alibaba-token-plan"],
+  };
+  const files = {
+    "/tmp/agent/settings.json": JSON.stringify(settings),
+    "/tmp/agent/models.json": JSON.stringify(models),
+  };
+  const hooks = {
+    exists: (path) => path in files,
+    readFile: (path) => files[path],
+    writeFile: (path, text) => {
+      written[path] = text;
+    },
+  };
+  assert.equal(sessionDefaultsLookCurrent("/tmp/agent", hooks), true);
+  const next = ensureSessionDefaults("/tmp/agent", hooks);
+  assert.equal(next.theme, "dark");
+  assert.deepEqual(written, {});
+});
+
+test("live catalog with a new broker provider is not treated as current", () => {
+  const models = { disabledProviders: ["vercel-ai-gateway", "newco"] };
+  assert.equal(modelsLookCurrent(models), true);
+  assert.equal(
+    modelsLookCurrent(models, [{ id: "anthropic/claude-opus-5" }, { id: "newco/widget" }]),
+    false,
+  );
+});
+
+test("stale models that still disable a broker provider are not treated as current", () => {
+  assert.equal(
+    modelsLookCurrent(
+      { disabledProviders: ["vercel-ai-gateway", "openai-codex"] },
+      [{ id: "openai-codex/gpt-5.6-sol" }],
+    ),
+    false,
+  );
+  assert.equal(
+    settingsLookCurrent({
+      defaultProvider: "anthropic",
+      defaultModel: "claude-opus-5",
+      hideThinkingBlock: true,
+      tips: false,
+      disabledBuiltinExtensions: ["claude-sdk-oauth"],
+      retry: { maxRetries: 5 },
+    }),
+    false,
+  );
 });
 
 // 브로커가 내려주는 카탈로그를 넘기면 그 프로바이더도 회수 대상이다.
