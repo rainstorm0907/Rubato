@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, openSync, statSync } from "node:fs";
+import { closeSync, openSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,12 +105,20 @@ export function startBroker({ env = process.env, spawn: spawnImpl = spawn } = {}
   }
 }
 
+// 브리지 소스 중 가장 최근에 고쳐진 시각. 살아 있는 브리지가 이보다 먼저
+// 떴으면 낡은 코드를 돌고 있는 것이다.
+//
+// 파일 이름을 나열하지 않고 디렉터리를 훑는다. 목록을 손으로 관리하면 새
+// 파일이 반드시 빠진다 — 실제로 `upstream-dispatcher.ts`(트랜스포트 자체)가
+// 빠져서, 고친 브리지를 두고도 새 세션이 낡은 프로세스에 그대로 붙었다.
 export function bridgeSourceMtimeMs() {
   const bridgeDir = fileURLToPath(new URL("../../bridge/src/", import.meta.url));
-  return Math.max(
-    ...["server.ts", "models.ts", "direct-provider.ts", "fx-request.ts", "fx-stream.ts"]
-      .map((name) => statSync(join(bridgeDir, name)).mtimeMs),
-  );
+  const times = readdirSync(bridgeDir)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => statSync(join(bridgeDir, name)).mtimeMs);
+  // 소스를 읽을 수 없으면 재시작을 강요하지 않는다 — 판단 불가일 뿐 낡은 것은
+  // 아니다. 0 을 주면 살아 있는 브리지가 항상 신선한 것으로 통과한다.
+  return times.length > 0 ? Math.max(...times) : 0;
 }
 
 export function restartBroker({ env = process.env, spawnSyncImpl = spawnSync } = {}) {

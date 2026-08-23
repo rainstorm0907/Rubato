@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, statSync, utimesSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import brokerOverlay, {
   brokerProviders,
   builtinProviderIds,
@@ -114,6 +117,31 @@ test("ensureBroker restarts a stale relay before reusing it", () => {
   });
   assert.equal(got.started, true);
   assert.equal(restarted, 1);
+});
+
+test("bridge freshness watches every source file, not a hand-kept list", () => {
+  // 목록을 손으로 관리하면 새 파일이 빠진다. 실제로 `upstream-dispatcher.ts` 가
+  // 빠져서 브리지를 고치고도 새 세션이 낡은 프로세스에 붙었다. 어느 파일을
+  // 건드려도 시각이 올라가야 한다.
+  const bridgeDir = fileURLToPath(new URL("../../../bridge/src/", import.meta.url));
+  const sources = readdirSync(bridgeDir).filter((name) => name.endsWith(".ts"));
+  assert.ok(sources.length > 5, `expected several bridge sources, saw ${sources.length}`);
+
+  const baseline = bridgeSourceMtimeMs();
+  for (const name of sources) {
+    const path = join(bridgeDir, name);
+    const original = statSync(path);
+    const bumped = new Date(baseline + 60_000);
+    utimesSync(path, bumped, bumped);
+    try {
+      assert.ok(
+        bridgeSourceMtimeMs() > baseline,
+        `touching ${name} must make the bridge look stale`,
+      );
+    } finally {
+      utimesSync(path, original.atime, original.mtime);
+    }
+  }
 });
 
 test("bridge freshness source exists and restart targets the narrow script", () => {
