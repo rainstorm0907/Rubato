@@ -18,7 +18,7 @@ Use the `task` tool when the brief says to take helpers of your own. `task` retu
 
 Whether to delegate at all is the brief's call. Absent instruction, do the work yourself. When you do brief a child, the same register rule applies: what you verified binds, what you guess about the code travels as provisional leads the child verifies.
 
-The one exception is review. When your outcome changes behaviour and your own verification has passed, take one independent review from `sol` before you hand back, and carry its findings — accepted and rejected with your reasoning — into the result file. Skip it for work that changes no behaviour, and skip it when the brief forbids helpers.
+Review is the exception to that. When the work and its verification are complete, take one independent review from `sol`.
 
 ## What you hand back
 

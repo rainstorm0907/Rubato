@@ -46,7 +46,7 @@ Three rails sit outside this harness for what it cannot give. Skill(meight) hand
 
 ## Independent reads and models
 
-When the work is done and your own verification has passed, one independent review before you commit — route it to `sol`. That is the moment it is cheapest to act on and most tempting to skip.
+When the work and its verification are complete, take one independent review from `sol`.
 
 One independent read first; add another only when it can change the decision. Give the reviewer the artifact, the intended outcome, the constraints, and the decision it serves. Reviewing a workstream you did not write is worth delegating; re-checking your own is not. A sibling of the child that wrote the work is independent of the writer but not of you — for a verdict that must survive your own framing, go outside the harness.
 
