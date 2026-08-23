@@ -91,21 +91,53 @@
 
 ### Senpi dependency patch
 
-Senpi 런타임의 작고 경계가 분명한 수정은 별도 포크 대신 Bun dependency patch로 관리한다.
+Senpi 런타임과 그것이 읽는 pi-TUI의 작고 경계가 분명한 수정은 별도 포크 대신 **append-only patch series**로 관리한다. 적용은 `postinstall.mjs`가 한다.
 
-- 추적되지 않은 `node_modules/` 수정에 의존하지 않는다.
-- `bun patch @code-yeongyu/senpi`로 임시 패키지를 열고, 출력된 경로에서 최소 수정한 뒤 `bun patch --commit <임시-패키지-경로>`로 고정한다.
-- 생성된 `patches/@code-yeongyu%2Fsenpi@<version>.patch`와 Bun이 `patchedDependencies`를 기록한 lockfile 변경을 함께 커밋한다. 현재 Bun 1.4에서는 `bun.lock`이 등록 위치다.
-- Rubato 소유 테스트는 `node_modules/` 밖에 두고, patch가 바꾼 동작을 직접 확인한다.
+```
+patches/@code-yeongyu%2Fsenpi@2026.8.22.patch          baseline — 동결. 재생성하지 않는다
+patches/@code-yeongyu%2Fsenpi/2026.8.22/<id>.patch     series — 추가만 한다
+patches/@code-yeongyu%2Fsenpi-tui@2026.8.22.patch      (pi-TUI도 같은 두 층)
+patches/@code-yeongyu%2Fsenpi-tui/2026.8.22/<id>.patch
+```
 
-Senpi 버전을 올릴 때는 다음 순서로 갱신한다.
+적용 순서는 baseline 다음에 series를 **파일명 오름차순**이다. 명시적 index 파일은 두지 않는다 — 그건 다시 모두가 함께 쓰는 파일이 되어 없애려던 경합을 되살린다. 파일명 앞의 UTC 타임스탬프가 순서를 준다.
 
-1. 의존성을 바꾸기 전에 기존 Senpi 버전과 patch 파일명을 기록한다.
-2. 새 버전을 설치한다. patch 적용 실패는 우회할 오류가 아니라 새 소스에 맞춰 다시 얹으라는 신호다.
-3. 새 버전에 `bun patch @code-yeongyu/senpi`를 다시 열고 의도를 재적용한다. upstream이 이미 흡수했거나 구조를 바꿨는지 먼저 보고, 옛 hunk를 기계적으로 복사하지 않는다.
-4. `bun patch --commit <임시-패키지-경로>`를 실행한 뒤에만 구버전 patch를 제거한다.
+#### 왜 `bun patch` + `patchedDependencies`로 돌아가면 안 되는가
+
+**되돌리지 마라. 그 경로는 화면에 닿지 않는다.**
+
+`@earendil-works/pi-tui`는 두 벌 깔린다. 워크스페이스 루트의 것과, Senpi가 자기 `node_modules` 안에 품은 것이다. **세션이 실제로 읽는 것은 후자**인데 Bun의 `patchedDependencies`는 전자만 고친다. 그래서 patch는 정확한데 화면은 원본인 상태가 오래 갔고, 검증조차 패치된 사본을 직접 열어보고 통과했다. 슬래시 자동완성 수정이 세 번 연속으로 "고쳤는데 안 되는" 상태였던 것이 그것이다.
+
+지금은 `postinstall.mjs`의 `VENDOR_PATCHES[].resolveRoot()`가 `realpath`로 **중첩 사본을 직접 타겟한다**. 세션 시작 때 `node_modules`를 보정하는 우회로(`syncTuiPatch`)도 함께 걷어냈다 — 그건 소스 자리가 원본으로 바뀐 뒤 postinstall의 작업을 매번 되돌리고 있었다.
+
+#### 수정하는 절차
+
+```bash
+bun run vendor:patch open senpi          # 세션 전용 작업 공간을 만든다
+#   /tmp/rubato-vendor-<session>/senpi/work  ← 여기서 편집한다
+#   /tmp/rubato-vendor-<session>/senpi/base  ← 비교 기준. 건드리지 않는다
+bun run vendor:patch save senpi <change-id>   # 새 patch 파일 하나를 만든다
+node postinstall.mjs && bun run test:patches  # 적용과 검증
+```
+
+- **`node_modules`를 직접 고치지 않는다.** 작업 공간은 임시 디렉터리이고 언제든 버릴 수 있다.
+- **파일 목록을 사람이 고르지 않는다.** `save`가 작업 공간 전체를 자동 비교한다. 손으로 고르다 신규 파일이 빠져서, 그것을 import하는 변경만 patch에 남고 런타임에서 터진 적이 있다. 기능 하나는 patch 하나에 통째로 들어가야 원자성이 산다.
+- **기존 patch는 절대 고치지 않는다.** 되돌리거나 바꾸려면 그 위에 얹는 새 patch를 만든다.
+- 세션마다 다른 patch 파일에 쓰므로 두 사람이 동시에 작업해도 마지막 저장자 승리가 없다. 서로 다른 파일이면 순서대로 적용되고, **같은 줄을 건드리면 `postinstall.mjs`가 어느 patch가 어디서 부딪혔는지 말하고 멈춘다.** 자동 병합은 하지 않는다.
+- 작업 공간이 여럿이면 `--session <name>`으로 가른다.
+
+`open`은 복사 전에 설치본이 정말 baseline + 현재 series와 일치하는지 확인한다. 그래서 pristine tarball(`npm pack`)을 따로 받지 않는다 — 새 patch가 얹힐 자리는 pristine이 아니라 series가 적용된 상태이고, 설치본이 이미 그 상태임을 postinstall이 매번 역적용 round-trip으로 증명하기 때문이다.
+
+Rubato 소유 테스트는 `node_modules/` 밖(`patch-tests/`)에 두고, patch가 바꾼 동작을 직접 확인한다. `patch-tests/vendor-patch-live.test.ts`는 **실제로 도는 사본**에 patch가 살아 있는지 역적용으로 본다.
+
+#### Senpi 버전을 올릴 때
+
+1. 새 버전을 설치한다. patch 적용 실패는 우회할 오류가 아니라 새 소스에 맞춰 다시 얹으라는 신호다.
+2. `VENDOR_PATCHES`의 `expectedVersion`을 올린다. 버전이 다르면 postinstall이 hunk 실패가 아니라 버전 불일치로 말하고 멈춘다.
+3. 새 버전에서 작업 공간을 열고 의도를 재적용한다. upstream이 이미 흡수했거나 구조를 바꿨는지 먼저 보고, 옛 hunk를 기계적으로 복사하지 않는다.
+4. 새 버전용 baseline은 새로 뜨고, series 디렉터리도 새 버전 이름으로 시작한다. **옛 버전의 patch들은 지우지 않고 그대로 둔다** — 무엇을 왜 고쳤는지의 기록이다.
 5. patch 전용 테스트, Rubato launcher 테스트, Senpi QA smoke를 실행하고 `.omo/evidence/omo-senpi-adapter/`에 증거를 남긴다.
-6. 깨끗한 설치 상태에서 `bun install --frozen-lockfile`을 실행하고 patch의 표식과 동작이 남는지 확인한다. 남아 있던 `node_modules/` 수정이 아니라 커밋된 patch가 공급원임을 증명하는 단계다.
+6. 깨끗한 설치 상태에서 `bun install --frozen-lockfile`을 실행하고 patch의 동작이 남는지 확인한다. 남아 있던 `node_modules/` 수정이 아니라 커밋된 patch가 공급원임을 증명하는 단계다.
 7. 업데이트 커밋에는 각 patch가 upstream 흡수로 제거됐는지, 새 소스에 맞춰 갱신됐는지, 그대로 유지됐는지 적는다.
 
 patch가 여러 하위 시스템에 걸치거나 빌드 산출물 재생성을 요구하거나 업데이트마다 반복 충돌하면 Senpi 포크로 올린다. 기준은 단순 줄 수가 아니라 유지보수 소유권이다.
