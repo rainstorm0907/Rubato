@@ -19,11 +19,6 @@ if [ "${1-}" = "update" ]; then
   shift
   exec "$HERE/rubato-update.sh" "$@"
 fi
-# cmux 사용자용. Vault 에 등록해 두면 앱을 꺼다 켜도 세션이 돌아온다.
-if [ "${1-}" = "vault" ]; then
-  shift
-  exec node "$HERE/cmux-vault.mjs" "${1---apply}"
-fi
 
 # 하루 한 번, 원격에 새 커밋이 있으면 한 줄 알린다. 받는 것은 `rubato update`.
 # 실패해도 세션 시작을 막지 않는다.
@@ -44,4 +39,13 @@ fi
 if [ -f "$SELECT" ]; then
   NODE="$("$NODE" "$SELECT" --print)"
 fi
+
+# cmux 세션 복원을 붙인다. 이게 없으면 cmux 를 꺼다 켜는 순간 세션이
+# 통째로 날아간다. cmux 를 안 쓰면 아무 일도 안 생기고, 이미 맞으면 조용하다.
+# 경로가 어긋난 때도(하네스를 옮기면 절대경로가 깨진다) 여기서 고친다.
+# 쓰면 JSONC 주석을 잃어서 백업을 남긴다. 실패해도 세션을 막지 않는다.
+if [ -z "${RUBATO_NO_VAULT-}" ] && [ -f "$HOME/.config/cmux/cmux.json" ]; then
+  "$NODE" "$HERE/cmux-vault.mjs" --apply >/dev/null 2>&1 || true
+fi
+
 exec "$NODE" "$ROOT/bin/rubato-pi.mjs" "$@"

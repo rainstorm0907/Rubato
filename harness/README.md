@@ -64,21 +64,21 @@ Pi 는 기본 지원이지만 rubato 는 둘이 어긋난다 — 프로세스가
 `node .../rubato-pi.mjs` 로 뜨고, 세션이 `~/.pi` 가 아니라 `~/.rubato-pi/agent/sessions` 에
 쌓인다. 둘 다 명시해야 맞는다.
 
+**`rubato` 를 띄우면 알아서 들어간다.** 따로 칠 명령은 없다. cmux 를 안 쓰면
+아무 일도 안 생기고, 이미 맞으면 조용하다(43ms). 하네스를 옮겨 `resumeCommand` 의
+절대경로가 깨졌을 때도 같은 자리에서 고친다.
+
+`~/.config/cmux/cmux.json` 은 JSONC 라 **쓰면 주석을 잃는다**. 그래서 건드릴 때마다
+`cmux.json.<날짜>.bak` 을 남긴다. 다른 항목은 그대로 둔다.
+
+끄려면 `RUBATO_NO_VAULT=1`. 상태만 보거나 블록을 손으로 넣고 싶으면:
+
 ```bash
-rubato vault           # 등록한다 (백업을 남긴다)
-rubato vault --check   # 상태만 본다
-rubato vault --print   # 붙여넣을 블록만 출력한다
+node harness/scripts/cmux-vault.mjs --check   # 상태만
+node harness/scripts/cmux-vault.mjs --print   # 붙여넣을 블록만
 ```
 
-`~/.config/cmux/cmux.json` 은 **사용자가 손으로 고치는 JSONC** 라 설치도 업데이트도
-자동으로 꾸지 않는다. 넣는 것은 사람이 `rubato vault` 로 고른다 — 쓰는 순간 주석을
-잃기 때문이다(백업에는 남는다).
-
-예외가 하나 있다. **이미 등록된 항목의 경로가 지금 클론과 어긋나면** `rubato update` 가
-조용히 고친다. 하네스를 옮기면 `resumeCommand` 의 절대경로가 깨지는데, 그건 우리가
-만든 항목을 우리가 고치는 것이지 남의 설정을 덮는 게 아니다.
-
-`cmux reload-config` 로 반영한다. 놀고 있는 세션의 RAM 까지 회수하려면 cmux 설정의
+반영은 `cmux reload-config`. 놀고 있는 세션의 RAM 까지 회수하려면 cmux 설정의
 `terminal.agentHibernation` 을 따로 켜라 — 둥이는 세션을 죽였다가 탭을 열 때 되살린다.
 
 **요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). `opencodex` 는 선택이다 — Codex 는 OAuth 로 직접 가고, OpenCodex 가 있으면 그쪽 모델이 카탈로그에 더해질 뿐이다.

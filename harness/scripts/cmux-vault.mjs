@@ -9,11 +9,11 @@
 // 둘 다 vault.agents 에 명시해서 맞춘다.
 //
 // 기본은 상태만 본다. --print 는 붙여넣을 블록을, --apply 는 실제로 쓴다.
-// cmux.json 은 사용자가 손으로 고치는 JSONC 라 --apply 는 반드시 백업을 남긴다.
+// 미등록이면 넣고, 경로가 옵기면(하네스를 옮기면 절대경로가 깨진다) 고친다.
+// cmux.json 은 사용자가 손으로 고치는 JSONC 라 쓰면 주석을 잃는다.
+// --apply 가 반드시 백업을 남기는 이유다.
 //
-// --repair 는 업데이트가 부르는 자리다. 이미 등록된 항목의 경로가 이 클론과
-// 어긋났을 때만 고친다(하네스를 옮기면 절대경로가 깨진다). 미등록이면 손대지
-// 않는다 — 남의 설정에 우리 블록을 말없이 꽂지 않는다.
+// 부르는 곳은 `rubato update` 단 하나다. 따로 서브커맨드를 두지 않는다.
 
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -163,21 +163,12 @@ function main() {
       process.exit(0);
     }
     const backup = apply(raw, config, LAUNCHER);
-    console.log(`cmux.json 에 rubato 를 등록했다. 백업: ${backup}`);
-    console.log("주석은 백업에만 남는다. 반영: cmux reload-config");
+    const verb = state === "stale" ? "경로를 이 클론으로 고쳤다" : "를 등록했다";
+    console.log(`cmux.json 에 rubato ${verb}. 백업: ${backup}`);
     process.exit(0);
   }
 
-  // 업데이트용. 고친 것이 있을 때만 말한다.
-  if (mode === "--repair") {
-    if (state === "stale") {
-      const backup = apply(raw, config, LAUNCHER);
-      console.log(`  cmux Vault 의 rubato 경로를 이 클론으로 고쳤다. 백업: ${backup}`);
-    }
-    process.exit(0);
-  }
-
-  console.error("사용법: cmux-vault.mjs [--check|--print|--apply|--repair]");
+  console.error("사용법: cmux-vault.mjs [--check|--print|--apply]");
   process.exit(2);
 }
 
