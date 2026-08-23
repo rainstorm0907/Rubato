@@ -16,21 +16,39 @@
 ## 설치 — 이 레포만으로
 
 ```bash
-git clone --branch rubato/base https://github.com/keepitmello/Rubato.git
+git clone --recurse-submodules --branch rubato/base https://github.com/keepitmello/Rubato.git
 cd Rubato
+./install.sh                         # 계획만 본다
+./install.sh --apply                 # 설치하고 모델 왕복까지 확인한다
+```
 
+installer는 submodule, 엔진·bridge·rubato-pi 의존성, 엔진 확장 빌드, 역할별 프롬프트 합성,
+번들 스킬, 셸 alias 블록을 이 클론만으로 설치한다. 기존 스킬은 덮어쓰지 않는다.
+크레덴셜은 복사하거나 만들지 않고 상태만 알려 준다.
+
+alias는 `~/.zshrc`의 마커 블록(`# >>> rubato aliases >>>`) 하나로 관리된다.
+낟개로 넣으면 alias를 하나 늘릴 때 기존 사용자에게 안 가기 때문이다.
+
+| alias | 하는 일 |
+|---|---|
+| `rubato`, `rubato-pi` | 세션을 띄운다 |
+| `rubato-soul` | 역할별 조립 없이 `Documents/SOUL.md`만 시스템 프롬프트로 |
+| `rubato-restart`, `rbr` | 모델 카탈로그를 든 bridge(:8788) 재시작 |
+| `msearch` | 기억 검색 |
+
+설치 후에는 `rubato update`가 이 블록과 cmux 세션 복원까지 같이 따라온다.
+셸 설정만 다시 심고 싶으면 `./install.sh --apply --only-shell`.
+
+수동으로 각 단계를 실행해야 할 때만 아래를 쓴다:
+
+```bash
+git submodule update --init --recursive
 bun install                          # 엔진(senpi). npm 은 workspace: 를 못 읽는다. bun 1.4+
 npm install --prefix harness         # bridge
 npm install --prefix harness/rubato-pi
-harness/prompts/build.sh             # 역할별 시스템 프롬프트 (생성물은 커밋 안 한다)
-ln -s "$PWD/harness/prompts" ~/.agents/rubato
-harness/scripts/install-skills.sh    # 번들 스킬 -> ~/.agents/skills
-```
-
-그리고 alias:
-
-```bash
-echo 'alias rubato="$HOME/<클론경로>/Rubato/harness/scripts/rubato-pi.sh"' >> ~/.zshrc
+node packages/omo-senpi/plugin/scripts/build-extension.mjs
+harness/prompts/build.sh
+harness/scripts/install-skills.sh
 ```
 
 ## 업데이트
@@ -49,10 +67,14 @@ echo 'alias rubato="$HOME/<클론경로>/Rubato/harness/scripts/rubato-pi.sh"' >
 rubato update          # 무엇이 바뀌는지 보여주고 물어본다
 rubato update --yes    # 묻지 않고 전부
 rubato update --check  # 새 커밋이 있는지만 (있으면 exit 10)
+rubato build           # 로컬 시스템 프롬프트를 다시 합성
 ```
 
 받으면 바뀐 것에 맞춰 다시 만든다 — 의존성, 엔진 플러그인, 시스템 프롬프트, 번들 스킬.
 `packages/` 가 바뀌면 엔진 빌드까지 돌아서 몇 분 걸린다.
+
+일반 `rubato` 실행도 시작 전에 로컬 시스템 프롬프트를 다시 합성한다. 보통 0.01초라
+프롬프트 조각을 직접 고친 뒤 `rubato build` 를 잊어도 새 세션부터 바로 반영된다.
 
 안 건드리는 경우가 셋이다. 브랜치가 `rubato/base` 가 아니거나, 커밋하지 않은 수정이 있거나,
 로컬에만 있는 커밋이 있을 때. 남의 작업을 덮지 않으려는 것이다.
@@ -97,7 +119,8 @@ node harness/scripts/cmux-vault.mjs --print   # 붙여넣을 블록만
 
 계정 이름 기본값은 `sub` 이고 `FX_CLAUDE_ACCOUNT` 로 바꾼다.
 
-Claude Code 쪽 세팅(agent 정의, 컴팩션 훅, 스킬 심링크 배선)까지 원하면 agent-taskforce 의 `install.sh` 를 쓴다. 그 스크립트가 이 레포를 클론하고 위 단계를 대신 밟는다.
+Rubato 실행에 필요한 파일과 스킬은 이 레포에 있다. Claude Code 전용 agent 정의와
+컴팩션 훅은 Rubato 실행 범위가 아니며, 필요하면 별도 도구로 설치한다.
 
 ## 지금 구조
 

@@ -13,6 +13,12 @@ import { CACHE_RETENTION } from "./defaults.mjs";
 
 export const DEFAULT_BROKER_URL = "http://127.0.0.1:8788";
 
+const CONTEXT_WINDOW_OVERRIDES = Object.freeze({
+  "gpt-5.6-sol": 272_000,
+  "gpt-5.6-terra": 272_000,
+  "gpt-5.6-luna": 272_000,
+});
+
 export const FALLBACK_CATALOG = Object.freeze([
   { id: "xai/grok-4.6", name: "Grok 4.6" },
   { id: "anthropic/claude-opus-5", name: "Opus 5" },
@@ -44,7 +50,7 @@ export function splitCatalogId(id) {
 export function catalogLimits(provider, id) {
   const builtin = getBuiltinModel(provider, id);
   return {
-    contextWindow: builtin?.contextWindow || 200_000,
+    contextWindow: CONTEXT_WINDOW_OVERRIDES[id] ?? builtin?.contextWindow ?? 200_000,
     maxTokens: builtin?.maxTokens || 16_384,
     // 이미지 첨부는 이 배열로 판정된다. builtin 이 아는 모달리티를 그대로 쓴다.
     // 여기서 ["text"] 로 깎으면 read 도구가 이미지를 조용히 버린다.

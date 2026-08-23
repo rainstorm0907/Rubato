@@ -80,11 +80,12 @@ async function fixtureAtSystemTokens(tokens: number): Promise<{ repo: CountingRe
   return fixture("A".repeat(tokens * 4 - Buffer.byteLength(header, "utf8") - 1))
 }
 
-function eventContext(sessionId: string, branchLength: number): unknown {
+function eventContext(sessionId: string, branchLength: number, entries: readonly unknown[] = []): unknown {
   return {
     sessionManager: {
       getSessionId: () => sessionId,
       getBranch: () => Array.from({ length: branchLength }, (_, index) => ({ index })),
+      getEntries: () => entries,
     },
   }
 }
@@ -181,6 +182,25 @@ describe("createMemoryPromptHandler", () => {
     expect(second?.message).toBeUndefined()
     expect(second?.systemPrompt).toBe(first?.systemPrompt)
     expect(otherSession?.message?.content).toContain("- 9 previous messages")
+  }, 30_000)
+
+  test("#given a resumed session whose recall notice is persisted #when a new handler starts #then the recall line is not sent again", async () => {
+    // given
+    const { repo, context } = await fixture()
+    const pi = new FakeExtensionAPI()
+    pi.on("before_agent_start", boundHandler(repo, context))
+    const persistedEntries = [{ type: "custom_message", customType: "omo-memory:notice" }]
+
+    // when
+    const resumed = await dispatchEvent(
+      pi,
+      beforeAgentStart("BASE PROMPT"),
+      eventContext("session-1", 143, persistedEntries),
+    )
+
+    // then
+    expect(resumed?.message).toBeUndefined()
+    expect(resumed?.systemPrompt).toContain("BASE PROMPT")
   }, 30_000)
 
   test("#given a session whose recall line was already sent #when a nudge becomes due #then the notice returns carrying only the nudge", async () => {

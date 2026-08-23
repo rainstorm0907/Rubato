@@ -17,7 +17,7 @@ import {
   backgroundEntriesFromEvent,
 } from "../../src/statusline.mjs";
 import { installStatusline, extensionStatusLine } from "../../src/extensions/statusline.mjs";
-import { createBackgroundTracker, createTaskModelReader } from "../../src/background-tracker.mjs";
+import { createBackgroundTracker } from "../../src/background-tracker.mjs";
 
 test("shortens Claude-style model ids the way the statusline does", () => {
   assert.equal(shortModelLabel("claude-opus-4.8"), "Opus 4.8");
@@ -167,18 +167,23 @@ test("elapsed time is a clock, not a relative age", () => {
 test("each background source is unpacked from its own payload field", () => {
   assert.deepEqual(
     backgroundEntriesFromEvent({
-      source: "senpi-task",
-      channels: [{ id: "st_1", description: "reviewer", startedAtMs: 5 }],
-    }),
-    { source: "senpi-task", entries: [{ id: "st_1", description: "reviewer", startedAtMs: 5 }] },
-  );
-  assert.deepEqual(
-    backgroundEntriesFromEvent({
       source: "terminal-background-sessions",
       items: [{ id: "bash_1", description: "build", startedAtMs: 7 }],
     }),
     { source: "terminal-background-sessions", entries: [{ id: "bash_1", description: "build", startedAtMs: 7 }] },
   );
+  assert.deepEqual(
+    backgroundEntriesFromEvent({
+      source: "terminal-monitors",
+      monitors: [{ id: "mon_1", description: "watch", startedAtMs: 9 }],
+    }),
+    { source: "terminal-monitors", entries: [{ id: "mon_1", description: "watch", startedAtMs: 9 }] },
+  );
+  // Subagents belong to the widget, not the footer.
+  assert.equal(backgroundEntriesFromEvent({
+    source: "senpi-task",
+    channels: [{ id: "st_1", description: "reviewer", startedAtMs: 5 }],
+  }), null);
   // A source we do not render must not be mistaken for an empty snapshot of one we do.
   assert.equal(backgroundEntriesFromEvent({ source: "something-else", items: [] }), null);
 });
@@ -199,50 +204,27 @@ test("the background line groups sources and folds overflow into a count", () =>
       { id: "b", description: "builder", startedAtMs: 152_000, model: "xai/grok-4.6" },
     ]],
     ["terminal-background-sessions", [{ id: "bash_1", description: "build", startedAtMs: 254_000 }]],
+    ["terminal-monitors", [{ id: "mon_1", description: "watch", startedAtMs: 164_000 }]],
   ]);
   assert.equal(
     formatBackgroundLine(groups, 344_000, 200),
-    "▸ reviewer Opus 5 05:44 · builder Grok 4.6 03:12   ⌘ build 01:30",
+    "⌘ build 01:30   ◉ watch 03:00",
   );
   // Too narrow to name everyone: the count survives even when the names do not.
-  assert.equal(formatBackgroundLine(groups, 344_000, 20), "▸ +2   ⌘ +1");
+  assert.equal(formatBackgroundLine(groups, 344_000, 12), "⌘ +1   ◉ +1");
   assert.equal(formatBackgroundLine(new Map(), 344_000, 200), "");
 });
 
 test("the tracker redraws on change and stays quiet on a repeat", () => {
   const tracker = createBackgroundTracker();
-  const event = { source: "senpi-task", channels: [{ id: "st_1", description: "reviewer", startedAtMs: 5 }] };
+  const event = { source: "terminal-background-sessions", items: [{ id: "bash_1", description: "build", startedAtMs: 5 }] };
   assert.equal(tracker.accept(event), true);
   assert.equal(tracker.accept({ ...event }), false, "an identical snapshot must not force a render");
   assert.equal(tracker.active(), true);
-  assert.equal(tracker.accept({ source: "senpi-task", channels: [] }), true);
+  assert.equal(tracker.accept({ source: "terminal-background-sessions", items: [] }), true);
   assert.equal(tracker.active(), false, "an empty snapshot must let the ticker stop");
+  assert.equal(tracker.accept({ source: "senpi-task", channels: [{ id: "st_1", description: "reviewer", startedAtMs: 5 }] }), false);
   assert.equal(tracker.accept({ source: "unrelated", items: [] }), false);
-});
-
-test("the tracker attaches models to tasks only", () => {
-  const tracker = createBackgroundTracker({ modelFor: (id) => (id === "st_1" ? "anthropic/claude-opus-5" : undefined) });
-  tracker.accept({ source: "senpi-task", channels: [{ id: "st_1", description: "reviewer", startedAtMs: 0 }] });
-  tracker.accept({ source: "terminal-background-sessions", items: [{ id: "bash_1", description: "build", startedAtMs: 0 }] });
-  const groups = tracker.groups();
-  assert.equal(groups.get("senpi-task")[0].model, "anthropic/claude-opus-5");
-  assert.equal(groups.get("terminal-background-sessions")[0].model, undefined);
-});
-
-test("the model reader caches on mtime and survives an unreadable record", () => {
-  let reads = 0;
-  const reader = createTaskModelReader({
-    stateDir: "/state",
-    stat: (path) => (path.includes("missing") ? (() => { throw new Error("ENOENT"); })() : { mtimeMs: 42 }),
-    readFile: () => {
-      reads += 1;
-      return JSON.stringify({ model: "anthropic/claude-opus-5" });
-    },
-  });
-  assert.equal(reader("st_1"), "anthropic/claude-opus-5");
-  assert.equal(reader("st_1"), "anthropic/claude-opus-5");
-  assert.equal(reads, 1, "an unchanged mtime must not re-read the record");
-  assert.equal(reader("missing"), undefined);
 });
 
 test("the memory backlog line is dropped from the footer", () => {

@@ -86,18 +86,24 @@ printf '\n%s== 새 커밋 %s개 ==%s\n' "$BOLD" "$BEHIND" "$RST"
 git log --oneline --no-decorate "HEAD..origin/$BRANCH" | sed 's/^/  /'
 
 CHANGED="$(git diff --name-only "HEAD..origin/$BRANCH")"
-need_deps=0; need_prompts=0; need_skills=0; need_engine=0
+need_deps=0; need_prompts=0; need_skills=0; need_engine=0; need_shell=0
 echo "$CHANGED" | grep -q '^package\.json\|^bun\.lock\|^harness/package\.json\|^harness/rubato-pi/package\.json' && need_deps=1
 echo "$CHANGED" | grep -q '^harness/prompts/' && need_prompts=1
 echo "$CHANGED" | grep -q '^harness/skills/' && need_skills=1
 echo "$CHANGED" | grep -q '^packages/' && need_engine=1
+# 셸 설정은 alias 블록과 cmux Vault 등록이다. 둘 다 내 집(~/.zshrc, ~/.config/cmux)
+# 을 고치는 일이라 소스를 받는 것만으로는 반영되지 않는다.
+# install.sh 가 alias 목록을 들고 있고, scripts/ 에는 alias 가 가리키는 실체와
+# Vault 등록기가 있다. 둘 중 하나라도 바뀌면 다시 심는다.
+echo "$CHANGED" | grep -q '^install\.sh\|^harness/scripts/' && need_shell=1
 
 printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 [ "$need_deps" = 1 ]    && echo "  의존성 설치"
 [ "$need_prompts" = 1 ] && echo "  시스템 프롬프트 합성"
 [ "$need_skills" = 1 ]  && echo "  번들 스킬 → ~/.agents/skills"
+[ "$need_shell" = 1 ]   && echo "  셸 alias 블록 · cmux 세션 복원"
 [ "$need_engine" = 1 ]  && echo "  엔진 플러그인 빌드 ${DIM}(몇 분 걸린다)${RST}"
-[ "$need_deps$need_prompts$need_skills$need_engine" = "0000" ] && echo "  ${DIM}없음 — 소스만 받으면 된다${RST}"
+[ "$need_deps$need_prompts$need_skills$need_engine$need_shell" = "00000" ] && echo "  ${DIM}없음 — 소스만 받으면 된다${RST}"
 
 # 로컬 수정이 있으면 멈춘다. 남의 작업을 덮지 않는다.
 #
@@ -152,6 +158,23 @@ fi
 
 if [ "$need_skills" = 1 ]; then
   "$HARNESS/scripts/install-skills.sh" >/dev/null 2>&1 && ok "번들 스킬" || warn "스킬 설치 경고"
+fi
+
+# 셸 alias 블록. install.sh 가 정본이라 여기서 목록을 베끼지 않고 그걸 부른다.
+# 규칙을 두 군데 두면 어깋난다. --apply 는 이미 맞으면 아무것도 안 한다.
+if [ "$need_shell" = 1 ]; then
+  ALIAS_OUT="$("$REPO/install.sh" --apply --only-shell 2>&1 || true)"
+  case "$ALIAS_OUT" in
+    *"이미 맞다"*)  ok "셸 alias — 그대로" ;;
+    *"alias 블록"*) ok "셸 alias 블록을 갱신했다 ${DIM}(새 셸부터)${RST}" ;;
+    *)               warn "셸 alias 갱신 경고" ;;
+  esac
+
+  # cmux Vault — 등록 경로나 방식이 바뀜을 수 있다. 안 쓰면 조용히 빠진다.
+  if [ -f "$HOME/.config/cmux/cmux.json" ]; then
+    node "$HARNESS/scripts/cmux-vault.mjs" --apply >/dev/null 2>&1 \
+      && ok "cmux 세션 복원" || warn "cmux Vault 경고"
+  fi
 fi
 
 # cmux Vault — 세션 복원을 붙인다. 없으면 cmux 를 꺼다 켜는 순간 세션이

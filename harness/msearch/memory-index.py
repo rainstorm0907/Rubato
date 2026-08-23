@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Index roo-channel memory markdown files into Redis Stack.
+Index memory markdown files into Redis Stack.
 
 Sources:
   - memory/*.md
@@ -721,13 +721,13 @@ def should_index(file_path: Path, r: redis.Redis, incremental: bool) -> bool:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Index roo-channel memories into Redis Stack")
+    parser = argparse.ArgumentParser(description="Index memories into Redis Stack")
     parser.add_argument("--incremental", "-i", action="store_true", help="index only changed files")
     parser.add_argument(
         "--force",
         "-f",
         action="store_true",
-        help="delete roo-channel keys and rebuild documents; preserve shared RediSearch index",
+        help="delete indexed keys and rebuild documents; preserve shared RediSearch index",
     )
     parser.add_argument("--dry-run", action="store_true", help="show files that would be indexed")
     return parser.parse_args()
@@ -738,7 +738,7 @@ def main() -> int:
     files = discover_markdown_files()
     current_rel_paths = {rel_path(path) for path in files}
 
-    print(f"roo-channel memory indexing: {PROJECT_ROOT}")
+    print(f"memory indexing: {PROJECT_ROOT}")
     print(f"Redis: {REDIS_URL} | index: {INDEX_NAME} | files: {len(files)}")
 
     if args.dry_run:

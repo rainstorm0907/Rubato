@@ -67,7 +67,7 @@ function manager(): StatusUiManager {
 }
 
 describe("createTaskStatusUi terminal width", () => {
-  it("#given a 120-column terminal #when the production widget renders #then the row is bounded and keeps activity plus elapsed", () => {
+  it("#given a 120-column terminal #when the production widget renders #then the row is bounded and keeps elapsed plus tps", () => {
     const ui = fakeUi()
     createTaskStatusUi({
       manager: manager(),
@@ -79,7 +79,7 @@ describe("createTaskStatusUi terminal width", () => {
     const row = ui.rows.at(-1)?.[0] ?? ""
     expect(rendererVisibleWidth(row)).toBeLessThanOrEqual(120)
     expect(row).toContain("Plan the")
-    expect(row).toContain("running")
-    expect(row).toEndWith("1m 0s")
+    expect(row).not.toContain("running")
+    expect(row).toEndWith("97 tok/s")
   })
 })

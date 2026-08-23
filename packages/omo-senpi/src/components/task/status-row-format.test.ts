@@ -103,32 +103,73 @@ describe("backgroundWidgetRows", () => {
     tokens_per_second: 97,
   }
 
-  it("#given a wide terminal #when a live task row renders #then the longer summary and adjacent metadata remain visible", () => {
+  it("#given a wide terminal #when a live task row renders #then title, short model, elapsed, and tps remain", () => {
     const row = backgroundWidgetRows([
       record({
         task_id: "st_wide",
+        description: "Plan the Spider-Man library",
         task_summary: "Plan the complete Spider-Man media library migration",
         status: "running",
         category: "unspecified-high",
         resolved_model: {
-          provider: "anthropic",
-          model_id: "claude-opus-5",
-          display: "anthropic/claude-opus-5",
-          reasoning_effort: "xhigh",
+          provider: "xai",
+          model_id: "grok-4.6",
+          display: "xai/grok-4.6",
+          reasoning_effort: "high",
           source: "category",
         },
       }),
     ], new Map([["st_wide", "running read src/library.ts"]]), now, () => stats, 220)[0] ?? ""
 
-    expect(row).toContain("Plan the complete Spider-Man media library migration")
-    expect(row).toContain("category:unspecified-high(anthropic/claude-opus-5:xhigh)")
-    expect(row).toContain("turn 2 (4 tools)")
-    expect(row).toContain("$0.1303")
+    expect(row).toBe("⠋ Plan the Spider-Man library · Grok 4.6 high · 1m 0s · 97 tok/s")
+    expect(row).not.toContain("category:")
+    expect(row).not.toContain("turn ")
+    expect(row).not.toContain("$0.1303")
     expect(row).not.toContain("CH:")
-    expect(row).toContain("97 tok/s")
-    expect(row).toContain("running read src/library.ts")
-    expect(row).toEndWith("1m 0s")
+    expect(row).not.toContain("running read")
     expect(rendererVisibleWidth(row)).toBeLessThanOrEqual(220)
+  })
+
+  it("#given a long description and a task_summary #when a live row renders #then the short description leads and stays 32 visible chars", () => {
+    const row = backgroundWidgetRows([
+      record({
+        task_id: "st_title",
+        description: "Plan the complete Spider-Man media library migration",
+        task_summary: "Final review",
+        status: "running",
+        resolved_model: {
+          provider: "xai",
+          model_id: "grok-4.6",
+          display: "xai/grok-4.6",
+          reasoning_effort: "high",
+          source: "category",
+        },
+      }),
+    ], new Map(), now, () => stats, 220)[0] ?? ""
+    const title = row.split(" · ")[0]?.replace(/^⠋ /u, "") ?? ""
+    expect(title).toStartWith("Plan the complete")
+    expect(title).not.toContain("Final review")
+    expect(rendererVisibleWidth(title)).toBeLessThanOrEqual(32)
+    expect(row).toEndWith("97 tok/s")
+  })
+
+  it("#given only a routing variant #when a live row renders #then it is not repeated as reasoning effort", () => {
+    const row = backgroundWidgetRows([
+      record({
+        task_id: "st_variant",
+        description: "Review tests",
+        status: "running",
+        resolved_model: {
+          provider: "openai",
+          model_id: "gpt-5.6-luna",
+          display: "openai/gpt-5.6-luna",
+          variant: "luna",
+          source: "category",
+        },
+      }),
+    ], new Map(), now, () => stats, 220)[0] ?? ""
+    expect(row).toContain("5.6 Luna · 1m 0s")
+    expect(row).not.toContain("Luna luna")
   })
 
   it("#given a narrow terminal #when a live task row renders #then it stays on one bounded physical line", () => {
@@ -144,9 +185,9 @@ describe("backgroundWidgetRows", () => {
     expect(row).not.toContain("\n")
     expect(rendererVisibleWidth(row)).toBeLessThanOrEqual(90)
     expect(row).toContain("Plan")
-    expect(row).toContain("category:unspec")
-    expect(row).toContain("running")
-    expect(row).toEndWith("1m 0s")
+    expect(row).not.toContain("category:")
+    expect(row).not.toContain("running")
+    expect(row).toEndWith("97 tok/s")
   })
 })
 

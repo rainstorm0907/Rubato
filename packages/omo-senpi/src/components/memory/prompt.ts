@@ -24,6 +24,7 @@ const MEMORY_TOOL_DISCOVERY_NOTE =
 export interface MemoryPromptSession {
   readonly id: string
   readonly priorMessageCount: number
+  readonly entries: readonly unknown[]
 }
 
 export interface MemoryPromptInjectionOptions {
@@ -78,7 +79,7 @@ export function createMemoryPromptHandler(
       options.resolveCompileWarnTokens?.(context.identity),
     )
     const composed = options.searchExposure?.() === true ? `${pressureBlock}\n\n${MEMORY_TOOL_DISCOVERY_NOTE}` : pressureBlock
-    const includeRecall = recallNoticeGuard(session.id)
+    const includeRecall = !hasMemoryNotice(session.entries) && recallNoticeGuard(session.id)
     const notice = renderMemoryNotice(
       includeRecall ? session.priorMessageCount : undefined,
       nudgeTurns,
@@ -157,11 +158,21 @@ function readPromptSession(eventCtx: unknown): MemoryPromptSession | undefined {
   if (manager === undefined) return undefined
   const getSessionId = manager.getSessionId
   const getBranch = manager.getBranch
+  const getEntries = manager.getEntries
   if (typeof getSessionId !== "function" || typeof getBranch !== "function") return undefined
   const id = Reflect.apply(getSessionId, manager, [])
   const branch = Reflect.apply(getBranch, manager, [])
   if (typeof id !== "string" || id.length === 0 || !Array.isArray(branch)) return undefined
-  return { id, priorMessageCount: branch.length }
+  const entries = typeof getEntries === "function" ? Reflect.apply(getEntries, manager, []) : []
+  return { id, priorMessageCount: branch.length, entries: Array.isArray(entries) ? entries : [] }
+}
+
+function hasMemoryNotice(entries: readonly unknown[]): boolean {
+  return entries.some((entry) =>
+    isRecord(entry)
+    && entry.type === "custom_message"
+    && entry.customType === MEMORY_NOTICE_CUSTOM_TYPE
+  )
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

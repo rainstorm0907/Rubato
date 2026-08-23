@@ -12,7 +12,24 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")" && pwd)"
 HARNESS="$REPO/harness"
 APPLY=0
-[ "${1:-}" = "--apply" ] && APPLY=1
+# --only-shell 은 셸 설정(alias 블록, cmux Vault)만 다시 심는다.
+# 업데이트가 이걸 부른다 — alias 목록을 두 군데 두면 어깋나기 때문에
+# 정본은 여기 하나로 둔다. 의존성·빌드는 건드리지 않는다.
+ONLY_SHELL=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --apply) APPLY=1 ;;
+    --only-shell) ONLY_SHELL=1 ;;
+    --help|-h)
+      printf '%s\n' '사용법: ./install.sh [--apply] [--only-shell]' '' \
+        '  인자 없음    설치 계획만 출력한다' \
+        '  --apply      이 클론에서 Rubato를 설치하고 검증한다' \
+        '  --only-shell 셸 alias 블록과 cmux 세션 복원만 다시 심는다'
+      exit 0 ;;
+    *) printf '모르는 옵션: %s\n' "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; RST=$'\033[0m'
 head_() { printf '\n%s== %s ==%s\n' "$BOLD" "$1" "$RST"; }
@@ -89,18 +106,32 @@ fi
 
 PATH="$(dirname "$NODE24"):$PATH"
 
+# --only-shell 이면 의존성·프롬프트·스킬은 손대지 않는다. 셸 설정만 다시 심는다.
+if [ "$ONLY_SHELL" -eq 0 ]; then
+
 head_ "단계 1 · 의존성"
 if [ "$APPLY" -eq 0 ]; then
+  plan "git submodule update --init --recursive"
   plan "bun install                        (엔진 senpi, 워크스페이스)"
   plan "npm install --prefix harness       (provider bridge)"
   plan "npm install --prefix harness/rubato-pi"
 else
+  say "번들 upstream submodule 을 준비한다"
+  git -C "$REPO" submodule update --init --recursive \
+    || { err "submodule 초기화 실패"; exit 1; }
+  if git -C "$REPO" submodule status --recursive | grep -Eq '^[+-]'; then
+    err "초기화되지 않았거나 다른 revision 인 submodule 이 있다"
+    exit 1
+  fi
   say "엔진을 깐다 (bun)"
   (cd "$REPO" && "$BUN" install) || { err "bun install 실패"; exit 1; }
   say "bridge 를 깐다"
-  npm install --prefix "$HARNESS" >/dev/null 2>&1 || warn "bridge 설치에서 경고가 있었다"
+  npm install --prefix "$HARNESS" >/dev/null 2>&1 || { err "bridge 설치 실패"; exit 1; }
   say "rubato-pi 를 깐다"
-  npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 || warn "rubato-pi 설치에서 경고가 있었다"
+  npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 || { err "rubato-pi 설치 실패"; exit 1; }
+  say "Rubato 엔진 확장을 빌드한다"
+  (cd "$REPO" && "$NODE24" packages/omo-senpi/plugin/scripts/build-extension.mjs) \
+    >/dev/null 2>&1 || { err "엔진 확장 빌드 실패"; exit 1; }
   ok "의존성 설치 완료"
 fi
 
@@ -110,15 +141,17 @@ if [ "$APPLY" -eq 0 ]; then
   plan "harness/prompts/build.sh 로 lead / teammate 프롬프트 합성"
   plan "~/.agents/rubato → harness/prompts 심링크"
 else
-  "$HARNESS/prompts/build.sh" >/dev/null && ok "프롬프트 합성" || err "프롬프트 합성 실패"
+  "$HARNESS/prompts/build.sh" >/dev/null || { err "프롬프트 합성 실패"; exit 1; }
+  ok "프롬프트 합성"
   mkdir -p "$HOME/.agents"
   DEST="$HOME/.agents/rubato"
   if [ -L "$DEST" ]; then
     [ "$(readlink "$DEST")" = "$HARNESS/prompts" ] && ok "심링크 이미 맞다" \
       || { rm "$DEST"; ln -s "$HARNESS/prompts" "$DEST"; ok "심링크를 이 클론으로 바꿨다"; }
   elif [ -e "$DEST" ]; then
-    warn "~/.agents/rubato 가 심링크가 아니다. 손대지 않는다"
-    add_manual "~/.agents/rubato 를 $HARNESS/prompts 심링크로 직접 바꿔라"
+    err "~/.agents/rubato 가 심링크가 아니다. 기존 파일을 보존하려고 멈춘다"
+    say "기존 경로를 직접 백업하거나 치운 뒤 다시 실행해라: $DEST"
+    exit 1
   else
     ln -s "$HARNESS/prompts" "$DEST"; ok "~/.agents/rubato → harness/prompts"
   fi
@@ -128,27 +161,77 @@ head_ "단계 3 · 스킬"
 if [ "$APPLY" -eq 0 ]; then
   plan "harness/scripts/install-skills.sh  (번들 → ~/.agents/skills, 있는 것은 유지)"
 else
-  "$HARNESS/scripts/install-skills.sh" || warn "스킬 설치에서 경고가 있었다"
+  "$HARNESS/scripts/install-skills.sh" || { err "스킬 설치 실패"; exit 1; }
+  for skill in dispatching dispatched; do
+    if ! cmp -s "$HARNESS/skills/$skill/SKILL.md" "$HOME/.agents/skills/$skill/SKILL.md"; then
+      err "필수 스킬이 번들과 다르다: $skill"
+      say "기존 파일을 보존하려고 멈췄다. 확인 후 이 명령으로 Rubato 번들을 설치해라:"
+      say "  $HARNESS/scripts/install-skills.sh --force"
+      exit 1
+    fi
+  done
+  ok "필수 계약 스킬 확인"
 fi
+
+fi   # ONLY_SHELL 스킵 끝
 
 head_ "단계 4 · alias"
 RC="$(shell_rc)"
-LINE="alias rubato=\"$HARNESS/scripts/rubato-pi.sh\""
+
+# alias 는 낱개로 관리하지 않고 마커로 둔 블록을 통째 갈아끼운다.
+# 낱개로 넣으면 alias 를 하나 늘릴 때마다 기존 사용자에게는 그게 안 간다.
+# 블록이면 무엇이 늘고 줄었든 한 번에 맞춰진다.
+ALIAS_BEGIN="# >>> rubato aliases >>>"
+ALIAS_END="# <<< rubato aliases <<<"
+
+rubato_alias_block() {
+  cat <<EOF
+$ALIAS_BEGIN
+# 이 블록은 install.sh 가 관리한다. 손으로 고쳐도 다음 설치에 덮인다.
+RUBATO_HARNESS="$HARNESS"
+alias rubato="\$RUBATO_HARNESS/scripts/rubato-pi.sh"
+alias rubato-pi="\$RUBATO_HARNESS/scripts/rubato-pi.sh"
+# 역할별 프롬프트 조립 없이 Documents/SOUL.md 만 시스템 프롬프트로.
+alias rubato-soul="\$RUBATO_HARNESS/scripts/rubato-soul.sh"
+# 모델 카탈로그를 든 bridge(:8788) 를 죽였다 살린다.
+alias rubato-restart="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
+alias rbr="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
+# msearch — 기억 검색.
+alias msearch="\$RUBATO_HARNESS/msearch/msearch"
+$ALIAS_END
+EOF
+}
+
 if [ "$APPLY" -eq 0 ]; then
-  plan "$RC 에 rubato alias 를 넣는다 (이미 있으면 이 클론으로 고친다)"
+  plan "$RC 에 alias 블록을 넣는다 (rubato, rubato-pi, rubato-soul, rubato-restart, rbr, msearch)"
+  plan "이미 있으면 블록을 이 클론으로 갈아끼운다"
 else
   touch "$RC"
-  if grep -q "^alias rubato=" "$RC" 2>/dev/null; then
-    if grep -qF "$LINE" "$RC"; then ok "alias 이미 맞다"
+  NEW_BLOCK="$(rubato_alias_block)"
+
+  if grep -qF "$ALIAS_BEGIN" "$RC" 2>/dev/null; then
+    CUR_BLOCK="$(sed -n "/^# >>> rubato aliases >>>$/,/^# <<< rubato aliases <<<$/p" "$RC")"
+    if [ "$CUR_BLOCK" = "$NEW_BLOCK" ]; then
+      ok "alias 블록 이미 맞다"
     else
-      # 옛 경로를 가리키는 줄을 이 클론으로 바꾼다. 하네스를 옮기면 실제로 깨진다.
-      tmp="$(mktemp)"; grep -v "^alias rubato=" "$RC" > "$tmp" && mv "$tmp" "$RC"
-      printf '\n# rubato — Senpi thin overlay\n%s\n' "$LINE" >> "$RC"
-      ok "alias 를 이 클론으로 고쳤다 ($RC)"
+      # 블록만 도려낸다. 그 밖의 rc 내용은 손대지 않는다.
+      tmp="$(mktemp)"
+      sed "/^# >>> rubato aliases >>>$/,/^# <<< rubato aliases <<<$/d" "$RC" > "$tmp"
+      printf '%s\n' "$NEW_BLOCK" >> "$tmp"
+      mv "$tmp" "$RC"
+      ok "alias 블록을 이 클론으로 갈았다 ($RC)"
     fi
   else
-    printf '\n# rubato — Senpi thin overlay\n%s\n' "$LINE" >> "$RC"
-    ok "alias 를 넣었다 ($RC)"
+    # 마커 이전에 손으로/옛 설치기로 넣은 낱개 줄이 있으면 거둔다.
+    # 안 거두면 나중에 정의된 옛 줄이 블록을 이긴다.
+    if grep -qE '^alias (rubato|rubato-pi|rubato-soul|rubato-restart|rbr|msearch)=' "$RC" 2>/dev/null; then
+      tmp="$(mktemp)"
+      grep -vE '^alias (rubato|rubato-pi|rubato-soul|rubato-restart|rbr|msearch)=' "$RC" > "$tmp"
+      mv "$tmp" "$RC"
+      say "옛 alias 줄을 거두고 블록으로 옮겼다"
+    fi
+    printf '\n%s\n' "$NEW_BLOCK" >> "$RC"
+    ok "alias 블록을 넣었다 ($RC)"
   fi
   add_manual "새 셸을 열거나 'source $RC' 해야 alias 가 먹는다"
 fi
@@ -173,6 +256,8 @@ else
     *) warn "cmux Vault 등록을 건너뛰었다 (cmux config doctor 로 확인해라)" ;;
   esac
 fi
+
+if [ "$ONLY_SHELL" -eq 0 ]; then
 
 head_ "단계 5 · 크레덴셜 (읽기만 한다)"
 CRED_OK=1
@@ -213,6 +298,8 @@ else
   if [ "$out" = "ok" ]; then ok "비대화형 왕복 성공 (rubato --print)"
   else err "왕복 실패: $out"; add_manual "'rubato --print \"ok\"' 를 직접 돌려 원인을 봐라"; fi
 fi
+
+fi   # ONLY_SHELL 스킵 끝
 
 head_ "요약"
 if [ "$APPLY" -eq 0 ]; then

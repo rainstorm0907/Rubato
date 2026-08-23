@@ -46,7 +46,20 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
   assert.equal(grouped.xai[0].contextWindow, 500_000);
-  assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol").contextWindow, 400_000);
+  for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    assert.equal(grouped["openai-codex"].find((model) => model.id === id).contextWindow, 272_000);
+  }
+});
+
+test("5.6 context limits apply to both live broker routes", () => {
+  const entries = ["sol", "terra", "luna"].flatMap((variant) => [
+    { id: `openai/gpt-5.6-${variant}` },
+    { id: `openai-codex/gpt-5.6-${variant}` },
+  ]);
+  const grouped = groupCatalog(entries);
+  for (const provider of ["openai", "openai-codex"]) {
+    assert.ok(grouped[provider].every((model) => model.contextWindow === 272_000));
+  }
 });
 
 test("catalog models keep the image modality so read does not drop attachments", () => {
