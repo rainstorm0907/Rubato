@@ -6,6 +6,7 @@ import {
   replaceMemoryBlock,
 } from "@oh-my-opencode/memory-core"
 
+import { createOncePerSessionGuard } from "../task/usage-guidance"
 import type { MemoryIdentityContext } from "./context"
 import { estimateSystemTokens, MEMORY_PRESSURE_SOFT_RATIO } from "./status"
 
@@ -53,6 +54,10 @@ export function createMemoryPromptHandler(
 ): (payload: unknown, eventCtx?: unknown) => Promise<BeforeAgentStartEventResult | undefined> {
   const cache = options.cache ?? new MemoryBlockCache()
   const createRepo = options.createRepo ?? defaultCreateRepo
+  // The recall-count line is a per-session fact, not per-turn news: repeating it every turn only
+  // changed the number, never the action. Nudge and soul notices stay per-turn because they are
+  // event-driven. When only the recall line would render, the notice message is dropped entirely.
+  const recallNoticeGuard = createOncePerSessionGuard()
   return async (payload, eventCtx) => {
     const systemPrompt = readSystemPrompt(payload)
     if (systemPrompt === undefined) return undefined
@@ -73,11 +78,22 @@ export function createMemoryPromptHandler(
       options.resolveCompileWarnTokens?.(context.identity),
     )
     const composed = options.searchExposure?.() === true ? `${pressureBlock}\n\n${MEMORY_TOOL_DISCOVERY_NOTE}` : pressureBlock
+    const includeRecall = recallNoticeGuard(session.id)
+    const notice = renderMemoryNotice(
+      includeRecall ? session.priorMessageCount : undefined,
+      nudgeTurns,
+      soulNotice,
+    )
+    const updatedSystemPrompt = replaceMemoryBlock(
+      systemPrompt,
+      markMemoryBlock(context.identity, composed),
+    )
+    if (notice === undefined) return { systemPrompt: updatedSystemPrompt }
     return {
-      systemPrompt: replaceMemoryBlock(systemPrompt, markMemoryBlock(context.identity, composed)),
+      systemPrompt: updatedSystemPrompt,
       message: {
         customType: MEMORY_NOTICE_CUSTOM_TYPE,
-        content: renderMemoryNotice(session.priorMessageCount, nudgeTurns, soulNotice),
+        content: notice,
         display: false,
       },
     }
@@ -103,13 +119,18 @@ async function addMemoryPressureMetadata(
 }
 
 function renderMemoryNotice(
-  previousMessageCount: number,
+  previousMessageCount: number | undefined,
   nudgeTurns: number | undefined,
   soulNotice: { readonly sha: string } | undefined,
-): string {
+): string | undefined {
+  if (previousMessageCount === undefined && nudgeTurns === undefined && soulNotice === undefined) {
+    return undefined
+  }
   return [
     "<memory_notice>",
-    `- ${previousMessageCount} previous messages between you and the user are stored in recall memory`,
+    ...(previousMessageCount === undefined
+      ? []
+      : [`- ${previousMessageCount} previous messages between you and the user are stored in recall memory`]),
     ...(nudgeTurns === undefined
       ? []
       : [`- ${nudgeTurns} ${MEMORY_NUDGE_METADATA_TOKEN}. Save durable facts now, or decide nothing qualifies.`]),

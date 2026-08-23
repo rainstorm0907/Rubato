@@ -43,17 +43,16 @@ fetch_now() {
   date +%s > "$STAMP"
 }
 
-# --check 는 하루 한 번만 fetch 한다. 세션 시작을 느리게 하지 않으려는 것.
+# --check 는 세션을 띄울 때마다 돌아서 매번 fetch 한다. 보통 0.5초.
+#
+# 느린 네트워크에서 세션 시작이 매달리면 안 된다. macOS 기본에는 timeout(1)
+# 이 없어서 git 자체 레버로 끊는다 — 3초간 1KB/s 를 못 넘기면 포기한다.
+# 포기해도 이미 받아 둔 원격 ref 로 비교만 하고 세션은 그대로 진행한다.
 if [ "$MODE" = check ]; then
-  NOW="$(date +%s)"
-  LAST=0
-  [ -f "$STAMP" ] && LAST="$(cat "$STAMP" 2>/dev/null || echo 0)"
-  if [ $((NOW - LAST)) -lt 86400 ]; then
-    # 캐시가 신선하다. 이미 받아 둔 원격 ref 로만 비교한다.
-    :
-  else
-    fetch_now || exit 0
-  fi
+  git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=3 \
+      fetch --quiet origin "$BRANCH" 2>/dev/null || true
+  mkdir -p "$(dirname "$STAMP")"
+  date +%s > "$STAMP"
 else
   fetch_now || { err "원격을 받지 못했다. 네트워크를 확인해라."; exit 1; }
 fi

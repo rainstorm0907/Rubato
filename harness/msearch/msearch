@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# msearch — 기억 검색 한 줄 진입점.
+#
+#   msearch '찾을 내용'      검색
+#   msearch --index          색인 갱신 (바뀐 파일만)
+#   msearch --reindex        전체 재색인
+#   msearch --doctor         설치 상태 진단
+#
+# 어디서 실행해도 되게 스크립트 위치를 기준으로 잡는다. alias 를 걸어도
+# symlink 를 걸어도 같은 자리를 본다.
+set -euo pipefail
+
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+py="${MSEARCH_PYTHON:-python3}"
+
+case "${1:-}" in
+  --doctor)
+    exec "$py" "$here/msearch_doctor.py"
+    ;;
+  --index)
+    exec "$py" "$here/memory-index.py" --incremental
+    ;;
+  --reindex)
+    exec "$py" "$here/memory-index.py" --force
+    ;;
+  -h|--help|"")
+    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+# 검색은 백엔드가 있어야 의미가 있다. 연결이 안 되는데 그냥 돌리면 0건이 나오고,
+# 그 침묵은 "기억이 없다"로 읽힌다. 설치 문제와 검색 결과를 가르기 위해
+# 먼저 물어보고, 안 되면 진단으로 보낸다.
+if ! "$py" -c "
+import sys
+sys.path.insert(0, '$here')
+import msearch_config as c
+import redis
+redis.from_url(c.REDIS_URL).ping()
+" >/dev/null 2>&1; then
+  echo "msearch: 검색 백엔드에 연결하지 못했습니다." >&2
+  echo >&2
+  exec "$py" "$here/msearch_doctor.py"
+fi
+
+exec "$py" "$here/memory-search.py" "$@"

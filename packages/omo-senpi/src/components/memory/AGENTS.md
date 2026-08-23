@@ -13,7 +13,7 @@ The memory architecture - the git-backed memory filesystem, the memory tool sema
 | `index.ts` | Component factory: capability checks, config latch, session binding (`senpi-memory.session-binding`), fail-closed resume conflicts, supervisor refcount, shutdown cleanup. |
 | `wiring.ts` | Registration surface: prompt handler, journal routing, tools, guard, skills scope, commands, trigger wiring, completion renderer/consumption, policy registration, status refresh. |
 | `identity-runtime.ts` | Per-identity reflection assembly: reservation store (trigger engine), worker runner, lazy OS-sandbox transform. |
-| `prompt.ts` | Per-run compiled-memory injection via `before_agent_start`; composes the incoming prompt, sentinel-delimited block, (template,HEAD) cache. |
+| `prompt.ts` | Per-run compiled-memory injection via `before_agent_start`; composes the incoming prompt, sentinel-delimited block, (template,HEAD) cache. The late `omo-memory:notice` message splits by cadence: the recall-count line is once per session id (a per-session fact whose repetition only changed the number), while the nudge and soul lines stay per-turn because they are event-driven. When no line qualifies, no message is returned at all. |
 | `tools.ts` | `memory` + `memory_apply_patch` ToolDefinitions over the core engines under the `memory-write` cross-process lock; execute-time activation gating. |
 | `journal-wiring.ts` | `agent_settled` branch-delta scan + `session_start` crash reconcile into per-session transcript journals (v3_assistant_steps cursor). |
 | `trigger-wiring.ts` | Trigger evaluation on successful settle only; compaction flag consumed once; manual entrypoint for `/reflect`. |
