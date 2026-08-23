@@ -136,10 +136,25 @@ function readPlatformPackageVersion(pkg) {
   }
 }
 
-const VENDOR_PATCHES = [
+// 벤더 패치는 두 층이다.
+//
+//   baseline  patches/<name>@<version>.patch      — 동결. 재생성하지 않는다.
+//   series    patches/<name>/<version>/*.patch    — 앞으로의 변경. 추가만 한다.
+//
+// 통짜 패치 하나를 계속 재생성하던 시절에 잃은 것들이 series 를 만든 이유다:
+// 재생성이 남의 hunk 를 덮었고(마지막 저장자 승리), 사람이 파일 목록을 고르다
+// 신규 파일을 빠뜨렸고(그것을 import 하는 변경만 남아 런타임에서 터졌다),
+// 무엇보다 두 세션이 같은 패치 파일을 동시에 쓰면 조용히 하나가 사라졌다.
+// series 는 세션마다 다른 파일에 쓰므로 그 셋이 구조적으로 불가능하다.
+//
+// 순서는 **파일명 오름차순**이다. 명시적 index 파일을 두지 않는 것이 요점이다 —
+// 그건 다시 모두가 함께 쓰는 파일이 되어 우리가 없앤 경합을 되살린다.
+export const VENDOR_PATCHES = [
   {
     packageName: "@code-yeongyu/senpi",
     patchName: "@code-yeongyu%2Fsenpi@2026.8.22.patch",
+    seriesName: "@code-yeongyu%2Fsenpi",
+    expectedVersion: "2026.8.22",
     resolveRoot() {
       const packageLink = join(rootDir, "node_modules", "@code-yeongyu", "senpi");
       return realpathSync(packageLink);
@@ -148,12 +163,109 @@ const VENDOR_PATCHES = [
   {
     packageName: "@code-yeongyu/senpi-tui (installed as @earendil-works/pi-tui)",
     patchName: "@code-yeongyu%2Fsenpi-tui@2026.8.22.patch",
+    seriesName: "@code-yeongyu%2Fsenpi-tui",
+    expectedVersion: "2026.8.22",
     resolveRoot() {
       const senpiRoot = VENDOR_PATCHES[0].resolveRoot();
       return realpathSync(join(senpiRoot, "node_modules", "@earendil-works", "pi-tui"));
     },
   },
 ];
+
+export function seriesDir(spec, root = rootDir) {
+  return join(root, "patches", spec.seriesName, spec.expectedVersion);
+}
+
+/**
+ * baseline 과 series 를 적용 순서대로 모은다. 각 층은 자기 이름을 달고 다닌다 —
+ * 실패했을 때 어느 patch 가 걸렸는지 말할 수 있어야 한다.
+ */
+/**
+ * 패치는 한 버전을 상대로 뜬 것이다. 다른 버전에 대면 hunk 가 안 맞아 어차피
+ * 실패하는데, 그때의 메시지는 "패키지가 baseline 과 다르다"라 원인이 안 보인다.
+ * 버전이 다르면 여기서 그렇게 말하고 멈춘다.
+ */
+export function assertExpectedVersion(spec, installedVersion) {
+  if (installedVersion !== spec.expectedVersion) {
+    throw new Error(
+      `${spec.packageName} is ${installedVersion} but patches/ targets ${spec.expectedVersion}. ` +
+      "Re-cut the patch series against the new version instead of forcing it.",
+    );
+  }
+}
+
+export function collectPatchLayers(spec, root = rootDir) {
+  const baselinePath = join(root, "patches", spec.patchName);
+  if (!existsSync(baselinePath)) throw new Error(`missing required vendor patch: ${baselinePath}`);
+  const layers = [{
+    name: spec.patchName,
+    filePatches: parseFilePatches(readFileSync(baselinePath, "utf8"), spec.patchName),
+  }];
+  const dir = seriesDir(spec, root);
+  if (existsSync(dir)) {
+    const names = readdirSync(dir).filter((name) => name.endsWith(".patch")).sort();
+    for (const name of names) {
+      const label = `${spec.seriesName}/${spec.expectedVersion}/${name}`;
+      layers.push({ name: label, filePatches: parseFilePatches(readFileSync(join(dir, name), "utf8"), label) });
+    }
+  }
+  return layers;
+}
+
+/** 파일 하나에 걸리는 hunk 들을 적용 순서대로 쌓는다. */
+export function stackByFile(layers) {
+  const stacks = new Map();
+  for (const layer of layers) {
+    for (const filePatch of layer.filePatches) {
+      const stack = stacks.get(filePatch.relativePath) ?? [];
+      stack.push({ ...filePatch, patchName: layer.name });
+      stacks.set(filePatch.relativePath, stack);
+    }
+  }
+  return stacks;
+}
+
+function forwardThrough(source, stack) {
+  let current = source;
+  for (const filePatch of stack) {
+    // 판정 중에는 실패가 답의 일부다. 실제 적용은 아래에서 throw 를 살려 부른다.
+    let next;
+    try {
+      next = applyFilePatch(current, filePatch, filePatch.patchName);
+    } catch {
+      return false;
+    }
+    if (next === false) return false;
+    current = next;
+  }
+  return current;
+}
+
+function reverseThrough(source, stack) {
+  let current = source;
+  for (let index = stack.length - 1; index >= 0; index--) {
+    const previous = applyFilePatch(current, stack[index], stack[index].patchName, true);
+    if (previous === false) return false;
+    current = previous;
+  }
+  return current;
+}
+
+/**
+ * 현재 바이트가 스택의 앞 k 개를 적용한 상태인지 찾는다. 마커를 보지 않고
+ * 역적용 round-trip 으로만 판정하므로, 패치 내용이 바뀌어도 따라온다.
+ * 가장 많이 적용된 상태부터 본다 — 이미 최신이면 첫 번째 시도에서 끝난다.
+ */
+export function locateInStack(current, stack) {
+  for (let k = stack.length; k >= 0; k--) {
+    const head = stack.slice(0, k);
+    const pristine = reverseThrough(current, head);
+    if (pristine === false) continue;
+    if (forwardThrough(pristine, head) !== current) continue;
+    return { pristine, applied: k };
+  }
+  return null;
+}
 
 export function parseFilePatches(patchText, patchName) {
   const chunks = patchText.split(/(?=^diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
@@ -208,26 +320,46 @@ export function applyFilePatch(source, filePatch, patchName, reverse = false) {
 function applyAndVerifyVendorPatch(spec) {
   const packageRoot = spec.resolveRoot();
   const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-  const patchPath = join(rootDir, "patches", spec.patchName);
-  if (!existsSync(patchPath)) throw new Error(`missing required vendor patch: ${patchPath}`);
-  const filePatches = parseFilePatches(readFileSync(patchPath, "utf8"), spec.patchName);
+  // 패치는 한 버전을 상대로 뜬 것이다. 다른 버전에 대면 hunk 가 안 맞아 어차피
+  // 실패하는데, 그때의 메시지는 "패키지가 baseline 과 다르다"라 원인이 안 보인다.
+  // 버전이 다르면 여기서 그렇게 말하고 멈춘다.
+  assertExpectedVersion(spec, manifest.version);
+
+  const layers = collectPatchLayers(spec);
+  const stacks = stackByFile(layers);
   const writes = [];
 
-  for (const filePatch of filePatches) {
-    const targetPath = join(packageRoot, filePatch.relativePath);
+  for (const [relativePath, stack] of stacks) {
+    const targetPath = join(packageRoot, relativePath);
     const source = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
-
-    // Idempotence is exact, not marker-based: reverse the hunk and require the
-    // current bytes to be precisely the intended patched output.
-    const pristine = applyFilePatch(source, filePatch, spec.patchName, true);
-    if (pristine !== false) {
-      const roundTrip = applyFilePatch(pristine, filePatch, spec.patchName);
-      if (roundTrip !== source) throw new Error(`vendor patch verification failed for ${filePatch.relativePath}`);
-      continue;
+    const located = locateInStack(source, stack);
+    if (located === null) {
+      throw new Error(
+        `cannot place ${relativePath} in the patch series for ${spec.packageName}; ` +
+        "the installed file matches neither the pristine baseline nor any prefix of the series. " +
+        "Reinstall the package instead of editing node_modules.",
+      );
     }
+    if (located.applied === stack.length) continue;
 
-    const expected = applyFilePatch(filePatch.createsFile ? "" : source, filePatch, spec.patchName);
-    writes.push({ targetPath, contents: expected });
+    // 남은 층을 순서대로 얹는다. 여기서의 실패는 삼키지 않는다 — 같은 원본 줄을
+    // 두 patch 가 건드리면 여기서 멈춰야 조용한 손실이 안 생긴다. 자동 병합은
+    // 하지 않는다. 무엇이 어디서 부딪혔는지 말하고 사람에게 돌려준다.
+    let contents = located.pristine;
+    for (const [index, filePatch] of stack.entries()) {
+      try {
+        contents = applyFilePatch(filePatch.createsFile && contents === "" ? "" : contents, filePatch, filePatch.patchName);
+      } catch (error) {
+        if (index === 0) throw error;
+        throw new Error(
+          `${filePatch.patchName} does not apply to ${relativePath} on top of ${stack[index - 1].patchName}. ` +
+          "Two patches in the series change the same lines. Open a fresh workspace " +
+          "(`node harness/scripts/vendor-patch.mjs open <pkg>`), redo this change on top of the current " +
+          "series, and save it as a new patch. Do not edit the existing patch.",
+        );
+      }
+    }
+    writes.push({ targetPath, contents });
   }
 
   for (const write of writes) {
@@ -235,15 +367,17 @@ function applyAndVerifyVendorPatch(spec) {
     writeFileSync(write.targetPath, write.contents);
   }
 
-  for (const filePatch of filePatches) {
-    const targetPath = realpathSync(join(packageRoot, filePatch.relativePath));
+  for (const [relativePath, stack] of stacks) {
+    const targetPath = realpathSync(join(packageRoot, relativePath));
     const patched = readFileSync(targetPath, "utf8");
-    const pristine = applyFilePatch(patched, filePatch, spec.patchName, true);
-    if (pristine === false || applyFilePatch(pristine, filePatch, spec.patchName) !== patched) {
+    const located = locateInStack(patched, stack);
+    if (located === null || located.applied !== stack.length) {
       throw new Error(`realpath verification failed for ${targetPath}`);
     }
   }
-  console.log(`✓ verified ${spec.packageName}@${manifest.version} at ${realpathSync(packageRoot)}`);
+  const seriesCount = layers.length - 1;
+  const suffix = seriesCount > 0 ? ` +${seriesCount} series patch${seriesCount === 1 ? "" : "es"}` : "";
+  console.log(`✓ verified ${spec.packageName}@${manifest.version} at ${realpathSync(packageRoot)}${suffix}`);
 }
 
 function applyVendorPatches() {
