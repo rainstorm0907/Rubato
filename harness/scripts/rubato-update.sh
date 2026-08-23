@@ -58,6 +58,17 @@ else
   fetch_now || { err "원격을 받지 못했다. 네트워크를 확인해라."; exit 1; }
 fi
 
+# cmux 를 쓰는데 Vault 에 rubato 가 없으면 한 번만 알린다. 그게 없으면
+# cmux 를 꺼다 켜는 순간 세션이 통째로 날아간다. 넣는 것은 사람이 고른다.
+if [ "$MODE" = check ] && [ ! -f "$HOME/.rubato-pi/vault-hint-shown" ]; then
+  if node "$HARNESS/scripts/cmux-vault.mjs" --check 2>/dev/null | grep -q '미등록'; then
+    printf '%s✦ cmux 재시작 후 세션이 사라진다%s  %s`rubato vault` 로 등록한다%s\n' \
+      "$YEL" "$RST" "$DIM" "$RST" >&2
+    mkdir -p "$(dirname "$STAMP")"
+    : > "$HOME/.rubato-pi/vault-hint-shown"
+  fi
+fi
+
 LOCAL="$(git rev-parse HEAD)"
 REMOTE="$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "$LOCAL")"
 
@@ -154,6 +165,11 @@ fi
 if [ "$need_skills" = 1 ]; then
   "$HARNESS/scripts/install-skills.sh" >/dev/null 2>&1 && ok "번들 스킬" || warn "스킬 설치 경고"
 fi
+
+# cmux Vault — 이미 등록해 둔 항목의 경로가 이 클론과 어긋나면 고친다.
+# 미등록이면 손대지 않는다 — cmux.json 은 사용자가 손으로 고치는 파일이고,
+# 넣는 순간 JSONC 주석을 잃는다. 넣는 것은 사람이 고른다.
+node "$HARNESS/scripts/cmux-vault.mjs" --repair 2>/dev/null || true
 
 date +%s > "$STAMP"
 printf '\n%s✓%s 업데이트 끝. %s다음 세션부터 적용된다.%s\n\n' "$GRN" "$RST" "$DIM" "$RST"

@@ -54,6 +54,33 @@ rubato update --check  # 새 커밋이 있는지만 (있으면 exit 10)
 로컬에만 있는 커밋이 있을 때. 남의 작업을 덮지 않으려는 것이다.
 알림을 끄려면 `RUBATO_NO_UPDATE_CHECK=1`.
 
+## cmux 세션 복원
+
+[cmux](https://cmux.com) 는 터미널 안에서 도는 코딩 에이전트를 감지해 세션 파일을 기억하고,
+앱을 다시 띄우면 resume 명령으로 이어붙인다(Vault). 프로세스를 살려두는 tmux 와 달리
+기록을 읽어 재구성하는 방식이라 RAM 을 잡아두지 않고 재부팅도 넘긴다.
+
+Pi 는 기본 지원이지만 rubato 는 둘이 어긋난다 — 프로세스가 `pi` 가 아니라
+`node .../rubato-pi.mjs` 로 뜨고, 세션이 `~/.pi` 가 아니라 `~/.rubato-pi/agent/sessions` 에
+쌓인다. 둘 다 명시해야 맞는다.
+
+```bash
+rubato vault           # 등록한다 (백업을 남긴다)
+rubato vault --check   # 상태만 본다
+rubato vault --print   # 붙여넣을 블록만 출력한다
+```
+
+`~/.config/cmux/cmux.json` 은 **사용자가 손으로 고치는 JSONC** 라 설치도 업데이트도
+자동으로 꾸지 않는다. 넣는 것은 사람이 `rubato vault` 로 고른다 — 쓰는 순간 주석을
+잃기 때문이다(백업에는 남는다).
+
+예외가 하나 있다. **이미 등록된 항목의 경로가 지금 클론과 어긋나면** `rubato update` 가
+조용히 고친다. 하네스를 옮기면 `resumeCommand` 의 절대경로가 깨지는데, 그건 우리가
+만든 항목을 우리가 고치는 것이지 남의 설정을 덮는 게 아니다.
+
+`cmux reload-config` 로 반영한다. 놀고 있는 세션의 RAM 까지 회수하려면 cmux 설정의
+`terminal.agentHibernation` 을 따로 켜라 — 둥이는 세션을 죽였다가 탭을 열 때 되살린다.
+
 **요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). `opencodex` 는 선택이다 — Codex 는 OAuth 로 직접 가고, OpenCodex 가 있으면 그쪽 모델이 카탈로그에 더해질 뿐이다.
 
 **크레덴셜은 각자 넣는다.** 설치는 이것들을 만들지 않는다. 상태는 `rubato auth` 로 본다.

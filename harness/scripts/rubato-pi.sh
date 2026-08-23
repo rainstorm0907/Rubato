@@ -19,6 +19,11 @@ if [ "${1-}" = "update" ]; then
   shift
   exec "$HERE/rubato-update.sh" "$@"
 fi
+# cmux 사용자용. Vault 에 등록해 두면 앱을 꺼다 켜도 세션이 돌아온다.
+if [ "${1-}" = "vault" ]; then
+  shift
+  exec node "$HERE/cmux-vault.mjs" "${1---apply}"
+fi
 
 # 하루 한 번, 원격에 새 커밋이 있으면 한 줄 알린다. 받는 것은 `rubato update`.
 # 실패해도 세션 시작을 막지 않는다.

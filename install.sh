@@ -153,6 +153,29 @@ else
   add_manual "새 셸을 열거나 'source $RC' 해야 alias 가 먹는다"
 fi
 
+head_ "단계 4.5 · cmux 세션 복원 (선택)"
+# cmux 는 터미널 안의 코딩 에이전트를 감지해 앱을 다시 띄울 때 세션을 이어붙인다.
+# rubato 는 `node .../rubato-pi.mjs` 로 떠고 세션도 ~/.rubato-pi 에 쌓여서
+# 기본 감지에 안 걸린다. 둘 다 Vault 에 명시해야 맞는다.
+# cmux.json 은 사용자가 손으로 고치는 JSONC 라 자동으로 꾸지 않는다.
+if [ ! -f "$HOME/.config/cmux/cmux.json" ]; then
+  say "cmux 를 안 쓴다. 건너륐다"
+elif [ "$APPLY" -eq 0 ]; then
+  plan "cmux Vault 에 rubato 가 등록됐는지 본다 (넣는 것은 'rubato vault')"
+else
+  VAULT_STATE="$(node "$HARNESS/scripts/cmux-vault.mjs" --check 2>/dev/null || true)"
+  case "$VAULT_STATE" in
+    *"등록됨"*) ok "cmux Vault 에 rubato 가 있다 — 재시작해도 세션이 돌아온다" ;;
+    *"다른 경로"*)
+      node "$HARNESS/scripts/cmux-vault.mjs" --apply >/dev/null 2>&1 \
+        && ok "cmux Vault 의 rubato 경로를 이 클론으로 고쳤다" \
+        || warn "cmux Vault 경로를 고치지 못했다" ;;
+    *)
+      warn "cmux 를 쓰는데 Vault 에 rubato 가 없다 — 꺼다 켜면 세션이 날아간다"
+      add_manual "cmux 세션 복원: 'rubato vault' (cmux.json 을 고치고 주석은 백업에만 남는다)" ;;
+  esac
+fi
+
 head_ "단계 5 · 크레덴셜 (읽기만 한다)"
 CRED_OK=1
 [ -f "$HOME/.senpi/agent/auth.json" ] && ok "xAI — ~/.senpi/agent/auth.json" \
