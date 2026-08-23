@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // 브리지는 세션 여러 개가 동시에 물고 있는 한 프로세스다. 여기 있는 것은
@@ -12,23 +14,96 @@ import { fileURLToPath } from "node:url";
 const script = (name) => fileURLToPath(new URL(`../../../scripts/${name}`, import.meta.url));
 const read = (name) => readFileSync(script(name), "utf8");
 
-test("the session launcher does not call a 2s health check a death sentence", () => {
-  const source = read("rubato-pi.sh");
-  const check = source.slice(source.indexOf("RUBATO_NO_BRIDGE_CHECK"), source.indexOf("UPDATE_NOTE=\"\""));
-  assert.doesNotMatch(check, /-m 2\b/, "2초 판정은 바쁜 브리지를 죽은 것으로 본다");
-  const timeouts = [...check.matchAll(/-m (\d+)/g)].map((match) => Number(match[1]));
-  assert.ok(timeouts.length > 0 && timeouts.every((value) => value >= 5), `health timeouts too tight: ${timeouts}`);
-  // 한 번 실패로 끝내지 않는다.
-  assert.match(check, /for _ in/, "health 판정에 재시도가 없다");
+/**
+ * `rubato-pi.sh` 의 브리지 점검 블록만 떼어 온다.
+ *
+ * 예전에는 이 파일 두 곳이 스크립트를 문자열로 잘라 정규식으로 검사했다. 끝
+ * 앵커로 삼은 줄이 다른 작업(업데이트 확인을 백그라운드로 옮기는 변경) 때문에
+ * 블록보다 앞으로 가자 슬라이스가 빈 문자열이 되었고, 검사는 아무것도 보지
+ * 않은 채 통과·실패를 오갔다. 보호 로직은 멀쩡한데 검사만 부서진 것이다.
+ *
+ * 그래서 텍스트 대신 블록을 **실행한다.** 앵커는 블록을 여는 조건 하나뿐이고,
+ * 그것이 사라지는 것은 곧 보호가 사라지는 것이라 실패하는 게 맞다.
+ */
+function bridgeCheckBlock() {
+  const lines = read("rubato-pi.sh").split("\n");
+  const start = lines.findIndex((line) => line.includes("RUBATO_NO_BRIDGE_CHECK"));
+  assert.ok(start >= 0, "브리지 점검 블록이 통째로 사라졌다");
+  const end = lines.findIndex((line, index) => index > start && line === "fi");
+  assert.ok(end > start, "브리지 점검 블록의 끝을 찾지 못했다");
+  return lines.slice(start, end + 1).join("\n");
+}
+
+/**
+ * 블록을 가짜 curl·lsof·rubato-restart.sh 로 감싸 돌린다. 무엇이 불렸는지가
+ * 그대로 관측된다 — 재기동을 불렀는가, health 를 몇 번 어떤 상한으로 물었는가.
+ */
+function runBridgeCheck({ healthFailures = 99, listener = false } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "rubato-bridge-check-"));
+  const stub = (name, body) => {
+    const path = join(dir, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+  };
+  // 실패 횟수를 세다가 정해진 횟수를 넘기면 성공한다. 인자는 그대로 기록한다.
+  stub("curl", [
+    'printf "%s\\n" "$*" >>"$STUB_DIR/curl.log"',
+    'n=$(cat "$STUB_DIR/curl.count" 2>/dev/null || echo 0)',
+    "n=$((n + 1))",
+    'printf "%s" "$n" >"$STUB_DIR/curl.count"',
+    '[ "$n" -gt "$STUB_HEALTH_FAILURES" ] && exit 0',
+    "exit 7",
+  ].join("\n"));
+  stub("lsof", `exit $STUB_LISTENER`);
+  stub("sleep", "exit 0");
+  stub("rubato-restart.sh", 'printf "%s\n" "$*" >>"$STUB_DIR/restart.log"');
+
+  const program = ['set -eu', 'splash() { :; }', `HERE="${dir}"`, bridgeCheckBlock()].join("\n");
+  const run = spawnSync("sh", ["-c", program], {
+    env: {
+      PATH: `${dir}:/usr/bin:/bin`,
+      STUB_DIR: dir,
+      STUB_HEALTH_FAILURES: String(healthFailures),
+      STUB_LISTENER: listener ? "0" : "1",
+      FX_BRIDGE_PORT: "59788",
+    },
+    encoding: "utf8",
+  });
+  const log = (name) => (existsSync(join(dir, name)) ? readFileSync(join(dir, name), "utf8") : "");
+  const result = {
+    status: run.status,
+    stderr: run.stderr,
+    restarted: log("restart.log") !== "",
+    healthCalls: log("curl.log").trim().split("\n").filter(Boolean),
+  };
+  rmSync(dir, { recursive: true, force: true });
+  return result;
+}
+
+test("a bridge that still holds the port is never restarted behind the user's back", () => {
+  // 브리지가 여러 세션의 SSE 로 바쁘면 /health 가 늦는다. 그 늦음을 죽음으로
+  // 읽고 재기동하면 남의 턴이 소켓 끊김으로 끝난다.
+  const got = runBridgeCheck({ healthFailures: Infinity, listener: true });
+  assert.equal(got.restarted, false, "리스너가 살아 있는데 재기동을 불렀다");
+  assert.match(got.stderr, /건드리지 않는다/);
+  assert.equal(got.status, 0);
 });
 
-test("a bridge that holds the port is never restarted behind the user's back", () => {
-  const source = read("rubato-pi.sh");
-  const check = source.slice(source.indexOf("RUBATO_NO_BRIDGE_CHECK"), source.indexOf("UPDATE_NOTE=\"\""));
-  const listener = check.indexOf("lsof -ti");
-  const restart = check.indexOf("rubato-restart.sh");
-  assert.ok(listener > 0, "리스너 확인이 없다");
-  assert.ok(restart > listener, "리스너를 확인하기 전에 재기동을 부른다");
+test("a port with nobody on it still gets a bridge", () => {
+  // 죽이지 않는 것과 띄우지 않는 것은 다르다. 아무도 없으면 띄워야 한다.
+  const got = runBridgeCheck({ healthFailures: Infinity, listener: false });
+  assert.equal(got.restarted, true, "브리지가 없는데도 띄우지 않았다");
+});
+
+test("one slow health answer is not a death sentence", () => {
+  // 2초 단발 판정이 바쁜 브리지를 죽은 것으로 봤다. 여러 번 묻고, 상한도 넉넉해야 한다.
+  const got = runBridgeCheck({ healthFailures: 2, listener: false });
+  assert.equal(got.restarted, false, "두 번 늦었다고 재기동했다");
+  assert.ok(got.healthCalls.length >= 3, `health 를 ${got.healthCalls.length}번만 물었다`);
+  for (const call of got.healthCalls) {
+    const timeout = Number(call.match(/-m (\d+)/)?.[1] ?? 0);
+    assert.ok(timeout >= 5, `health 상한이 ${timeout}초다: ${call}`);
+  }
 });
 
 test("restart prepares the replacement before killing the live bridge", () => {
