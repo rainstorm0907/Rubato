@@ -62,6 +62,8 @@ plans/
 !.claude/settings.json
 .dys/
 .build-extension-test-shared-*/
+# checkExtensionCurrent 가 신선도를 볼 때 레포 안에 잠시 만드는 검사용 자리.
+.build-check-*/
 
 # 프롬프트 합성물. 정본은 harness/prompts 의 조각들이고 build.sh 가 만든다.
 # 세션을 띄울 때마다 자동으로 다시 돌므로 추적하면 항상 diff 로 남고,

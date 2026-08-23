@@ -105,49 +105,46 @@ printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 [ "$need_engine" = 1 ]  && echo "  엔진 플러그인 빌드 ${DIM}(몇 분 걸려요)${RST}"
 [ "$need_deps$need_prompts$need_skills$need_engine$need_shell" = "00000" ] && echo "  ${DIM}없음 — 소스만 받으면 돼요${RST}"
 
-# 로컬 수정이 있으면 멈춘다. 남의 작업을 덮지 않는다.
+# 로컬 수정이 있어도 멈추지 않는다.
 #
-# 다만 `.omo/evidence/` 는 뺀다. 거기 터미널 ANSI 캡처가 CRLF 인데 .gitattributes
-# 의 `*.txt text eol=lf` 가 LF 로 바꾸려 들어서, 그냥 clone 만 해도 영구 dirty 다.
-# upstream 증거 파일이고 실행과 무관하므로 판단에서 뺀다.
+# 예전에는 dirty 면 그 자리에서 끝내고 사람에게 커밋/stash/버리기를 시켰다.
+# 그런데 이 레포는 가만히 둬도 dirty 가 된다 — 엔진 산출물이 추적되는데
+# rubato 는 세션마다 빌드를 돌렸고, 산출물 첫 줄의 소스 해시가 매번 달라졌다.
+# 그래서 시키는 대로 정리해도 다음 세션에 또 걸렸다. 그 머신에서는 영구히
+# 막히는 구조였고, 사람에게 떠넘기는 분기 자체가 잘못이었다.
+#
+# 산출물은 이제 레포 밖에서 만든다(harness/scripts/build-engine.mjs). 그래서
+# 여기 남는 dirty 는 대개 진짜 사람 작업이다. 그것은 지키되, 업데이트는
+# 실패시키지 않는다.
+#
+# `.omo/evidence/` 는 판단에서 뺀다. 터미널 ANSI 캡처가 CRLF 인데
+# .gitattributes 의 `*.txt text eol=lf` 가 LF 로 바꾸려 들어서 clone 만 해도
+# 영구 dirty 이고, 실행과 무관한 upstream 증거 파일이다.
 DIRTY="$(git status --porcelain -- . ':(exclude).omo/evidence' 2>/dev/null || true)"
-if [ -n "$DIRTY" ]; then
-  # 수정된 파일이 이번 업데이트가 건드리는 파일과 겹치는지 본다.
-  # 겹치면 받는 순간 진짜로 충돌하고, 겹치지 않으면 fast-forward 는
-  # 사실 깔끔하게 된다 — 같은 "수정이 있음" 이어도 무게가 다르다.
-  # 프로세스 치환(<(...))은 bash 문법이다. 이 스크립트는 #!/bin/sh 로 돌고
-  # 머신에 따라 sh 가 dash 라 깨진다. 임시파일로 받는다.
-  DIRTY_FILES="$(printf '%s\n' "$DIRTY" | awk '{print $NF}' | sort -u)"
-  CHANGED_LIST="$(mktemp)"
-  printf '%s\n' "$CHANGED" > "$CHANGED_LIST"
-  OVERLAP="$(printf '%s\n' "$DIRTY_FILES" | grep -Fxf "$CHANGED_LIST" - 2>/dev/null || true)"
-  rm -f "$CHANGED_LIST"
 
-  printf '\n'
-  if [ -n "$OVERLAP" ]; then
-    err "수정 중인 파일이 이번 업데이트와 겹칩니다. 그대로 받으면 충돌해요."
-    printf '\n  %s겹치는 파일%s\n' "$BOLD" "$RST" >&2
-    printf '%s\n' "$OVERLAP" | sed 's/^/    /' >&2
-  else
-    err "커밋하지 않은 수정이 있어서 멈췄습니다."
-    printf '\n  %s이번 업데이트와 겹치지는 않아요 — 따로 둔 뒤 받으면 그대로 돌아옵니다.%s\n' \
-      "$DIM" "$RST" >&2
+# 받는 동안 사람 작업을 잠시 치웠는지. 어떻게 끝나든 되돌리기 위해 기록해 둔다.
+STASHED=0
+STASH_TAG="rubato-update $(date +%s)"
+
+# 중간에 죽어도(Ctrl-C, 터미널 닫기) 치운 작업을 그대로 두지 않는다.
+# 성공 경로에서는 restore_stash 가 이미 돌아 STASHED 가 0 이라 아무 일도 없다.
+restore_stash() {
+  [ "$STASHED" = 1 ] || return 0
+  STASHED=0
+  # --index 는 쓰지 않는다. 스테이징 상태까지 동시에 되돌리려다가 살짝만
+  # 어긋나도 전체가 실패한다(git 스스로 "Try without --index" 를 권한다).
+  # 여기서 지켜야 하는 것은 작업 내용이지 무엇을 add 해둥느냐가 아니다.
+  if git stash pop >/dev/null 2>&1; then
+    ok "작업하던 수정을 되돌렸습니다"
+    return 0
   fi
-
-  printf '\n  %s수정된 파일%s\n' "$BOLD" "$RST" >&2
-  printf '%s\n' "$DIRTY" | sed 's/^/    /' >&2
-
-  # 덮지 않는다. 어떤 것도 자동으로 치우거나 치워두지 않고,
-  # 고를 수 있게 길만 보여준다. 판단은 사람 자리다.
-  printf '\n  %s이렇게 할 수 있어요%s\n' "$BOLD" "$RST" >&2
-  printf '    %s커밋하기%s        git add -p && git commit\n' "$DIM" "$RST" >&2
-  printf '    %s잠시 치우기%s      git stash push -u   %s(받은 뒤 git stash pop)%s\n' \
-    "$DIM" "$RST" "$DIM" "$RST" >&2
-  printf '    %s버리기%s          git restore .       %s(되돌릴 수 없어요)%s\n' \
-    "$DIM" "$RST" "$DIM" "$RST" >&2
-  printf '\n' >&2
-  exit 1
-fi
+  # pop 이 충돌해도 stash 는 스택에 남아 있다. 잃은 것은 없다.
+  warn "수정을 되돌리는 중 충돌이 났습니다. 작업은 stash 에 그대로 있어요:"
+  printf '    git stash list   %s최근 항목이 그것입니다%s\n' "$DIM" "$RST" >&2
+  printf '    git stash pop    %s충돌을 정리한 뒤 다시 불러오면 됩니다%s\n' "$DIM" "$RST" >&2
+  return 1
+}
+trap 'restore_stash >/dev/null 2>&1 || true' INT TERM HUP
 
 if [ "$MODE" != yes ]; then
   # tty 가 없으면(파이프, CI) 묻지 않고 빠진다. 매달리면 안 된다.
@@ -161,13 +158,34 @@ if [ "$MODE" != yes ]; then
 fi
 
 printf '\n%s== 받는 중 ==%s\n' "$BOLD" "$RST"
-git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1 || {
+
+# 수정이 있으면 먼저 그대로 받아 본다. 겹치지 않으면 git 이 알아서 통과시키고
+# 사람 작업은 손도 대지 않은 채 남는다 — 치웠다 되돌리는 것보다 안전하다.
+# 겹쳐서 거부당할 때만 잠시 치운다.
+if [ -n "$DIRTY" ] && ! git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1; then
+  # pathspec 을 주지 않는다. `git stash push -- <경로>` 는 이미 스테이징된
+  # 변경을 제대로 집지 못해서, 치운 줄 알았는데 실제로는 그대로 남고
+  # 다음 merge 가 똑같이 거부당한다. 이 레포는 여러 세션이 같이 쓰고
+  # 스테이징된 상태가 흔해서 정면으로 밟는다.
+  if git stash push --include-untracked --message "$STASH_TAG" >/dev/null 2>&1; then
+    STASHED=1
+    ok "작업하던 수정을 잠시 치웠습니다"
+  fi
+fi
+
+if ! git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1; then
   err "fast-forward 가 안 됩니다. 로컬에만 있는 커밋과 갈라졌을 수 있어요."
   printf '    %s갈라진 지점을 보려면: git log --oneline --graph HEAD origin/%s%s\n' \
     "$DIM" "$BRANCH" "$RST" >&2
+  # 받지 못했으니 치운 것을 반드시 제자리에 돌려놓고 나간다.
+  restore_stash || true
   exit 1
-}
+fi
 ok "소스 $BEHIND 커밋"
+
+# 되돌리는 것은 받자마자. 뒤에 오는 재빌드보다 먼저 해야 한다 — 재빌드가
+# 건드리는 파일과 사람 작업이 겹치면 순서가 뒤바뀔 때 가짜 충돌이 난다.
+restore_stash || true
 
 BUN="$(command -v bun || true)"
 
@@ -181,8 +199,11 @@ fi
 if [ "$need_engine" = 1 ]; then
   if [ -n "$BUN" ]; then
     printf '  %s… 엔진 빌드 중%s\n' "$DIM" "$RST"
-    (cd "$REPO" && "$BUN" run build:senpi-plugin >/dev/null 2>&1) && ok "엔진 플러그인" \
-      || { err "엔진 빌드에 실패했습니다. 손으로: bun run build:senpi-plugin"; exit 1; }
+    # 레포 안이 아니라 밖에 만든다. 안에 쓰면 방금 받은 산출물이 곧바로
+    # dirty 가 되어 다음 업데이트를 막는다. 그게 이번에 고친 문제다.
+    (cd "$REPO" && node "$HARNESS/scripts/build-engine.mjs" --force >/dev/null 2>&1) \
+      && ok "엔진 플러그인" \
+      || { err "엔진 빌드에 실패했습니다. 손으로: node harness/scripts/build-engine.mjs --force"; exit 1; }
   else
     warn "bun 이 없어서 엔진 빌드를 건너뜁니다 — 새 component 는 동작하지 않아요"
   fi

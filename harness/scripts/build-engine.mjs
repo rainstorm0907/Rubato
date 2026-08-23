@@ -1,0 +1,204 @@
+#!/usr/bin/env node
+// 엔진 산출물을 레포 밖에 만든다.
+//
+// 왜 밖인가. 빌드는 `packages/omo-senpi/plugin/extensions/*.js` 를 다시 쓰는데
+// 그 파일들은 git 이 추적한다. 그리고 첫 줄의 `// omo:<소스해시>` 는 소스 전체를
+// 덮는 해시라, 로컬에 소스 수정이 하나라도 있으면 재빌드마다 값이 달라진다.
+// rubato 는 세션을 띄울 때마다 빌드를 돌리므로, 이 조합은 worktree 를 영구히
+// dirty 로 만들고 업데이트를 막았다. 정리해도 다음 세션에 또 생겼다.
+//
+// 그렇다고 추적에서 빼면 안 된다. upstream(oh-my-openagent)은 이 산출물을
+// `build(omo-senpi): regenerate extension bundles` 로 직접 커밋한다. 삭제하면
+// upstream 을 머지할 때마다 "저쪽은 수정, 이쪽은 삭제" 로 싸운다.
+//
+// 그래서 역할을 가른다. 레포 안의 것은 upstream 원본 보관용으로 그대로 두고,
+// 우리가 실제로 쓰는 판은 밖에 만든다. 한 파일이 두 역할을 겸하던 것이 문제의
+// 뿌리였다.
+//
+// plugin 디렉터리는 통째로 옮긴다. package.json 의
+// `imports["#omo-task-runtime"] → ./extensions/omo-task.js` 가 자기 위치 기준
+// 상대경로이고 빌드는 그 이름을 external 로 남기므로, extensions 만 옮기면
+// 이 연결이 끊어진다. extensions + skills + package.json 이 한 세트다.
+//
+//   build-engine.mjs           필요할 때만 다시 만든다 (신선하면 즉시 끝)
+//   build-engine.mjs --force   무조건 다시 만든다
+//   build-engine.mjs --check   신선한지만 보고 끝낸다 (0 신선, 10 낡음)
+import { cp, mkdir, readdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const forkRoot = join(here, "..", "..");
+const srcPluginRoot = join(forkRoot, "packages", "omo-senpi", "plugin");
+
+/** 레포 밖 엔진 자리. 하네스 프로필 안이라 세션과 수명이 같다. */
+export const engineRoot = process.env.RUBATO_ENGINE_DIR ??
+  join(process.env.HOME ?? "", ".rubato-pi", "engine", "plugin");
+
+const extensionsDir = join(engineRoot, "extensions");
+const mainOutput = join(extensionsDir, "omo.js");
+
+const mode = process.argv.includes("--check")
+  ? "check"
+  : process.argv.includes("--force")
+  ? "force"
+  : "auto";
+
+async function loadBuilder() {
+  return import(join(srcPluginRoot, "scripts", "build-extension.mjs"));
+}
+
+/**
+ * 산출물보다 새로 고쳐진 소스가 있는가. 값싼 앞단이다.
+ *
+ * 정밀한 판단은 checkExtensionCurrent 에 있지만 그것은 확인하려고 임시본을
+ * 통째로 다시 빌드한다 — 2초 넘고, 그 임시 자리를 레포 안에 만든다.
+ * 세션을 띄울 때마다 치르기에는 비싸다. 대부분은 "고친 게 없다" 이므로
+ * mtime 으로 먼저 거르고, 의심스러울 때만 정밀 검사로 내려간다.
+ *
+ * mtime 은 틀릴 수 있다(브랜치 전환 등). 틀리는 방향이 안전해야 하므로
+ * "새 것이 있다" 쪽으로 틀리게 둔다 — 그러면 정밀 검사가 받아준다.
+ */
+async function sourcesNewerThanOutput() {
+  let outputTime;
+  try {
+    outputTime = (await stat(mainOutput)).mtimeMs;
+  } catch {
+    return true;
+  }
+
+  const roots = [
+    join(forkRoot, "packages", "omo-senpi", "src"),
+    join(forkRoot, "packages", "senpi-task", "src"),
+    join(srcPluginRoot, "scripts"),
+  ];
+
+  const skipDirs = new Set(["node_modules", ".git", "dist", ".omo"]);
+
+  async function walk(dir) {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (skipDirs.has(entry.name)) continue;
+        if (await walk(join(dir, entry.name))) return true;
+        continue;
+      }
+      try {
+        if ((await stat(join(dir, entry.name))).mtimeMs > outputTime) return true;
+      } catch {
+        // 읽지 못하는 파일은 판단에서 제외한다.
+      }
+    }
+    return false;
+  }
+
+  for (const root of roots) {
+    if (await walk(root)) return true;
+  }
+  return false;
+}
+
+/**
+ * 산출물이 소스와 맞는지. 첫 줄 `// omo:<소스해시>` 가 소스 전체를 덮으므로
+ * 신선도 판단은 이미 엔진 쪽에 있다. 여기서 새로 만들지 않고 그것을 쓴다.
+ */
+async function isFresh() {
+  if (!existsSync(mainOutput)) return false;
+  if (!await sourcesNewerThanOutput()) return true;
+
+  const { checkExtensionCurrent } = await loadBuilder();
+  const result = await checkExtensionCurrent({ outputPath: mainOutput });
+  if (result.ok !== true) return false;
+
+  // 소스가 더 새로워 보였지만 실제 내용은 같았다(예: touch, 브랜치 전환,
+  // 주석만 고침). 그 사실을 기록해 두지 않으면 다음 실행에도 똑같이 2초짜리
+  // 정밀 검사를 다시 한다. 도장을 찍어 다음부터는 단축 경로로 끝낸다.
+  await stampOutput();
+  return true;
+}
+
+/** 산출물이 지금 소스보다 새롭다고 표시한다. */
+async function stampOutput() {
+  const now = new Date();
+  await utimes(mainOutput, now, now).catch(() => {});
+}
+
+/**
+ * package.json 과 skills 를 밖으로 옮긴다. 산출물 옆에 있어야 엔진이
+ * `#omo-task-runtime` 과 스킬 목록을 자기 자리에서 찾는다.
+ */
+async function mirrorPluginShell() {
+  await mkdir(engineRoot, { recursive: true });
+
+  // 산출물 옆에 같이 있어야 하는 것들. package.json 의 `files` 가 이 패키지가
+  // 실행에 뭐가 필요한지 이미 적어 둔 목록이다.
+  //
+  // runtime 을 빼먹어서 ast-grep 과 lsp 가 "staged runtime is missing" 으로 조용히
+  // 꺼졌던 적이 있다. 세션은 뜨기 때문에 더 늦게 발견된다.
+  for (const name of ["skills", "runtime"]) {
+    const src = join(srcPluginRoot, name);
+    const dst = join(engineRoot, name);
+    if (!existsSync(src)) continue;
+    await rm(dst, { recursive: true, force: true });
+    await cp(src, dst, { recursive: true });
+  }
+
+  // package.json 은 그대로 베끼되 files/private 같은 배포용 항목은 의미가
+  // 없다. 다만 손대면 upstream 과 어긋나므로 내용은 건드리지 않고 옮긴다.
+  await cp(join(srcPluginRoot, "package.json"), join(engineRoot, "package.json"));
+
+  // 번들은 `@earendil-works/pi-tui` 같은 senpi 로더 별칭을 external 로 남긴다.
+  // 세션에서는 senpi 로더가 풀어주지만, lead-overlay 처럼
+  // `await import(omoExtension)` 으로 직접 불러 로더를 안 거치는 경로도 있다.
+  // 그때는 node 가 상위로 올라가며 찾는데, 산출물이 레포 밖에 있으면 위에
+  // 아무것도 없어 끊긴다.
+  //
+  // 그런데 루트 node_modules 하나로는 모자란다. pi-tui 는 호이스팅되지 않고
+  // senpi 안에 중첩되어 있어서(engine-paths 의 senpiNested 가 이미 "둘 다 본다"고
+  // 적어 둔 그 사정이다), 둘 다 걸어야 한다. 다만 중첩 쪽이 먼저 보여야
+  // 하므로 산출물 바로 옆(extensions/node_modules)에 둔다 — node 는 가까운
+  // 곳부터 찾기 때문이다.
+  const linkPairs = [
+    [join(engineRoot, "node_modules"), join(forkRoot, "node_modules")],
+    [
+      join(engineRoot, "extensions", "node_modules"),
+      join(forkRoot, "node_modules", "@code-yeongyu", "senpi", "node_modules"),
+    ],
+  ];
+  for (const [linkPath, target] of linkPairs) {
+    await rm(linkPath, { recursive: true, force: true });
+    if (existsSync(target)) {
+      await symlink(target, linkPath, "dir").catch(() => {});
+    }
+  }
+}
+
+async function build() {
+  const { buildExtension } = await loadBuilder();
+  await mkdir(extensionsDir, { recursive: true });
+  // outputPath 하나만 주면 나머지 다섯은 그 옆에 따라붙는다. 엔진 쪽이 이미
+  // 그렇게 되어 있어서 build-extension.mjs 는 고치지 않는다 — upstream 파일을
+  // 손대지 않을수록 머지가 조용하다.
+  await buildExtension({ outputPath: mainOutput });
+  await mirrorPluginShell();
+  await writeFile(join(engineRoot, ".built-from"), `${forkRoot}\n`);
+
+  // 방금 빌드했으니 지금이 가장 새롭다고 도장을 찍는다.
+  await stampOutput();
+}
+
+if (mode === "check") {
+  process.exit(await isFresh() ? 0 : 10);
+}
+
+if (mode === "auto" && await isFresh()) {
+  process.exit(0);
+}
+
+await build();

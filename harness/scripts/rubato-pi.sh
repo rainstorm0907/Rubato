@@ -93,6 +93,18 @@ if [ -f "$SELECT" ]; then
   NODE="$("$NODE" "$SELECT" --print)"
 fi
 
+# 엔진 산출물을 레포 밖에 준비한다. 이미 신선하면 즉시 끝나고(해시 비교만
+# 한다), 소스를 고쳤거나 처음이면 그때만 다시 만든다.
+#
+# 레포 안이 아니라 밖에 만드는 이유는 engine-paths.mjs 첫머리에 있다 — 요약하면
+# 빌드가 추적 파일을 다시 쓰면 worktree 가 영구히 dirty 가 되어 업데이트가 막힌다.
+# 실패해도 여기서 세션을 막지 않는다. 산출물이 정말 없으면 assertEngineBuilt 가
+# 사유를 들고 세운다.
+if [ -z "${RUBATO_NO_ENGINE_BUILD-}" ] && [ -f "$HERE/build-engine.mjs" ]; then
+  splash step "엔진 빌드"
+  "$NODE" "$HERE/build-engine.mjs" >/dev/null 2>&1 || true
+fi
+
 # cmux 세션 복원을 붙인다. 이게 없으면 cmux 를 꺼다 켜는 순간 세션이
 # 통째로 날아간다. cmux 를 안 쓰면 아무 일도 안 생기고, 이미 맞으면 조용하다.
 # 경로가 어긋난 때도(하네스를 옮기면 절대경로가 깨진다) 여기서 고친다.

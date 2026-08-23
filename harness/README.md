@@ -46,10 +46,16 @@ git submodule update --init --recursive
 bun install                          # 엔진(senpi). npm 은 workspace: 를 못 읽는다. bun 1.4+
 npm install --prefix harness         # bridge
 npm install --prefix harness/rubato-pi
-node packages/omo-senpi/plugin/scripts/build-extension.mjs
+node harness/scripts/build-engine.mjs   # 엔진 산출물 → ~/.rubato-pi/engine/plugin
 harness/prompts/build.sh
 harness/scripts/install-skills.sh
 ```
+
+엔진 산출물은 레포가 아니라 `~/.rubato-pi/engine/plugin` 에 만든다. 레포 안의
+`packages/omo-senpi/plugin/extensions/` 는 upstream 이 직접 커밋하는 원본이라,
+거기에 우리 빌드를 덮으면 worktree 가 영구히 dirty 가 되어 업데이트가 막힐다
+(산출물 첫 줄의 소스 해시가 매번 달라진다). 보관용과 사용본을 갈라 둔 것이다.
+`rubato` 를 띄울 때마다 자동으로 돌고, 신선하면 0.06초에 끝난다.
 
 ## 업데이트
 
@@ -76,9 +82,17 @@ rubato build           # 로컬 시스템 프롬프트를 다시 합성
 일반 `rubato` 실행도 시작 전에 로컬 시스템 프롬프트를 다시 합성한다. 보통 0.01초라
 프롬프트 조각을 직접 고친 뒤 `rubato build` 를 잊어도 새 세션부터 바로 반영된다.
 
-안 건드리는 경우가 셋이다. 브랜치가 `rubato/base` 가 아니거나, 커밋하지 않은 수정이 있거나,
-로컬에만 있는 커밋이 있을 때. 남의 작업을 덮지 않으려는 것이다.
-알림을 끄려면 `RUBATO_NO_UPDATE_CHECK=1`.
+커밋하지 않은 수정이 있어도 멈추지 않는다. 그대로 받아 보고, 겹쳐서 거부당할 때만
+잠시 치웠다(`git stash`) 받은 직후 되돌린다. 받기에 실패해도 치운 것을 반드시
+제자리에 돌려놓고 빠진다. 되돌리다 충돌해도 stash 항목은 남으므로 잃는 것은 없다.
+
+예전에는 수정이 있으면 멈춰 사람에게 정리를 시켰는데, 이 레포는 가만히 둬도
+산출물 때문에 dirty 가 되어 정리해도 다음 세션에 또 걸렸다. 산출물을 레포 밖으로
+뻐면서 그 고리를 끊었고, 떠넘기는 분기도 같이 없앱다.
+
+그래도 안 건드리는 경우가 둘 남는다. 브랜치가 `rubato/base` 가 아니거나, 로컬에만
+있는 커밋과 갈라져 fast-forward 가 안 될 때다.
+알림을 끄려면 `RUBATO_NO_UPDATE_CHECK=1`, 엔진 빌드를 건너뛰려면 `RUBATO_NO_ENGINE_BUILD=1`.
 
 ## cmux 세션 복원
 
