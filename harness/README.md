@@ -33,6 +33,27 @@ harness/scripts/install-skills.sh    # 번들 스킬 -> ~/.agents/skills
 echo 'alias rubato="$HOME/<클론경로>/Rubato/harness/scripts/rubato-pi.sh"' >> ~/.zshrc
 ```
 
+## 업데이트
+
+`rubato` 를 띄울 때 하루 한 번 원격을 본다. 새 커밋이 있으면 한 줄만 띄우고 세션은 그대로 진행한다.
+
+```text
+✦ rubato 업데이트 3개  `rubato update` 로 받는다
+```
+
+```bash
+rubato update          # 무엇이 바뀌는지 보여주고 물어본다
+rubato update --yes    # 묻지 않고 전부
+rubato update --check  # 새 커밋이 있는지만 (있으면 exit 10)
+```
+
+받으면 바뀐 것에 맞춰 다시 만든다 — 의존성, 엔진 플러그인, 시스템 프롬프트, 번들 스킬.
+`packages/` 가 바뀌면 엔진 빌드까지 돌아서 몇 분 걸린다.
+
+안 건드리는 경우가 셋이다. 브랜치가 `rubato/base` 가 아니거나, 커밋하지 않은 수정이 있거나,
+로컬에만 있는 커밋이 있을 때. 남의 작업을 덮지 않으려는 것이다.
+알림을 끄려면 `RUBATO_NO_UPDATE_CHECK=1`.
+
 **요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). `opencodex` 는 선택이다 — Codex 는 OAuth 로 직접 가고, OpenCodex 가 있으면 그쪽 모델이 카탈로그에 더해질 뿐이다.
 
 **크레덴셜은 각자 넣는다.** 설치는 이것들을 만들지 않는다. 상태는 `rubato auth` 로 본다.

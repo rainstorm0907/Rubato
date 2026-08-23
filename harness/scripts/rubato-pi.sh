@@ -15,6 +15,16 @@ if [ "${1-}" = "auth" ]; then
   shift
   exec "$HERE/rubato-auth.sh" "$@"
 fi
+if [ "${1-}" = "update" ]; then
+  shift
+  exec "$HERE/rubato-update.sh" "$@"
+fi
+
+# 하루 한 번, 원격에 새 커밋이 있으면 한 줄 알린다. 받는 것은 `rubato update`.
+# 실패해도 세션 시작을 막지 않는다.
+if [ -z "${RUBATO_NO_UPDATE_CHECK-}" ] && [ -x "$HERE/rubato-update.sh" ]; then
+  "$HERE/rubato-update.sh" --check >/dev/null || true
+fi
 
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 SELECT="$ROOT/scripts/select-node.mjs"
