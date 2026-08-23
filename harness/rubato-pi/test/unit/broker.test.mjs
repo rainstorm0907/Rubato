@@ -8,10 +8,12 @@ import brokerOverlay, {
 import { buildSenpiArgs, brokerOverlayPath, leadOverlayPath } from "../../src/launch.mjs";
 import {
   brokerUrl,
+  bridgeSourceMtimeMs,
   catalogId,
   ensureBroker,
   FALLBACK_CATALOG,
   groupCatalog,
+  restartBroker,
   startBroker,
 } from "../../src/broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "../../src/broker-request.mjs";
@@ -95,6 +97,37 @@ test("ensureBroker starts the existing relay only when it is down", () => {
   const second = ensureBroker({ env: {}, isUp: () => true, start: () => started.push("again") });
   assert.equal(second.started, false);
   assert.equal(started.length, 1);
+});
+
+test("ensureBroker restarts a stale relay before reusing it", () => {
+  let restarted = 0;
+  let fresh = false;
+  const got = ensureBroker({
+    env: {},
+    isUp: () => ({ up: true, fresh }),
+    restart: () => {
+      restarted++;
+      fresh = true;
+      return { status: 0 };
+    },
+    sleep: () => {},
+  });
+  assert.equal(got.started, true);
+  assert.equal(restarted, 1);
+});
+
+test("bridge freshness source exists and restart targets the narrow script", () => {
+  assert.ok(bridgeSourceMtimeMs() > 0);
+  const calls = [];
+  restartBroker({
+    env: {},
+    spawnSyncImpl: (cmd, args, opts) => {
+      calls.push({ cmd, args, opts });
+      return { status: 0 };
+    },
+  });
+  assert.equal(calls[0].cmd, "sh");
+  assert.match(calls[0].args[0], /rubato-restart\.sh$/);
 });
 
 test("startBroker detaches the relay instead of blocking the TUI on it", () => {

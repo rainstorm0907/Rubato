@@ -259,3 +259,49 @@ index 00000000..72eefbb1
 +    actions.get(url)?.();
 +    return true;
 +}
+diff --git a/dist/core/extensions/builtin/compaction/speculative.js b/dist/core/extensions/builtin/compaction/speculative.js
+index 608424ca..b853605b 100644
+--- a/dist/core/extensions/builtin/compaction/speculative.js
++++ b/dist/core/extensions/builtin/compaction/speculative.js
+@@ -88,33 +88,6 @@
+     }
+     return headroom;
+ }
+-/**
+- * Reasoning override for summarization requests. Compaction must be fast: a
+- * summarization request that inherits the provider's default reasoning mode
+- * burns its latency (and output budget) on invisible thinking before emitting
+- * the summary. Disable or minimize reasoning per wire family; adapters ignore
+- * options their provider does not support. Mirrors how OpenAI Codex keeps its
+- * compaction turn cheap.
+- */
+-function summarizationReasoningOptions(model) {
+-    if (!model.reasoning)
+-        return {};
+-    if (model.api === "anthropic-messages")
+-        return { thinkingEnabled: false };
+-    const reasoningEffort = ["low", "medium", "high"].find((level) => model.thinkingLevelMap?.[level] !== null);
+-    if (!reasoningEffort)
+-        return {};
+-    switch (model.api) {
+-        case "openai-responses":
+-        case "openai-codex-responses":
+-        case "azure-openai-responses":
+-            return { reasoningEffort, reasoningSummary: null };
+-        case "openai-completions":
+-            return { reasoningEffort };
+-        default:
+-            return {};
+-    }
+-}
+ function getSummaryText(message) {
+     const content = Array.isArray(message.content)
+         ? message.content
+@@ -183,7 +156,6 @@
+             },
+             maxTokens: summaryMaxTokens(options.snapshot.model, options.snapshot.contextWindow),
+             signal: requestController.signal,
+-            ...summarizationReasoningOptions(options.snapshot.model),
+         });
+         await consumeStreamWithIdleTimeout(responseStream, {
+             idleTimeoutMs: DEFAULT_SUMMARIZATION_IDLE_TIMEOUT_MS,

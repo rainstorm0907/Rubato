@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { closeSync, openSync } from "node:fs";
+import { closeSync, openSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,10 +105,27 @@ export function startBroker({ env = process.env, spawn: spawnImpl = spawn } = {}
   }
 }
 
+export function bridgeSourceMtimeMs() {
+  const bridgeDir = fileURLToPath(new URL("../../bridge/src/", import.meta.url));
+  return Math.max(
+    ...["server.ts", "models.ts", "direct-provider.ts", "fx-request.ts", "fx-stream.ts"]
+      .map((name) => statSync(join(bridgeDir, name)).mtimeMs),
+  );
+}
+
+export function restartBroker({ env = process.env, spawnSyncImpl = spawnSync } = {}) {
+  return spawnSyncImpl("sh", [fileURLToPath(new URL("../../scripts/rubato-restart.sh", import.meta.url))], {
+    env,
+    stdio: "ignore",
+  });
+}
+
 export function ensureBroker({
   env = process.env,
   isUp,
   start,
+  restart,
+  sourceMtime = bridgeSourceMtimeMs,
   sleep = sleepSync,
   tries = 40,
   intervalMs = 250,
@@ -116,15 +133,27 @@ export function ensureBroker({
   const url = brokerUrl(env);
   const check = isUp ?? (() => {
     const probe = spawnSync("curl", ["-sf", `${url}/healthz`], { encoding: "utf8" });
-    return probe.status === 0;
+    if (probe.status !== 0) return { up: false, fresh: false };
+    try {
+      const health = JSON.parse(probe.stdout);
+      return { up: true, fresh: Number(health.startedAt) >= sourceMtime() };
+    } catch {
+      return { up: true, fresh: false };
+    }
   });
-  if (check(url)) return { ok: true, started: false, url };
-  const result = (start ?? (() => startBroker({ env })))();
+  const initial = check(url);
+  const state = typeof initial === "boolean" ? { up: initial, fresh: initial } : initial;
+  if (state.up && state.fresh) return { ok: true, started: false, url };
+  const result = state.up
+    ? (restart ?? (() => restartBroker({ env })))()
+    : (start ?? (() => startBroker({ env })))();
   if (result && typeof result.status === "number" && result.status !== 0) {
     throw new Error(`rubato broker failed to start at ${url}`);
   }
   for (let attempt = 0; attempt < tries; attempt++) {
-    if (check(url)) return { ok: true, started: true, url };
+    const checked = check(url);
+    const next = typeof checked === "boolean" ? { up: checked, fresh: checked } : checked;
+    if (next.up && next.fresh) return { ok: true, started: true, url };
     if (attempt + 1 < tries) sleep(intervalMs);
   }
   throw new Error(`rubato broker did not come up at ${url}`);

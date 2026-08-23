@@ -63,21 +63,10 @@ export function opencodexModelsToFxCatalog(payload: unknown): { object: "list"; 
   return { object: "list", data };
 }
 
-/**
- * Prefer Rubato's direct Codex OAuth lane when OpenCodex advertises the same
- * OpenAI model. Keep OpenCodex-only models and non-OpenAI providers intact.
- */
-export function removeDirectCodexDuplicates(
-  proxied: JsonObject[],
-  directModelIds: string[],
-): JsonObject[] {
-  const directCodexModels = new Set(
-    directModelIds
-      .filter((id) => id.startsWith("openai-codex/"))
-      .map((id) => id.slice("openai-codex/".length)),
-  );
+/** Rubato owns OpenAI through the direct Codex OAuth lane, never OpenCodex. */
+export function removeDirectProviderModels(proxied: JsonObject[]): JsonObject[] {
   return proxied.filter((entry) => {
     const id = asString(entry.id);
-    return !id?.startsWith("openai/") || !directCodexModels.has(id.slice("openai/".length));
+    return id && !id.startsWith("openai/") && !id.startsWith("xai/") && !id.startsWith("anthropic/");
   });
 }

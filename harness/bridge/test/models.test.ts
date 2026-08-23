@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { opencodexModelsToFxCatalog, removeDirectCodexDuplicates } from "../src/models.ts";
+import { opencodexModelsToFxCatalog, removeDirectProviderModels } from "../src/models.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("OpenCodex models keep provider prefixes and stay distinct", () => {
@@ -21,7 +21,7 @@ test("OpenCodex models keep provider prefixes and stay distinct", () => {
   assert.ok(catalog.data[0].tags.includes("reasoning"));
 });
 
-test("direct Codex models hide only matching OpenCodex duplicates", () => {
+test("direct providers never reappear through OpenCodex", () => {
   const catalog = opencodexModelsToFxCatalog({
     data: [
       { id: "gpt-5.6-sol", owned_by: "openai" },
@@ -29,9 +29,8 @@ test("direct Codex models hide only matching OpenCodex duplicates", () => {
       { id: "cursor/gpt-5.6-sol", owned_by: "cursor" },
     ],
   });
-  const filtered = removeDirectCodexDuplicates(catalog.data, ["openai-codex/gpt-5.6-sol"]);
+  const filtered = removeDirectProviderModels(catalog.data);
   assert.deepEqual(filtered.map((entry) => entry.id), [
-    "openai/gpt-5.7-pro",
     "cursor/gpt-5.6-sol",
   ]);
 });

@@ -2,10 +2,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { loadConfig } from "./config.ts";
 import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
-import { opencodexModelsToFxCatalog, removeDirectCodexDuplicates } from "./models.ts";
+import { opencodexModelsToFxCatalog, removeDirectProviderModels } from "./models.ts";
 import { DIRECT_CATALOG, directProviderToFxSse, isDirectModel } from "./direct-provider.ts";
 
 const SENSITIVE = /authorization|api[-_]?key|token|secret|refresh/i;
+const STARTED_AT = Date.now();
 
 function header(req: IncomingMessage, name: string): string | undefined {
   const value = req.headers[name.toLowerCase()];
@@ -46,14 +47,7 @@ async function proxyModels(config: ReturnType<typeof loadConfig>, res: ServerRes
     const upstream = await fetch(`${config.opencodexBaseUrl}/v1/models`);
     const payload = await upstream.json();
     const proxied = opencodexModelsToFxCatalog(payload);
-    const foreignModels = proxied.data.filter((entry) => {
-      const id = String(entry.id);
-      return !id.startsWith("xai/") && !id.startsWith("anthropic/") && !id.startsWith("openai-codex/");
-    });
-    catalog.data = removeDirectCodexDuplicates(
-      foreignModels,
-      DIRECT_CATALOG.map((model) => model.id),
-    );
+    catalog.data = removeDirectProviderModels(proxied.data);
   } catch {
     // OpenCodex 가 안 뗴 뿐이다. 직접 프로바이더만 내려준다.
   }
@@ -169,7 +163,7 @@ export function startBridge(env: NodeJS.ProcessEnv = process.env) {
     void (async () => {
       const url = new URL(req.url ?? "/", `http://${config.bind}`);
       if (req.method === "GET" && (url.pathname === "/healthz" || url.pathname === "/health")) {
-        sendJson(res, 200, { ok: true, service: "fx-v3-bridge" });
+        sendJson(res, 200, { ok: true, service: "fx-v3-bridge", startedAt: STARTED_AT });
         return;
       }
       if (req.method === "GET" && url.pathname === "/coding-agent/v1/models") {
