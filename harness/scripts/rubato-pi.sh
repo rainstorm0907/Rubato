@@ -39,6 +39,18 @@ trap 'printf "\033[?25h"' EXIT INT TERM
 splash step "프롬프트"
 "$HERE/../prompts/build.sh" >/dev/null
 
+# 세션은 모델 호출을 전부 브리지로 보낸다. 브리지가 죽어 있으면 아무것도
+# 안 되는데, 그 사실은 첫 응답이 실패할 때에야 보인다. 여기서 미리 보고
+# 죽어 있을 때만 띄운다. 살아 있으면 조용하고, 띄우기에 실패해도 세션은
+# 막지 않는다 — 실패는 어차피 첫 호출에서 드러난다.
+if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
+  BRIDGE_URL="http://127.0.0.1:${FX_BRIDGE_PORT:-8788}/health"
+  if ! curl -fsS -m 2 -o /dev/null "$BRIDGE_URL" 2>/dev/null; then
+    splash step "브리지"
+    "$HERE/rubato-restart.sh" >/dev/null 2>&1 || true
+  fi
+fi
+
 # 매 실행마다 원격에 새 커밋이 있는지 본다. 있으면 스플래시를 닫은 뒤에
 # 받을지 물어본다. 실패해도 세션 시작을 막지 않는다.
 #
