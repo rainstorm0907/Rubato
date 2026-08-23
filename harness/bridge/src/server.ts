@@ -4,6 +4,7 @@ import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
 import { opencodexModelsToFxCatalog, removeDirectProviderModels } from "./models.ts";
 import { DIRECT_CATALOG, directProviderToFxSse, isDirectModel } from "./direct-provider.ts";
+import { closeUpstreamAgent } from "./upstream-dispatcher.ts";
 
 const SENSITIVE = /authorization|api[-_]?key|token|secret|refresh/i;
 const STARTED_AT = Date.now();
@@ -185,6 +186,12 @@ export function startBridge(env: NodeJS.ProcessEnv = process.env) {
       if (!res.headersSent) sendJson(res, 500, { error: { type: "bridge_error", message: sanitizeLog(message) } });
       else if (!res.writableEnded) res.end();
     });
+  });
+
+  // 업스트림 Agent 는 서버보다 오래 사는 모듈 싱글턴이다. 서버를 닫는 쪽이
+  // 연결까지 회수하지 않으면 테스트와 재기동에서 소켓이 남는다.
+  server.on("close", () => {
+    void closeUpstreamAgent();
   });
 
   server.listen(config.port, config.bind, () => {
