@@ -128,6 +128,28 @@ export function restartBroker({ env = process.env, spawnSyncImpl = spawnSync } =
   });
 }
 
+// 브리지 상태를 한 번 읽는다. `-m` 없이 curl 을 부르면 브리지가 응답을 못
+// 주는 동안 세션 시작이 영영 멈춘다 — 붙은 세션이 여럿이면 그게 곧 "rubato 가
+// 안 켜진다" 이다. 판정에는 상한을 둔다.
+export function probeBridge(url, { spawnSyncImpl = spawnSync, sourceMtime = bridgeSourceMtimeMs, timeoutSec = 8 } = {}) {
+  const probe = spawnSyncImpl("curl", ["-sf", "-m", String(timeoutSec), `${url}/healthz`], { encoding: "utf8" });
+  if (probe.status !== 0) return { up: false, fresh: false, inflight: null };
+  try {
+    const health = JSON.parse(probe.stdout);
+    // inflight 를 안 실어 보내는 브리지(우리 것보다 낡은 것)는 "0 이다" 가
+    // 아니라 "모른다" 이다. 아래에서 모르는 것은 죽이지 않는다.
+    const inflight = Number.isFinite(Number(health.inflight)) ? Number(health.inflight) : null;
+    return { up: true, fresh: Number(health.startedAt) >= sourceMtime(), inflight };
+  } catch {
+    return { up: true, fresh: false, inflight: null };
+  }
+}
+
+function normalizeState(value) {
+  if (typeof value === "boolean") return { up: value, fresh: value, inflight: value ? 0 : null };
+  return { up: Boolean(value.up), fresh: Boolean(value.fresh), inflight: value.inflight ?? null };
+}
+
 export function ensureBroker({
   env = process.env,
   isUp,
@@ -137,21 +159,39 @@ export function ensureBroker({
   sleep = sleepSync,
   tries = 40,
   intervalMs = 250,
+  // 죽었다는 판정은 한 번으로 하지 않는다. 브리지가 여러 세션의 SSE 로 바쁘면
+  // 한 번쯤 늦게 답할 수 있고, 그 한 번이 곧바로 재기동으로 이어지면 살아 있는
+  // 브리지가 남의 사정으로 죽는다.
+  downTries = 3,
+  downIntervalMs = 400,
+  warn = (message) => process.stderr.write(message),
 } = {}) {
   const url = brokerUrl(env);
-  const check = isUp ?? (() => {
-    const probe = spawnSync("curl", ["-sf", `${url}/healthz`], { encoding: "utf8" });
-    if (probe.status !== 0) return { up: false, fresh: false };
-    try {
-      const health = JSON.parse(probe.stdout);
-      return { up: true, fresh: Number(health.startedAt) >= sourceMtime() };
-    } catch {
-      return { up: true, fresh: false };
-    }
-  });
-  const initial = check(url);
-  const state = typeof initial === "boolean" ? { up: initial, fresh: initial } : initial;
+  const check = isUp ?? ((target) => probeBridge(target, { sourceMtime }));
+  const read = () => normalizeState(check(url));
+
+  let state = read();
+  for (let attempt = 1; !state.up && attempt < downTries; attempt++) {
+    sleep(downIntervalMs);
+    state = read();
+  }
   if (state.up && state.fresh) return { ok: true, started: false, url };
+
+  // 낡았지만 살아 있다. 진행 중인 모델 호출이 있으면(또는 있는지 알 수 없으면)
+  // 갈아치우지 않는다 — 남의 세션의 턴이 소켓 끊김으로 끝나는 것보다 낡은
+  // 코드로 한 턴 더 도는 쪽이 낫다. 다음 한가한 순간이나 `rubato restart` 가
+  // 가져간다.
+  if (state.up && !state.fresh) {
+    const busy = state.inflight === null || state.inflight > 0;
+    if (busy) {
+      const detail = state.inflight === null
+        ? "진행 중인 호출 수를 알리지 않는 브리지"
+        : `진행 중인 호출 ${state.inflight}건`;
+      warn(`rubato: 브리지 코드가 낡았지만 ${detail} 때문에 재시작하지 않는다. 한가할 때 \`rubato restart\`.\n`);
+      return { ok: true, started: false, stale: true, url };
+    }
+  }
+
   const result = state.up
     ? (restart ?? (() => restartBroker({ env })))()
     : (start ?? (() => startBroker({ env })))();
@@ -159,8 +199,7 @@ export function ensureBroker({
     throw new Error(`rubato broker failed to start at ${url}`);
   }
   for (let attempt = 0; attempt < tries; attempt++) {
-    const checked = check(url);
-    const next = typeof checked === "boolean" ? { up: checked, fresh: checked } : checked;
+    const next = read();
     if (next.up && next.fresh) return { ok: true, started: true, url };
     if (attempt + 1 < tries) sleep(intervalMs);
   }

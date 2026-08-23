@@ -16,6 +16,7 @@ import {
   ensureBroker,
   FALLBACK_CATALOG,
   groupCatalog,
+  probeBridge,
   restartBroker,
   startBroker,
 } from "../../src/broker.mjs";
@@ -102,12 +103,12 @@ test("ensureBroker starts the existing relay only when it is down", () => {
   assert.equal(started.length, 1);
 });
 
-test("ensureBroker restarts a stale relay before reusing it", () => {
+test("ensureBroker restarts a stale relay only while it is idle", () => {
   let restarted = 0;
   let fresh = false;
   const got = ensureBroker({
     env: {},
-    isUp: () => ({ up: true, fresh }),
+    isUp: () => ({ up: true, fresh, inflight: 0 }),
     restart: () => {
       restarted++;
       fresh = true;
@@ -117,6 +118,92 @@ test("ensureBroker restarts a stale relay before reusing it", () => {
   });
   assert.equal(got.started, true);
   assert.equal(restarted, 1);
+});
+
+test("a stale relay with a model call in flight is left alone", () => {
+  // 살아 있는 브리지를 코드가 낡았다는 이유로 죽이면, 붙어 있던 다른 세션의
+  // 턴이 소켓 끊김으로 끝난다. 낡은 채로 한 턴 더 도는 쪽이 낫다.
+  const warnings = [];
+  let restarted = 0;
+  const got = ensureBroker({
+    env: {},
+    isUp: () => ({ up: true, fresh: false, inflight: 2 }),
+    restart: () => {
+      restarted++;
+      return { status: 0 };
+    },
+    sleep: () => {},
+    warn: (message) => warnings.push(message),
+  });
+  assert.equal(restarted, 0);
+  assert.equal(got.ok, true);
+  assert.equal(got.started, false);
+  assert.equal(got.stale, true);
+  assert.match(warnings.join(""), /rubato restart/);
+});
+
+test("a relay that does not report in-flight calls is left alone too", () => {
+  // 우리 것보다 낡은 브리지는 inflight 를 안 실어 보낸다. 그건 "0 이다" 가
+  // 아니라 "모른다" 이고, 모르는 것은 죽이지 않는다.
+  let restarted = 0;
+  const got = ensureBroker({
+    env: {},
+    isUp: () => ({ up: true, fresh: false }),
+    restart: () => {
+      restarted++;
+      return { status: 0 };
+    },
+    sleep: () => {},
+    warn: () => {},
+  });
+  assert.equal(restarted, 0);
+  assert.equal(got.stale, true);
+});
+
+test("one slow health probe does not count as a dead bridge", () => {
+  // 브리지가 여러 세션의 SSE 로 바쁘면 한 번쯤 늦게 답한다. 그 한 번으로
+  // 새 브리지를 띄우면 포트 싸움이 나고, 사람 손에서는 kill 로 이어진다.
+  let probes = 0;
+  let started = 0;
+  const got = ensureBroker({
+    env: {},
+    isUp: () => (++probes === 1 ? { up: false, fresh: false } : { up: true, fresh: true, inflight: 1 }),
+    start: () => {
+      started++;
+      return { status: 0 };
+    },
+    sleep: () => {},
+  });
+  assert.equal(started, 0);
+  assert.equal(got.started, false);
+  assert.ok(probes >= 2, "a single failed probe must not decide");
+});
+
+test("probeBridge bounds the health check and reads the in-flight count", () => {
+  // -m 이 없으면 브리지가 답을 못 주는 동안 세션 시작이 영영 멈춘다.
+  const calls = [];
+  const state = probeBridge("http://127.0.0.1:8788", {
+    sourceMtime: () => 1000,
+    spawnSyncImpl: (cmd, args) => {
+      calls.push({ cmd, args });
+      return { status: 0, stdout: JSON.stringify({ ok: true, startedAt: 2000, inflight: 3 }) };
+    },
+  });
+  assert.equal(calls[0].cmd, "curl");
+  assert.ok(calls[0].args.includes("-m"), `health probe has no timeout: ${calls[0].args.join(" ")}`);
+  assert.deepEqual(state, { up: true, fresh: true, inflight: 3 });
+
+  const stale = probeBridge("http://127.0.0.1:8788", {
+    sourceMtime: () => 5000,
+    spawnSyncImpl: () => ({ status: 0, stdout: JSON.stringify({ startedAt: 2000, inflight: 0 }) }),
+  });
+  assert.deepEqual(stale, { up: true, fresh: false, inflight: 0 });
+
+  const down = probeBridge("http://127.0.0.1:8788", {
+    sourceMtime: () => 0,
+    spawnSyncImpl: () => ({ status: 7, stdout: "" }),
+  });
+  assert.deepEqual(down, { up: false, fresh: false, inflight: null });
 });
 
 test("bridge freshness watches every source file, not a hand-kept list", () => {
@@ -186,7 +273,8 @@ test("ensureBroker treats a still-running detached relay as starting, not failed
   let checks = 0;
   const got = ensureBroker({
     env: {},
-    isUp: () => ++checks >= 3,
+    // down 판정은 여러 번 확인한 뒤에 내려진다. 그 확인이 끝난 다음에 뜨는 경우다.
+    isUp: () => ++checks > 3,
     start: () => ({ pid: 7, status: null }),
     sleep: () => {},
   });

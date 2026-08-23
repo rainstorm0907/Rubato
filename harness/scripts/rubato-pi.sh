@@ -43,11 +43,29 @@ splash step "프롬프트"
 # 안 되는데, 그 사실은 첫 응답이 실패할 때에야 보인다. 여기서 미리 보고
 # 죽어 있을 때만 띄운다. 살아 있으면 조용하고, 띄우기에 실패해도 세션은
 # 막지 않는다 — 실패는 어차피 첫 호출에서 드러난다.
+#
+# 예전에는 2초 안에 /health 가 안 오면 곧바로 rubato-restart.sh 를 불렀다.
+# 브리지가 다른 세션들의 SSE 로 바쁘면 2초는 넘길 수 있고, 그때마다 살아 있는
+# 브리지가 죽어서 남의 턴이 통째로 끊겼다. 이제 판정은 넉넉하게 여러 번 보고,
+# 그러고도 답이 없을 때 포트를 물고 있는 프로세스가 있으면 죽이지 않는다 —
+# 그건 "죽었다"가 아니라 "바쁘거나 이상하다"이고, 가는 것은 사람이 정한다.
 if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
-  BRIDGE_URL="http://127.0.0.1:${FX_BRIDGE_PORT:-8788}/health"
-  if ! curl -fsS -m 2 -o /dev/null "$BRIDGE_URL" 2>/dev/null; then
-    splash step "브리지"
-    "$HERE/rubato-restart.sh" >/dev/null 2>&1 || true
+  BRIDGE_PORT="${FX_BRIDGE_PORT:-8788}"
+  BRIDGE_URL="http://127.0.0.1:${BRIDGE_PORT}/health"
+  BRIDGE_OK=0
+  for _ in 1 2 3; do
+    if curl -fsS -m 5 -o /dev/null "$BRIDGE_URL" 2>/dev/null; then BRIDGE_OK=1; break; fi
+    sleep 1
+  done
+  if [ "$BRIDGE_OK" = 0 ]; then
+    if lsof -ti "tcp:${BRIDGE_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+      printf 'rubato: :%s 브리지가 /health 에 늦게 답한다. 살아 있는 프로세스라 건드리지 않는다 (`rubato restart` 는 직접).\n' \
+        "$BRIDGE_PORT" >&2
+    else
+      splash step "브리지"
+      RUBATO_RESTART_REASON="rubato-pi.sh: :${BRIDGE_PORT} 에 리스너 없음" \
+        "$HERE/rubato-restart.sh" >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
