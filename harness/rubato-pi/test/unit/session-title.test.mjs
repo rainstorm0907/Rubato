@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   TITLE_ENTRY,
-  TITLE_PREFIX,
   buildTitlePrompt,
   isTitleLocked,
   lastAutoTitle,
@@ -52,9 +51,10 @@ test("shouldRetitle follows the topic until /name locks it", () => {
   assert.equal(shouldRetitle({ current: "same", proposed: "same" }), false);
 });
 
-test("tab title is ASCII rubato plus optional name and folder", () => {
-  assert.equal(tabTitle(undefined, "agent-taskforce"), `${TITLE_PREFIX} - agent-taskforce`);
-  assert.equal(tabTitle("Topic titles for tabs", "agent-taskforce"), `${TITLE_PREFIX} - Topic titles for tabs - agent-taskforce`);
+test("tab title is the bare name, falling back to the folder", () => {
+  assert.equal(tabTitle(undefined, "agent-taskforce"), "agent-taskforce");
+  assert.equal(tabTitle("Tab titles", "agent-taskforce"), "Tab titles");
+  assert.equal(tabTitle(undefined, undefined), "");
   assert.equal(buildTitlePrompt(["a", "b"]), "Recent user messages:\n1. a\n2. b");
   assert.equal(lastAutoTitle([{ type: "custom", customType: TITLE_ENTRY, data: { name: "kept" } }]), "kept");
   assert.equal(
@@ -88,7 +88,7 @@ test("installSessionTitle paints an ASCII tab on session_start", () => {
       sessionManager: { getEntries: () => [] },
     },
   );
-  assert.deepEqual(titles, ["rubato - agent-taskforce"]);
+  assert.deepEqual(titles, ["agent-taskforce"]);
 });
 
 test("refreshSessionTitle names the topic and skips a later locked name", async () => {
@@ -149,7 +149,7 @@ test("/name locks later auto titles and survives resume", () => {
   assert.equal(handlers.input({ text: "/name My tab" }).action, "continue");
   assert.equal(isTitleLocked(entries), true);
   handlers.session_info_changed({ name: "My tab" }, { cwd: "/tmp/repo", ui: { setTitle: (title) => titles.push(title) } });
-  assert.ok(titles.includes("rubato - My tab - repo"));
+  assert.ok(titles.includes("My tab"));
 
   const resumed = {};
   const again = {
@@ -187,5 +187,5 @@ test("pickTitleModel prefers haiku and titleFromResponse reads complete() output
   assert.equal(pickTitleModel({ find: () => haiku }, { id: "fallback" }), haiku);
   assert.equal(pickTitleModel({ find: () => undefined }, { id: "fallback" }).id, "fallback");
   assert.equal(titleFromResponse({ content: [{ type: "text", text: "<title>Ok</title>" }] }), "Ok");
-  paintTabTitle({ cwd: "/tmp/repo", ui: { setTitle: (title) => assert.equal(title, "rubato - repo") } });
+  paintTabTitle({ cwd: "/tmp/repo", ui: { setTitle: (title) => assert.equal(title, "repo") } });
 });

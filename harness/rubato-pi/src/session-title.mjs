@@ -1,13 +1,13 @@
 export const TITLE_MODEL = Object.freeze({ provider: "anthropic", id: "claude-haiku-4-5" });
 export const TITLE_ENTRY = "rubato-pi.session-title";
-export const TITLE_PREFIX = "rubato";
 
 export const TITLE_SYSTEM_PROMPT = `Name this coding-agent session.
 
 Rules:
 - Title the current topic, not the opening message if they differ.
-- Use 3 to 6 words.
+- Use at most 3 words, and prefer 2.
 - Prefer concrete nouns and verbs from the work.
+- Drop articles, filler, and any word the title still reads fine without.
 - Do not include quotes, trailing punctuation, markdown, or explanations.
 - If the input is only a greeting or too vague to title, return <title>none</title>.
 - Respond only as <title>Session Title</title>.`;
@@ -49,7 +49,7 @@ export function sanitizeTitle(text) {
     .trim()
     .replace(/^["'`]+|["'`.!?]+$/g, "")
     .trim()
-    .slice(0, 80)
+    .slice(0, 32)
     .trim();
 }
 
@@ -87,8 +87,5 @@ export function shouldRetitle({ current, proposed, locked } = {}) {
 }
 
 export function tabTitle(name, cwdBasename) {
-  const parts = [TITLE_PREFIX];
-  if (name) parts.push(name);
-  if (cwdBasename) parts.push(cwdBasename);
-  return parts.join(" - ");
+  return name || cwdBasename || "";
 }
