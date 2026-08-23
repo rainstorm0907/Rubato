@@ -48,7 +48,7 @@ function pointer(editor, kind, x, y) {
 }
 
 function mouse(kind, x, y) {
-  const button = kind === "press" ? 0 : kind === "drag" ? 32 : 0;
+  const button = kind === "press" ? 0 : kind === "drag" ? 35 : 0;
   return `\x1b[<${button};${x + 1};${y + 1}${kind === "release" ? "m" : "M"}`;
 }
 
@@ -309,6 +309,10 @@ if (!runtime) {
       { kind: "drag", x: 6, y: 1 },
       { kind: "release", x: 6, y: 1 },
     ]);
+
+    tui.focusedComponent.mouseSelectionActive = true;
+    tui.handleViewportInput(mouse("drag", 6, 1));
+    assert.deepEqual(events.at(-1), { kind: "drag", x: 6, y: -9 });
 
     events.length = 0;
     tui.handleViewportInput(mouse("press", 3, 1));
