@@ -22,21 +22,74 @@ describe("Senpi local collapse patch", () => {
     expect(calls).toBe(1);
   });
 
-  test("a tool owns its collapsed and expanded state", () => {
+  test("a collapsed tool shows its own renderer output, not just the tool name", () => {
     const component = new ToolExecutionComponent("bash", "tool-1", { command: "printf hello" }, {}, undefined, ui, process.cwd());
     component.setArgsComplete();
     component.updateResult({ content: [{ type: "text", text: "one\ntwo" }], details: {}, isError: false });
 
     const collapsed = component.render(80);
     expect(collapsed).toHaveLength(1);
-    expect(stripAnsi(collapsed.join("\n"))).toContain("bash");
+    // Collapsed line must be the tool's own renderCall output (the command), not a bare "bash" label.
+    expect(stripAnsi(collapsed.join("\n"))).toContain("printf hello");
     const url = osc8Url(collapsed);
     expect(url).toStartWith("senpi-action:");
 
     dispatchInternalAction(url!);
-    expect(stripAnsi(component.render(80).join("\n"))).toContain("printf hello");
+    const expanded = stripAnsi(component.render(80).join("\n"));
+    expect(expanded).toContain("printf hello");
+    expect(expanded.length).toBeGreaterThan(collapsed.join("\n").length);
     dispatchInternalAction(url!);
     expect(component.render(80)).toHaveLength(1);
+    component.dispose();
+  });
+
+  test("an errored tool collapses to exactly 2 lines with the error tail visible", () => {
+    const component = new ToolExecutionComponent("bash", "tool-err", { command: "false" }, {}, undefined, ui, process.cwd());
+    component.setArgsComplete();
+    component.updateResult({ content: [{ type: "text", text: "boom: something went wrong" }], details: {}, isError: true });
+
+    const collapsed = component.render(80);
+    expect(collapsed).toHaveLength(2);
+    const text = stripAnsi(collapsed.join("\n"));
+    expect(text).toContain("false");
+    expect(text).toContain("boom: something went wrong");
+    component.dispose();
+  });
+
+  test("todo renders fully expanded with no toggle needed", () => {
+    const component = new ToolExecutionComponent(
+      "todo",
+      "tool-todo",
+      { op: "write", tasks: [{ id: "1", title: "Do the thing", status: "pending" }] },
+      {},
+      undefined,
+      ui,
+      process.cwd(),
+    );
+    component.setArgsComplete();
+    component.updateResult({
+      content: [{ type: "text", text: "Do the thing" }],
+      details: { phases: [], op: "write" },
+      isError: false,
+    });
+
+    const rendered = component.render(80);
+    const text = stripAnsi(rendered.join("\n"));
+    // Full content is visible without any click/toggle, and there's no hyperlink to toggle it.
+    expect(text).toContain("Do the thing");
+    expect(osc8Url(rendered)).toBeUndefined();
+    component.dispose();
+  });
+
+  test("task renders fully expanded with no toggle needed", () => {
+    const component = new ToolExecutionComponent("task", "tool-task", { description: "spawn a subtask" }, {}, undefined, ui, process.cwd());
+    component.setArgsComplete();
+    component.updateResult({ content: [{ type: "text", text: "subtask output line one\nline two" }], details: {}, isError: false });
+
+    const rendered = component.render(80);
+    const text = stripAnsi(rendered.join("\n"));
+    expect(text).toContain("line two");
+    expect(osc8Url(rendered)).toBeUndefined();
     component.dispose();
   });
 

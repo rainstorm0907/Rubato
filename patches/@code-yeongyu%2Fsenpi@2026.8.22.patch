@@ -72,21 +72,31 @@ diff --git a/dist/modes/interactive/components/tool-execution.d.ts b/dist/modes/
 index 5a144f64..27ebd6c1 100644
 --- a/dist/modes/interactive/components/tool-execution.d.ts
 +++ b/dist/modes/interactive/components/tool-execution.d.ts
-@@ -14,6 +14,7 @@ export declare class ToolExecutionComponent extends Container {
+@@ -14,6 +14,8 @@
      private readonly images;
      private readonly grokRow;
      private readonly presentation;
 +    private readonly toggleAction;
++    private readonly alwaysExpanded;
      private args;
      private expanded;
      private showImages;
+@@ -40,6 +42,7 @@
+     setShowImages(show: boolean): void;
+     setImageWidthCells(width: number): void;
+     invalidate(): void;
++    get isExpanded(): boolean;
+     render(width: number): string[];
+     private updateDisplay;
+     private createRenderState;
 diff --git a/dist/modes/interactive/components/tool-execution.js b/dist/modes/interactive/components/tool-execution.js
 index ff051a21..3f0a3a19 100644
 --- a/dist/modes/interactive/components/tool-execution.js
 +++ b/dist/modes/interactive/components/tool-execution.js
-@@ -1,7 +1,8 @@
+@@ -1,7 +1,9 @@
 -import { Container, Spacer } from "@earendil-works/pi-tui";
 +import { Container, hyperlink, Spacer } from "@earendil-works/pi-tui";
++import { stripAnsi } from "../../../utils/ansi.js";
  import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.js";
  import { GrokToolRow } from "../grok/tool-row.js";
  import { theme } from "../theme/theme.js";
@@ -94,47 +104,48 @@ index ff051a21..3f0a3a19 100644
  import { readToolProgress } from "../tool-progress.js";
  import { keyHint } from "./keybinding-hints.js";
  import { createBoundedRenderSignature } from "./render-signature.js";
-@@ -37,29 +38,17 @@ export class ToolExecutionComponent extends Container {
+@@ -10,6 +12,9 @@
+ import { ToolExecutionRenderer } from "./tool-execution-renderer.js";
+ const PENDING_RENDER_FRAME_INTERVAL_MS = 80;
+ const FALLBACK_PREVIEW_LINES = 10;
++/** Tools whose result IS the content: collapsing them leaves zero information, so they always render fully expanded. */
++const ALWAYS_EXPANDED_TOOLS = new Set(["todo", "task"]);
++const COLLAPSED_ERROR_TAIL_MAX_LENGTH = 160;
+ function collapseFallbackResult(result, showImages, expanded) {
+     if (!result || expanded)
+         return result;
+@@ -24,6 +29,18 @@
+         `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+     return { ...result, content: [{ type: "text", text }] };
+ }
++function collapseToolLines(lines, isError) {
++    const nonEmpty = lines.filter((line) => stripAnsi(line).trim().length > 0);
++    const first = nonEmpty[0] ?? lines[0] ?? "";
++    if (!isError)
++        return [first];
++    const tailSource = nonEmpty[nonEmpty.length - 1] ?? "";
++    let tail = tailSource;
++    if (tail.length > COLLAPSED_ERROR_TAIL_MAX_LENGTH) {
++        tail = `...${tail.slice(-(COLLAPSED_ERROR_TAIL_MAX_LENGTH - 3))}`;
++    }
++    return [first, theme.fg("error", tail)];
++}
+ export class ToolExecutionComponent extends Container {
+     constructor(toolName, toolCallId, args, options = {}, toolDefinition, ui, cwd, presentation = "classic") {
+         super();
+@@ -37,6 +54,11 @@
          this.imageWidthCells = options.imageWidthCells ?? 60;
          this.ui = ui;
          this.presentation = presentation;
++        this.alwaysExpanded = ALWAYS_EXPANDED_TOOLS.has(toolName);
 +        this.toggleAction = registerInternalAction(() => {
 +            this.setExpanded(!this.expanded);
 +            this.ui.requestRender();
 +        });
          const initialState = this.createRenderState();
--        if (this.presentation === "grok") {
--            this.grokRow = new GrokToolRow({
--                toolName: this.identity.toolName,
--                isPartial: initialState.isPartial,
--                result: initialState.result,
--            });
--            this.addChild(new Spacer(1));
--            this.addChild(this.grokRow);
--        }
--        else {
--            this.renderer = new ToolExecutionRenderer(this.identity, initialState, () => {
--                this.invalidate();
--                this.ui.requestRender();
--            });
--            this.images = new ToolExecutionImages(() => {
--                this.invalidateRenderCache();
--                this.ui.requestRender();
--            });
--            this.addChild(new Spacer(1));
--            this.addChild(this.renderer);
--            this.addChild(this.images);
--        }
-+        this.grokRow = new GrokToolRow({
-+            toolName: this.identity.toolName,
-+            isPartial: initialState.isPartial,
-+            result: initialState.result,
-+        });
-+        this.addChild(this.grokRow);
-         this.updateSpinnerAnimation();
-         this.updateDisplay();
-     }
-@@ -99,6 +88,7 @@ export class ToolExecutionComponent extends Container {
+         if (this.presentation === "grok") {
+             this.grokRow = new GrokToolRow({
+@@ -99,6 +121,7 @@
      }
      dispose() {
          this.stopAnimation();
@@ -142,54 +153,48 @@ index ff051a21..3f0a3a19 100644
          super.dispose();
      }
      setExpanded(expanded) {
-@@ -120,6 +110,9 @@ export class ToolExecutionComponent extends Container {
+@@ -119,6 +142,9 @@
+         this.lastDisplaySignature = undefined;
          this.updateDisplay();
      }
++    get isExpanded() {
++        return this.alwaysExpanded || this.expanded;
++    }
      render(width) {
-+        if (!this.expanded) {
-+            return super.render(width).map((line) => hyperlink(line, this.toggleAction.url));
-+        }
          if (this.presentation === "grok")
              return super.render(width);
-         const signature = this.createRenderSignature();
-@@ -157,14 +150,34 @@ export class ToolExecutionComponent extends Container {
-                 isPartial: state.isPartial,
-                 result: state.result,
-             });
--            return;
-+            if (!state.expanded) {
-+                if (this.renderer) {
-+                    this.removeChild(this.renderer);
-+                    this.removeChild(this.images);
-+                    this.renderer = undefined;
-+                    this.images = undefined;
-+                }
-+                return;
+@@ -132,13 +158,20 @@
+         if (renderer.hasRendererDefinition && renderer.renderShell === "self") {
+             const contentLines = renderer.render(width);
+             const imageLines = images.render(width);
+-            if (contentLines.length === 0 && imageLines.length === 0)
++            if (contentLines.length === 0 && imageLines.length === 0) {
++                this.cachedWidth = width;
++                this.cachedSignature = signature;
++                this.cachedLines = [];
+                 return [];
 +            }
-+            if (!this.renderer) {
-+                this.renderer = new ToolExecutionRenderer(this.identity, state, () => {
-+                    this.invalidate();
-+                    this.ui.requestRender();
-+                });
-+                this.images = new ToolExecutionImages(() => {
-+                    this.invalidateRenderCache();
-+                    this.ui.requestRender();
-+                });
-+                this.addChild(this.renderer);
-+                this.addChild(this.images);
-+            }
+             lines = contentLines.length > 0 ? ["", ...contentLines, ...imageLines] : imageLines;
          }
-         const renderer = this.renderer;
-         const renderState = renderer.hasRendererDefinition && !renderer.hasResultRenderer
-             ? { ...state, result: collapseFallbackResult(state.result, state.showImages, state.expanded) }
-             : state;
-         renderer.update(renderState);
--        this.images.updateOptions({
-+        this.images?.updateOptions({
-             showImages: state.showImages,
-             maxWidthCells: this.imageWidthCells,
-             showRendererFallback: renderer.hasResultRenderer,
-@@ -264,4 +277,4 @@ export class ToolExecutionComponent extends Container {
+         else {
+             lines = super.render(width);
+         }
++        if (!this.isExpanded) {
++            lines = collapseToolLines(lines, this.result?.isError === true).map((line) => hyperlink(line, this.toggleAction.url));
++        }
+         this.cachedWidth = width;
+         this.cachedSignature = signature;
+         this.cachedLines = [...lines];
+@@ -176,7 +209,7 @@
+             executionStarted: this.executionStarted,
+             argsComplete: this.argsComplete,
+             isPartial: this.isPartial,
+-            expanded: this.expanded,
++            expanded: this.isExpanded,
+             showImages: this.showImages,
+             spinnerFrame: this.spinnerFrame,
+             result: this.result,
+@@ -264,4 +297,4 @@
          this.cachedWidth = undefined;
      }
  }
