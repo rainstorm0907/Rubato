@@ -1,26 +1,36 @@
-// 패치한 TUI 를 senpi 가 실제로 읽는 자리에 맞춘다.
+// 벤더 패치 중 postinstall 이 아직 소유하지 않은 자리를 세션 시작 때 맞춘다.
 //
-// `@earendil-works/pi-tui` 는 두 벌 깔린다. 루트의 것과, senpi 가 자기
-// node_modules 안에 품은 것. **senpi 가 읽는 것은 후자다** — 호이스팅이 안 되기
-// 때문이다. bun 의 patchedDependencies 는 전자만 고치므로, 패치를 아무리 정확히
-// 떠도 화면에 도는 코드는 원본 그대로였다.
+// 예전에는 여기에 pi-tui 동기화(`syncTuiPatch`)가 같이 있었다. bun 의
+// patchedDependencies 가 루트 사본만 고치던 시절, senpi 가 읽는 중첩 사본에
+// 패치를 나르는 유일한 길이었기 때문이다. **그 함수는 걷어냈다** — 두 가지가
+// 바뀌었다:
 //
-// 이것 때문에 슬래시 자동완성 수정이 세 번 연속으로 "고쳤는데 안 되는" 상태였다.
-// 검증은 패치된 사본을 직접 import 해서 통과했고, 세션은 다른 파일을 읽었다.
+//   1. patchedDependencies 를 떼면서 소스로 삼던 `.bun/@code-yeongyu+senpi-tui@*`
+//      가 *패치된 사본*에서 *원본*으로 바뀌었다. 그래서 그 복사는 패치를 나르는
+//      대신 **원본으로 라이브를 덮어써 postinstall 의 작업을 되돌렸다.** 실측:
+//      소스의 autocomplete.js 에는 inlineSlashTokenAt 이 0건, 라이브에는 2건이었고
+//      두 파일은 서로 달랐다. 예외를 삼키는 구조라 완전히 조용했다.
+//   2. `postinstall.mjs` 의 VENDOR_PATCHES 가 realpath 로 중첩 사본을 직접
+//      타겟한다. 우회로가 필요했던 이유 자체가 없어졌다.
 //
-// 그래서 세션이 뜰 때마다 둘을 맞춘다. 내용이 같으면 아무것도 하지 않으므로
-// 평상시 비용은 파일 네 개를 읽는 정도다.
-import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+// 여기 남은 것은 그 다음 문제다. 긴 세션 렌더 최적화는 정의(progressive-transcript-
+// container.js)만 정식 패치에 있고 호출부(interactive-mode.js 의 markSettled)는
+// 아직 패치에 없다. 그 배선을 여기서 잇는다.
+//
+// **이 배선은 임시다. 정식 패치로 승격되어야 하고, 그때 이 함수는 사라진다.**
+// 지금 모양이 위에서 걷어낸 함정과 똑같기 때문이다:
+//
+//   - 같은 파일(progressive-transcript-container.js)을 정식 패치와 patch-src 사본
+//     두 경로가 쓴다. 둘이 갈라지면 세션 시작 때 사본이 이긴다 — syncTuiPatch 가
+//     원본으로 라이브를 덮던 것과 같은 구조다.
+//   - markSettled 호출부는 정식 패치에 없다. 그래서 postinstall 직후부터 첫 세션이
+//     뜨기 전까지는 배선이 아예 없고, patch-tests/vendor-patch-live.test.ts 는
+//     패치에 있는 것만 보므로 그 공백을 잡지 못한다.
+//
+// 승격은 이 기능을 만든 쪽의 관할이다. 여기서는 기록만 남긴다.
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { forkRoot, senpiDir } from "./engine-paths.mjs";
-
-/** 패치가 닿아야 하는 파일. 늘어나면 여기에 적는다. */
-const PATCHED_FILES = Object.freeze([
-  "autocomplete.js",
-  "dollar-invocation-autocomplete.js",
-  "slash-command-autocomplete.js",
-  join("components", "editor.js"),
-]);
 
 /** Senpi 자체에서 실제 대화 히스토리를 그리는 패치. */
 const PATCHED_SENPI_FILES = Object.freeze([
@@ -28,49 +38,6 @@ const PATCHED_SENPI_FILES = Object.freeze([
 ]);
 const SETTLE_ANCHOR = "                this.clearPendingTools();\n                this.ui.requestRender();";
 const SETTLE_PATCH = "                this.clearPendingTools();\n                this.chatContainer.markSettled();\n                this.ui.requestRender();";
-
-// bun 이 패치를 적용해 주는 자리.
-//
-// `@earendil-works/pi-tui` 는 `npm:@code-yeongyu/senpi-tui` 별칭으로 깔린다.
-// 그래서 패치가 실제로 적용된 실체는 별칭 **원래 이름** 아래에 있고, 루트의
-// `@earendil-works/pi-tui` 경로에는 없다. senpiNested 도 중첩 사본을 먼저
-// 찾으므로 소스로 쓸 수 없다 — 원본을 원본에 복사하게 된다.
-function patchedTuiDir() {
-  const store = join(forkRoot, "node_modules", ".bun");
-  if (!existsSync(store)) return "";
-  // 버전을 박지 않는다. 업그레이드하면 디렉토리 이름이 바뀌고,
-  // 박아 두면 그때부터 조용히 원본으로 돌아간다.
-  const entry = readdirSync(store).find((name) => name.startsWith("@code-yeongyu+senpi-tui@"));
-  if (!entry) return "";
-  return join(store, entry, "node_modules", "@code-yeongyu", "senpi-tui", "dist");
-}
-
-/** senpi 가 실제로 읽는 자리(중첩 사본). */
-function liveTuiDir() {
-  return join(senpiDir, "node_modules", "@earendil-works", "pi-tui", "dist");
-}
-
-/**
- * 두 자리를 맞춘다. 중첩 사본이 없으면(호이스팅이 된 배치라면) 할 일이 없다.
- * 반환값은 실제로 덮어쓴 파일 목록 — 조용히 지나가는 것이 정상이다.
- */
-export function syncTuiPatch({ from = patchedTuiDir(), to = liveTuiDir() } = {}) {
-  if (!from || from === to || !existsSync(to) || !existsSync(from)) return [];
-  const copied = [];
-  for (const rel of PATCHED_FILES) {
-    const src = join(from, rel);
-    const dst = join(to, rel);
-    if (!existsSync(src) || !existsSync(dst)) continue;
-    try {
-      if (readFileSync(src, "utf8") === readFileSync(dst, "utf8")) continue;
-      copyFileSync(src, dst);
-      copied.push(rel);
-    } catch {
-      // 맞추지 못해도 세션은 떠야 한다. 원본으로 도는 것이 안 뜨는 것보다 낫다.
-    }
-  }
-  return copied;
-}
 
 /** 긴 세션 최적화는 pi-tui가 아니라 Senpi transcript 컨테이너가 소유한다. */
 export function syncSenpiTranscriptPatch({
