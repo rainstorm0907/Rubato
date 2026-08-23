@@ -155,13 +155,20 @@ const VENDOR_PATCHES = [
   },
 ];
 
-function parseFilePatches(patchText, patchName) {
+export function parseFilePatches(patchText, patchName) {
   const chunks = patchText.split(/(?=^diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
   if (chunks.length === 0) throw new Error(`vendor patch ${patchName} contains no file hunks`);
   const files = chunks.map((text) => {
     const header = text.match(/^diff --git a\/(.+?) b\/(.+)$/m);
     if (!header || header[1] !== header[2]) {
       throw new Error(`vendor patch ${patchName} has an unsupported rename or malformed header`);
+    }
+    // hunk 가 없는 diff(mode 변경, 바이너리)는 적용해도 원본 그대로라, 아래 검증이
+    // "이미 적용됨"으로 읽고 영구히 지나친다. 받지 않는다.
+    if (!/^@@ /m.test(text)) {
+      throw new Error(
+        `vendor patch ${patchName}: ${header[2]} has no hunks (mode-only and binary diffs are not supported)`,
+      );
     }
     return { relativePath: header[2], text, createsFile: /^--- \/dev\/null$/m.test(text) };
   });
@@ -170,8 +177,17 @@ function parseFilePatches(patchText, patchName) {
   return files;
 }
 
-function applyFilePatch(source, filePatch, patchName, reverse = false) {
-  const parsed = parsePatch(filePatch.text)[0];
+export function applyFilePatch(source, filePatch, patchName, reverse = false) {
+  // chunk 하나에 파일이 둘 이상 들어 있으면 [0] 만 쓰는 순간 나머지가 조용히 사라진다.
+  // `diff --git` 헤더를 빠뜨린 hunk 가 앞 파일에 딸려 들어오는 것이 그 경로다.
+  const parsedAll = parsePatch(filePatch.text);
+  if (parsedAll.length !== 1) {
+    throw new Error(
+      `vendor patch ${patchName}: the chunk for ${filePatch.relativePath} contains ${parsedAll.length} ` +
+      'file patches. Every file needs its own "diff --git" header.',
+    );
+  }
+  const parsed = parsedAll[0];
   if (reverse) {
     for (const hunk of parsed.hunks) {
       [hunk.oldStart, hunk.newStart] = [hunk.newStart, hunk.oldStart];
@@ -297,4 +313,7 @@ function main() {
   }
 }
 
-main();
+// 파서를 테스트에서 import 할 수 있게, 직접 실행일 때만 돈다.
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
