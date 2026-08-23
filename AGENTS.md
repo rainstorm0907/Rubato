@@ -44,14 +44,24 @@ upstream 받는 절차는 [`docs/rubato/component-policy.md`](docs/rubato/compon
   다음 사람의 시간을 가장 많이 아낀다.
 - **검증.** 실제로 돌린 것과 그 결과. 돌리지 않은 것은 적지 않는다.
 
-형식은 가벼운데, 이것만 지킨다:
+제목은 Conventional Commits 를 따른다:
 
-- 제목은 **한 줄, 50자 안팎의 평서형**. `git log --oneline` 이 한 화면에 들어와야 한다.
+```
+<type>(<scope>): <무엇을 했는가>
+```
+
+- **type** 은 이 중 하나: `feat` `fix` `refactor` `docs` `test` `build` `chore` `perf` `revert`.
+  이력을 훑을 때 성격이 바로 보이는 것이 목적이다.
+- **scope** 는 선택. 쓸 때는 이미 쓰이는 이름을 따른다 — `rubato`, `harness`, `bridge`,
+  `prompts`, `omo-senpi`, `senpi-task`, `skills`. 새로 지어내기 전에 `git log` 를 먼저 본다.
+- 제목 본문은 **한 줄, 50자 안팎의 평서형**. `git log --oneline` 이 한 화면에 들어와야 한다.
+  한국어로 써도 되고 영어로 써도 된다.
+
+나머지:
+
 - 본문은 문제 → 판단 → 검증 순서. 길이보다 밀도가 중요하다 — 회고문이 아니다.
 - `git commit -m` 으로 여러 줄을 쓰지 않는다. `\n` 이 글자 그대로 박힌 커밋이 이미 이력에 있다.
   여러 줄은 `git commit -F -` 와 히어도큐먼트로 쓴다.
-- 스코프 접두사(`bridge:`, `prompts:` 등)는 써도 되고 안 써도 된다. `feat()`/`fix()` 는 쓰지 않는다 —
-  이력이 이미 서술형 한국어라 섞이면 더 어지럽다.
 
 `packages/` 아래를 건드렸다면 upstream 규약을 따른다(아래).
 
