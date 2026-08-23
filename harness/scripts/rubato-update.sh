@@ -29,6 +29,20 @@ esac
 
 cd "$REPO"
 
+# cmux 를 쓰는데 Vault 에 rubato 가 없으면 한 번만 알린다. 그게 없으면
+# cmux 를 꺼다 켜는 순간 세션이 통째로 날아간다. 넣는 것은 사람이 고른다.
+#
+# git 보다 먼저 본다. 업데이트 확인은 fetch 가 실패하거나 브랜치가 다르면
+# 조기에 빠져나가는데, cmux 등록은 네트워크와도 브랜치와도 상관없다.
+if [ "$MODE" = check ] && [ ! -f "$HOME/.rubato-pi/vault-hint-shown" ]; then
+  if node "$HARNESS/scripts/cmux-vault.mjs" --check 2>/dev/null | grep -q '미등록'; then
+    printf '%s✦ cmux 재시작 후 세션이 사라진다%s  %s`rubato vault` 로 등록한다%s\n' \
+      "$YEL" "$RST" "$DIM" "$RST" >&2
+    mkdir -p "$HOME/.rubato-pi"
+    : > "$HOME/.rubato-pi/vault-hint-shown"
+  fi
+fi
+
 # 지금 브랜치가 rubato/base 가 아니면 건드리지 않는다. 남의 작업 위에 pull 하지 않는다.
 CURRENT="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 if [ "$CURRENT" != "$BRANCH" ]; then
@@ -56,17 +70,6 @@ if [ "$MODE" = check ]; then
   fi
 else
   fetch_now || { err "원격을 받지 못했다. 네트워크를 확인해라."; exit 1; }
-fi
-
-# cmux 를 쓰는데 Vault 에 rubato 가 없으면 한 번만 알린다. 그게 없으면
-# cmux 를 꺼다 켜는 순간 세션이 통째로 날아간다. 넣는 것은 사람이 고른다.
-if [ "$MODE" = check ] && [ ! -f "$HOME/.rubato-pi/vault-hint-shown" ]; then
-  if node "$HARNESS/scripts/cmux-vault.mjs" --check 2>/dev/null | grep -q '미등록'; then
-    printf '%s✦ cmux 재시작 후 세션이 사라진다%s  %s`rubato vault` 로 등록한다%s\n' \
-      "$YEL" "$RST" "$DIM" "$RST" >&2
-    mkdir -p "$(dirname "$STAMP")"
-    : > "$HOME/.rubato-pi/vault-hint-shown"
-  fi
 fi
 
 LOCAL="$(git rev-parse HEAD)"
