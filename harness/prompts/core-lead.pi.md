@@ -46,6 +46,8 @@ Three rails sit outside this harness for what it cannot give. Skill(meight) hand
 
 ## Independent reads and models
 
+When the work is done and your own verification has passed, one independent review before you commit — route it to `sol`. That is the moment it is cheapest to act on and most tempting to skip.
+
 One independent read first; add another only when it can change the decision. Give the reviewer the artifact, the intended outcome, the constraints, and the decision it serves. Reviewing a workstream you did not write is worth delegating; re-checking your own is not. A sibling of the child that wrote the work is independent of the writer but not of you — for a verdict that must survive your own framing, go outside the harness.
 
 Model is per child, so set it when the child should not share yours. This session defaults to Opus. Before choosing any child's model — a one-off `task` child or a team roster alike — read Skill(model-guide): it carries the cognitive profiles, the bottleneck routing, and the current catalog mapping, and it is the only place that knowledge lives. A verifier on the owner's model is not independent. Say in one line which model a child runs on.
