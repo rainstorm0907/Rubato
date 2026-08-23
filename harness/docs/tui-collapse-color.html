@@ -1,0 +1,57 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>실패 색 고르기</title><style>
+:root{--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--acc:#58a6ff;--ok:#3fb950}
+*{box-sizing:border-box}body{margin:0;background:#08090c;color:var(--fg);padding:36px 20px 80px;
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.wrap{max-width:860px;margin:0 auto}h1{font-size:23px;margin:0 0 6px}
+.sub{color:var(--mut);font-size:14px;margin:0 0 24px}
+h2{font-size:16px;margin:32px 0 10px}
+.screen{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#010409;margin:12px 0 6px}
+.sh{display:flex;align-items:center;gap:10px;padding:8px 13px;background:#161b22;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;background:#30363d}
+.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:last-child{background:#28c840}
+.st{font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+.term{margin:0;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+font-size:12.5px;line-height:1.6;white-space:pre;overflow-x:auto;color:#c9d1d9}
+.nt{padding:9px 14px;background:#161b2299;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.usr{color:#79c0ff;font-weight:600}.fold{color:#6e7681}.fdim{color:#484f58}
+.c-a{color:#c4746e}.c-b{color:#b8837a}.c-c{color:#a86b62}.c-d{color:#f85149}
+.opt{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:10px 0;background:#010409}
+.oh{display:flex;align-items:center;gap:9px;padding:9px 14px;background:#161b22;
+border-bottom:1px solid var(--line);font-size:13px}
+.sw{width:13px;height:13px;border-radius:3px;display:inline-block}
+.od{color:var(--mut);font-size:12.5px;margin-left:4px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:#1f2428;padding:1px 5px;border-radius:4px}
+.q{background:#0d1117;border:1px solid var(--line);border-left:3px solid var(--acc);
+border-radius:7px;padding:15px 19px;margin:26px 0 0;font-size:14px}
+</style></head><body><div class="wrap">
+
+<h1>실패 표시 색</h1>
+<p class="sub">회색 목록 안에서 눈에는 걸리되 튀지는 않는 정도로 골랐습니다.</p>
+
+<h2>후보</h2>
+
+<div class="opt"><div class="oh"><span class="sw" style="background:#c4746e"></span><code>#c4746e</code><span class="od">차분한 벽돌빛 — 회색 옆에서 튀지 않음</span></div>
+<pre class="term"><span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-a">bash</span><span class="fdim">  +94줄</span></span></pre></div>
+<div class="opt"><div class="oh"><span class="sw" style="background:#b8837a"></span><code>#b8837a</code><span class="od">더 흐린 테라코타</span></div>
+<pre class="term"><span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-b">bash</span><span class="fdim">  +94줄</span></span></pre></div>
+<div class="opt"><div class="oh"><span class="sw" style="background:#a86b62"></span><code>#a86b62</code><span class="od">어둡게 가라앉힌 쪽</span></div>
+<pre class="term"><span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-c">bash</span><span class="fdim">  +94줄</span></span></pre></div>
+<div class="opt"><div class="oh"><span class="sw" style="background:#f85149"></span><code>#f85149</code><span class="od">(참고) 이전의 찐한 빨강</span></div>
+<pre class="term"><span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-d">bash</span><span class="fdim">  +94줄</span></span></pre></div>
+
+<h2>실제 화면에서</h2>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">A — #c4746e</span></div><pre class="term"><span class="usr">› 라우터 500 에러 고쳐줘</span>
+
+<span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-a">bash</span><span class="fdim">  +94줄</span></span>
+
+<span class="asst">아직 실패합니다. 상태코드가 500 그대로예요.</span></pre><div class="nt">기본 추천. 회색 사이에서 온도만 다르게 느껴집니다.</div></div>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">C — #a86b62</span></div><pre class="term"><span class="usr">› 라우터 500 에러 고쳐줘</span>
+
+<span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="c-c">bash</span><span class="fdim">  +94줄</span></span>
+
+<span class="asst">아직 실패합니다. 상태코드가 500 그대로예요.</span></pre><div class="nt">더 가라앉은 쪽. 차분하지만 놓치기 쉬울 수 있습니다.</div></div>
+
+<div class="q"><strong>A / B / C 중 어느 걸로 할까요?</strong> 기본은 A 입니다.<br>
+<span style="color:var(--mut)">고르시면 바로 구현 들어가겠습니다.</span></div>
+
+</div></body></html>

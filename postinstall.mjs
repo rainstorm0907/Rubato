@@ -1,10 +1,12 @@
 // postinstall.mjs
 // Runs after npm install to verify platform binary is available
 
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { applyPatch, parsePatch } from "diff";
 import {
   getPlatformPackageCandidates,
   getBinaryPath,
@@ -13,6 +15,7 @@ import {
 import { detectPlatformBinaryMismatch } from "./bin/version-mismatch.js";
 
 const require = createRequire(import.meta.url);
+const rootDir = dirname(fileURLToPath(import.meta.url));
 
 const MIN_OPENCODE_VERSION = "1.4.0";
 const OPENCODE_PLUGIN_PACKAGES = ["oh-my-opencode", "oh-my-openagent"];
@@ -133,7 +136,105 @@ function readPlatformPackageVersion(pkg) {
   }
 }
 
+const VENDOR_PATCHES = [
+  {
+    packageName: "@code-yeongyu/senpi",
+    patchName: "@code-yeongyu%2Fsenpi@2026.8.22.patch",
+    resolveRoot() {
+      const packageLink = join(rootDir, "node_modules", "@code-yeongyu", "senpi");
+      return realpathSync(packageLink);
+    },
+  },
+  {
+    packageName: "@code-yeongyu/senpi-tui (installed as @earendil-works/pi-tui)",
+    patchName: "@code-yeongyu%2Fsenpi-tui@2026.8.22.patch",
+    resolveRoot() {
+      const senpiRoot = VENDOR_PATCHES[0].resolveRoot();
+      return realpathSync(join(senpiRoot, "node_modules", "@earendil-works", "pi-tui"));
+    },
+  },
+];
+
+function parseFilePatches(patchText, patchName) {
+  const chunks = patchText.split(/(?=^diff --git )/m).filter((chunk) => chunk.startsWith("diff --git "));
+  if (chunks.length === 0) throw new Error(`vendor patch ${patchName} contains no file hunks`);
+  const files = chunks.map((text) => {
+    const header = text.match(/^diff --git a\/(.+?) b\/(.+)$/m);
+    if (!header || header[1] !== header[2]) {
+      throw new Error(`vendor patch ${patchName} has an unsupported rename or malformed header`);
+    }
+    return { relativePath: header[2], text, createsFile: /^--- \/dev\/null$/m.test(text) };
+  });
+  const duplicates = files.filter((file, index) => files.findIndex((candidate) => candidate.relativePath === file.relativePath) !== index);
+  if (duplicates.length > 0) throw new Error(`vendor patch ${patchName} repeats file hunks for ${duplicates[0].relativePath}`);
+  return files;
+}
+
+function applyFilePatch(source, filePatch, patchName, reverse = false) {
+  const parsed = parsePatch(filePatch.text)[0];
+  if (reverse) {
+    for (const hunk of parsed.hunks) {
+      [hunk.oldStart, hunk.newStart] = [hunk.newStart, hunk.oldStart];
+      [hunk.oldLines, hunk.newLines] = [hunk.newLines, hunk.oldLines];
+      hunk.lines = hunk.lines.map((line) => line.startsWith("+") ? `-${line.slice(1)}` : line.startsWith("-") ? `+${line.slice(1)}` : line);
+    }
+  }
+  const result = applyPatch(source, parsed, { fuzzFactor: 0 });
+  if (result === false && !reverse) {
+    throw new Error(
+      `cannot apply ${patchName} to ${filePatch.relativePath}; ` +
+      "the installed package no longer matches the pristine baseline. Regenerate the patch from npm pack, not node_modules.",
+    );
+  }
+  return result;
+}
+
+function applyAndVerifyVendorPatch(spec) {
+  const packageRoot = spec.resolveRoot();
+  const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  const patchPath = join(rootDir, "patches", spec.patchName);
+  if (!existsSync(patchPath)) throw new Error(`missing required vendor patch: ${patchPath}`);
+  const filePatches = parseFilePatches(readFileSync(patchPath, "utf8"), spec.patchName);
+  const writes = [];
+
+  for (const filePatch of filePatches) {
+    const targetPath = join(packageRoot, filePatch.relativePath);
+    const source = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
+
+    // Idempotence is exact, not marker-based: reverse the hunk and require the
+    // current bytes to be precisely the intended patched output.
+    const pristine = applyFilePatch(source, filePatch, spec.patchName, true);
+    if (pristine !== false) {
+      const roundTrip = applyFilePatch(pristine, filePatch, spec.patchName);
+      if (roundTrip !== source) throw new Error(`vendor patch verification failed for ${filePatch.relativePath}`);
+      continue;
+    }
+
+    const expected = applyFilePatch(filePatch.createsFile ? "" : source, filePatch, spec.patchName);
+    writes.push({ targetPath, contents: expected });
+  }
+
+  for (const write of writes) {
+    mkdirSync(dirname(write.targetPath), { recursive: true });
+    writeFileSync(write.targetPath, write.contents);
+  }
+
+  for (const filePatch of filePatches) {
+    const targetPath = realpathSync(join(packageRoot, filePatch.relativePath));
+    const patched = readFileSync(targetPath, "utf8");
+    const pristine = applyFilePatch(patched, filePatch, spec.patchName, true);
+    if (pristine === false || applyFilePatch(pristine, filePatch, spec.patchName) !== patched) {
+      throw new Error(`realpath verification failed for ${targetPath}`);
+    }
+  }
+  console.log(`✓ verified ${spec.packageName}@${manifest.version} at ${realpathSync(packageRoot)}`);
+}
+
+function applyVendorPatches() {
+  for (const spec of VENDOR_PATCHES) applyAndVerifyVendorPatch(spec);
+}
 function main() {
+  applyVendorPatches();
   const { platform, arch } = process;
   const libcFamily = getLibcFamily();
   const packageBaseName = getPackageBaseName();

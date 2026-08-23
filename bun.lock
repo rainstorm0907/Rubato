@@ -428,10 +428,6 @@
   "trustedDependencies": [
     "@code-yeongyu/comment-checker",
   ],
-  "patchedDependencies": {
-    "@code-yeongyu/senpi-tui@2026.8.22": "patches/@code-yeongyu%2Fsenpi-tui@2026.8.22.patch",
-    "@code-yeongyu/senpi@2026.8.22": "patches/@code-yeongyu%2Fsenpi@2026.8.22.patch",
-  },
   "overrides": {
     "@earendil-works/pi-agent-core": "0.84.2",
     "@earendil-works/pi-ai": "0.84.2",

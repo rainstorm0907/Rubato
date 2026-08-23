@@ -1,0 +1,73 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>확정안</title><style>
+:root{--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--acc:#58a6ff;--ok:#3fb950;--err:#f85149}
+*{box-sizing:border-box}body{margin:0;background:#08090c;color:var(--fg);padding:36px 20px 80px;
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.wrap{max-width:880px;margin:0 auto}h1{font-size:23px;margin:0 0 6px}
+.sub{color:var(--mut);font-size:14px;margin:0 0 24px}
+h2{font-size:16px;margin:34px 0 4px}.lead{color:var(--mut);font-size:13.5px;margin:0 0 12px}
+.screen{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#010409;margin:13px 0 6px}
+.sh{display:flex;align-items:center;gap:10px;padding:8px 13px;background:#161b22;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;background:#30363d}
+.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:last-child{background:#28c840}
+.st{font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+.term{margin:0;padding:15px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+font-size:12.5px;line-height:1.6;white-space:pre;overflow-x:auto;color:#c9d1d9}
+.nt{padding:9px 14px;background:#161b2299;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.usr{color:#79c0ff;font-weight:600}.fold{color:#6e7681}.fdim{color:#484f58}
+.ferr{color:#f85149;font-weight:600}
+.rule{background:#0d1117;border:1px solid var(--line);border-left:3px solid var(--ok);
+border-radius:7px;padding:14px 18px;margin:14px 0;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:#1f2428;padding:1px 5px;border-radius:4px}
+.spec{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+.spec td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.spec td:first-child{color:var(--mut);white-space:nowrap;width:150px}
+</style></head><body><div class="wrap">
+
+<h1>확정안</h1>
+<p class="sub">전부 한 줄로 뭉치고, 실패한 도구만 이름을 빨갛게. 줄은 늘어나지 않습니다.</p>
+
+<h2>성공한 턴</h2>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato</span></div><pre class="term"><span class="usr">› 라우터 500 에러 고쳐줘</span>
+
+<span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·bash</span>  <span class="fdim">+94줄</span></span>
+
+<span class="asst">핸들러가 async 인데 await 이 빠져 있었습니다. 고치고 테스트 통과했습니다.</span></pre><div class="nt">도구 7개 → 1줄. 94줄이 숨습니다.</div></div>
+
+<h2>bash 가 실패한 턴</h2>
+<p class="lead">줄 수는 똑같고 <code>bash</code> 만 빨갛습니다.</p>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — 실패</span></div><pre class="term"><span class="usr">› 라우터 500 에러 고쳐줘</span>
+
+<span class="fold">  ⋯ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="ferr">bash</span><span class="fdim">  +94줄</span></span>
+
+<span class="asst">아직 실패합니다. 상태코드가 500 그대로예요.</span></pre><div class="nt">펼치지 않아도 어디서 깨졌는지 보입니다.</div></div>
+
+<h2>여러 개가 실패하면</h2>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — 다중 실패</span></div><pre class="term"><span class="usr">› 전부 정리해줘</span>
+
+<span class="fold">  ⋯ 도구 9개  <span class="fdim">ls·</span><span class="ferr">read</span><span class="fdim">·grep·edit·</span><span class="ferr">bash</span><span class="fdim">  +120줄</span></span>
+
+<span class="asst">두 군데서 막혔습니다. 파일 하나가 없고 테스트도 깨집니다.</span></pre><div class="nt">실패한 것마다 빨갛게.</div></div>
+
+<h2>펼쳤을 때</h2>
+<p class="lead">클릭하면 안쪽이 열리고, 실패한 도구의 출력만 빨갛게 남습니다.</p>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — 펼침</span></div><pre class="term"><span class="fold">  ⌄ 도구 7개  <span class="fdim">ls·read·grep·edit·</span><span class="ferr">bash</span></span>
+<span class="fdim">    ls harness</span>
+<span class="fdim">    read src/router.ts</span>
+<span class="fdim">    grep /await/ in src</span>
+<span class="fdim">    edit src/router.ts</span>
+    <span style="color:#f85149">$ bun test</span>
+    <span style="color:#f85149">  expected 200 got 500</span></pre></div>
+
+<h2>정리</h2>
+<table class="spec">
+<tr><td>뭉치는 것</td><td><code>task</code>·<code>dag</code>·<code>team_create</code>·<code>todo</code> 를 뺀 전부 (<code>bash</code>·<code>edit</code>·<code>write</code> 포함)</td></tr>
+<tr><td>뭉침 표시</td><td><code>⋯ 도구 7개  ls·read·grep·edit·bash  +94줄</code></td></tr>
+<tr><td>실패</td><td>해당 도구 <strong>이름만</strong> 빨갛게. 줄은 안 늘어남</td></tr>
+<tr><td>펼치기</td><td>클릭 또는 <code>ctrl+o</code></td></tr>
+<tr><td>턴 종료</td><td>펼침 상태를 접힘으로 되돌림</td></tr>
+</table>
+
+<div class="rule"><strong>이대로 구현하겠습니다.</strong><br>
+<span style="color:var(--mut)">수정 위치는 senpi patch 파일 하나입니다. 다른 데는 안 건드립니다.</span></div>
+
+</div></body></html>

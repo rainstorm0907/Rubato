@@ -1,0 +1,62 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>A안 — 도구 전체 적용</title><style>
+:root{--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--acc:#58a6ff;--ok:#3fb950;--warn:#d29922}
+*{box-sizing:border-box}
+body{margin:0;background:#08090c;color:var(--fg);padding:36px 20px 80px;
+ font:15px/1.65 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.wrap{max-width:880px;margin:0 auto}
+h1{font-size:23px;margin:0 0 6px}.sub{color:var(--mut);font-size:14px;margin:0 0 26px}
+h2{font-size:16px;margin:36px 0 4px}.lead{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+.screen{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#010409;margin:14px 0 6px}
+.sh{display:flex;align-items:center;gap:10px;padding:8px 13px;background:#161b22;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;background:#30363d}
+.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:last-child{background:#28c840}
+.st{font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+.term{margin:0;padding:15px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:12.5px;line-height:1.6;white-space:pre;overflow-x:auto;color:#c9d1d9}
+.nt{padding:9px 14px;background:#161b2299;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.usr{color:#79c0ff;font-weight:600}.fold{color:#6e7681}.fdim{color:#484f58}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em}
+td:nth-child(2),td:nth-child(3){white-space:nowrap;color:var(--mut)}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:#1f2428;padding:1px 5px;border-radius:4px}
+.amb{color:var(--warn)}.ok2{color:var(--ok)}
+.q{background:#0d1117;border:1px solid var(--line);border-left:3px solid var(--acc);
+ border-radius:7px;padding:16px 19px;margin:28px 0 0}
+.q ol{margin:8px 0 0;padding-left:20px}.q li{margin:8px 0;font-size:14px}
+.rule{background:#0d1117;border:1px solid var(--line);border-left:3px solid var(--ok);
+ border-radius:7px;padding:14px 18px;margin:16px 0;font-size:14px}
+</style></head><body><div class="wrap">
+
+<h1>A안 — 도구 전체에 적용</h1>
+<p class="sub">"다 같게" 하려면 기준이 하나 필요합니다. 도구 이름을 나열하는 대신 규칙 하나로 가르는 안입니다.</p>
+
+<div class="rule"><strong>기준 — 워크스페이스를 바꾸는가</strong><br>
+<span style="color:var(--mut)">안 바꾸면(조회) 뭉치고, 바꾸거나 실행하면 단독으로 남깁니다. 새 도구가 생겨도 이 기준으로 자동 분류돼서 목록을 다시 손댈 필요가 없습니다.</span></div>
+
+<h2>분류</h2>
+<table><tr><th>도구</th><th>성격</th><th>처리</th></tr><tr><td><code>ls</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>read</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>grep</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>find</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>ast_grep_search</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>lsp_*  <span class=fdim>(진단·정의·참조)</span></code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>web_search / web_fetch</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>task_output / task_list</code></td><td>조회</td><td>뭉침</td></tr><tr><td><code>bash <span class=fdim>(git status 등 조회성)</span></code></td><td>조회?</td><td><span class=amb>애매</span></td></tr><tr><td><code>bash <span class=fdim>(build·test·설치)</span></code></td><td>실행</td><td>단독</td></tr><tr><td><code>edit / write</code></td><td>변경</td><td>단독</td></tr><tr><td><code>memory / memory_apply_patch</code></td><td>변경</td><td>단독</td></tr><tr><td><code>eval</code></td><td>실행</td><td>단독</td></tr><tr><td><code>task / dag / team_create</code></td><td>실행</td><td>단독</td></tr><tr><td><code>todo</code></td><td>-</td><td><span class=ok2>항상 펼침</span></td></tr></table>
+
+<h2>섞여 있을 때</h2>
+<p class="lead">조회는 뭉치고, 바꾼 것과 실행한 것은 그대로 보입니다.</p>
+<div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — A안 적용</span></div><pre class="term"><pre style="margin:0;font:inherit;white-space:pre"><span class="usr">› 빌드 깨진 거 고쳐줘</span>
+
+<span class="fold">  ⋯ 탐색 4개  <span class="fdim">ls·read·grep</span>  <span class="fdim">+61줄</span></span>
+]8;;senpi-action:7\ <span style="color:rgb(212,212,212);">edit</span> ]8;;file:///Users/wy/Github-repos/Rubato/src/a.ts\<span style="color:rgb(138,190,183);">src/a.ts</span>]8;;\                                                                              ]8;;\
+]8;;senpi-action:6\ <span style="color:rgb(212,212,212);">$ </span>npm run build                                                                            ]8;;\
+
+<span class="asst">import 경로가 틀려 있었습니다. 고치고 빌드 통과했습니다.</span></pre></pre><div class="nt">탐색 4개는 한 줄로, edit·bash 는 단독으로 남습니다.</div></div>
+
+<h2>하나 애매한 것: <code>bash</code></h2>
+<p class="lead"><code>git status</code>·<code>ls -la</code> 같은 조회성 명령과 <code>npm run build</code> 는 같은 <code>bash</code> 도구입니다. 이름만으론 안 갈립니다.</p>
+<div class="cols"><div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">조회성</span></div><pre class="term">]8;;senpi-action:5\ <span style="color:rgb(212,212,212);">$ </span>git status                                                                               ]8;;\</pre></div><div class="screen"><div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">실행</span></div><pre class="term">]8;;senpi-action:6\ <span style="color:rgb(212,212,212);">$ </span>npm run build                                                                            ]8;;\</pre></div></div>
+<p class="lead" style="margin-top:10px">셋 중 하나를 골라야 합니다 — ① <code>bash</code>는 전부 단독(안전), ② 명령어 첫 낱말로 판단(<code>git status</code>·<code>cat</code>·<code>ls</code> 등은 뭉침), ③ 성공했고 출력이 짧으면 뭉침.</p>
+
+<div class="q"><strong>확인 부탁드립니다</strong>
+<ol>
+<li>기준을 <strong>"워크스페이스를 바꾸는가"</strong>로 잡는 게 맞을까요?</li>
+<li><code>bash</code>는 ①/②/③ 중 어느 쪽으로 할까요? (기본 ① — 안전한 쪽)</li>
+<li><code>web_search</code>·<code>lsp_*</code>도 뭉쳐도 될까요? (조회라 기준상 뭉침)</li>
+</ol></div>
+
+</div></body></html>

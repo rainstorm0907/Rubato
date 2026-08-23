@@ -1,38 +1,24 @@
 diff --git a/dist/autocomplete.js b/dist/autocomplete.js
 --- a/dist/autocomplete.js
 +++ b/dist/autocomplete.js
-@@ -4,6 +4,29 @@
+@@ -4,6 +4,11 @@
  import { basename, dirname, join } from "path";
  import { getDollarInvocationContext, getDollarInvocationSuggestions } from "./dollar-invocation-autocomplete.js";
  import { getSlashCommandSuggestions } from "./slash-command-autocomplete.js";
-+// 문장 중간에서 커맨드 메뉴를 열 자격이 있는 토큰인지 가리는 한 곳.
-+//
-+// 열림(editor)과 삽입(autocomplete)이 서로 다른 판정을 쓰면 "메뉴는 떴는데
-+// 고르면 슬래시가 사라지는" 어긋남이 생긴다. 그래서 정본을 하나만 둔다.
-+//
-+// 중간에서는 `/skill:` 만 연다. `/compact` 같은 빌트인은 메시지가 그것으로
-+// 시작할 때만 실행되므로 중간에 넣어 주면 글자로만 남기 때문이다. 경로
-+// (`/usr/bin`, `./src`)와 맨 슬래시도 이 규칙에 자연히 걸러진다.
-+const INLINE_SKILL_TOKEN_PREFIX = "/skill:";
 +export function inlineSlashTokenAt(textBeforeCursor) {
-+    const tokenStart = textBeforeCursor.search(/\S+$/);
-+    if (tokenStart <= 0)
-+        return null;
-+    // 탭·비분리공백도 토큰 경계다. 공백을 " " 로만 보면 삽입이 어긋난다.
-+    if (!/\s/.test(textBeforeCursor[tokenStart - 1]))
-+        return null;
-+    const token = textBeforeCursor.slice(tokenStart);
-+    if (token.startsWith(INLINE_SKILL_TOKEN_PREFIX))
-+        return token;
-+    // 타이핑 중(`/sk`)에도 열려야 하므로 접두 일치를 받는다.
-+    return INLINE_SKILL_TOKEN_PREFIX.startsWith(token) ? token : null;
++    const match = textBeforeCursor.match(/(?:^|\s)(\/[^\s/]*)$/);
++    return match?.[1] ?? null;
 +}
 +
  const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
  function toDisplayPath(value) {
      return value.replace(/\\/g, "/");
-@@ -213,6 +236,10 @@
-         if (!options.force && textBeforeCursor.startsWith("/")) {
+@@ -210,9 +215,13 @@
+                 prefix: dollarContext.prefix,
+             };
+         }
+-        if (!options.force && textBeforeCursor.startsWith("/")) {
++        if (!options.force && cursorLine === 0 && textBeforeCursor.startsWith("/")) {
              const spaceIndex = textBeforeCursor.indexOf(" ");
              if (spaceIndex === -1) {
 +                // `//`, `/a/b` 같은 경로 꼴은 커맨드가 아니다. 중간 토큰과 같은
@@ -42,12 +28,11 @@ diff --git a/dist/autocomplete.js b/dist/autocomplete.js
                  const prefix = textBeforeCursor.slice(1);
                  const filtered = getSlashCommandSuggestions(this.commands, prefix);
                  if (filtered.length === 0)
-@@ -256,6 +283,21 @@
+@@ -255,7 +264,21 @@
+                 items: argumentSuggestions,
                  prefix: argumentText,
              };
-         }
-+        // 문장 중간의 `/skill:` — 위의 맨 앞 처리와 `/cmd <인자>` 완성이 모두
-+        // 끝난 뒤에 본다. 그래야 `/model /skill:x` 의 인자 완성을 가로채지 않는다.
++        }
 +        if (!options.force) {
 +            const inlineToken = inlineSlashTokenAt(textBeforeCursor);
 +            if (inlineToken) {
@@ -55,21 +40,21 @@ diff --git a/dist/autocomplete.js b/dist/autocomplete.js
 +                    const name = "name" in command ? command.name : command.value;
 +                    return name.startsWith("skill:");
 +                });
-+                const filtered = getSlashCommandSuggestions(skillCommands, inlineToken.slice(1));
++                const query = inlineToken.slice(1);
++                const filtered = getSlashCommandSuggestions(skillCommands, query);
 +                if (filtered.length > 0)
 +                    return { items: filtered, prefix: inlineToken };
 +            }
-+        }
+         }
 +
          const pathMatch = this.extractPathPrefix(textBeforeCursor, options.force ?? false);
          if (pathMatch === null) {
              return null;
-@@ -291,6 +333,8 @@
+@@ -291,6 +314,7 @@
          const isSlashCommand = prefix.startsWith("/") &&
              !prefix.slice(1).includes("/") &&
              (beforePrefix.trim() === "" ||
-+                // 중간 삽입은 열림과 같은 판정을 쓴다. 다르면 "떴는데 못 넣는" 어긋남이 난다.
-+                (prefix.startsWith("/skill:") && /\s$/.test(beforePrefix)) ||
++                /\s$/.test(beforePrefix) ||
                  (prefix.startsWith("/skill:") && this.isLeadingKnownSkillCommandRun(beforePrefix)));
          if (isSlashCommand) {
              // This is a command name completion
@@ -84,38 +69,50 @@ diff --git a/dist/components/editor.js b/dist/components/editor.js
  const graphemeSegmenter = getGraphemeSegmenter();
  const wordSegmenter = getWordSegmenter();
  /** Atomic-marker predicate covering every marker family the editor treats as one grapheme. */
-@@ -1113,7 +1114,7 @@
+@@ -1112,8 +1113,12 @@
+         }
          // Check if we should trigger or update autocomplete
          if (!this.autocompleteState) {
-             // Auto-trigger for "/" at the start of a line (slash commands)
+-            // Auto-trigger for "/" at the start of a line (slash commands)
 -            if (char === "/" && this.isAtStartOfMessage()) {
-+            if (char === "/" && (this.isAtStartOfMessage() || this.isInlineSkillSlash())) {
++            // Auto-trigger for slash commands and inline skill invocations.
++            if (char === "/" && (this.isAtStartOfMessage() || this.isInlineSlash())) {
++                this.tryTriggerAutocomplete();
++            }
++            // Bare inline `$` opens the skill picker; ordinary `$HOME` closes it on the next character.
++            else if (char === "$" && this.isInlineDollar()) {
                  this.tryTriggerAutocomplete();
              }
              // Auto-trigger for symbol-based completion like @, #, or provider triggers at token boundaries
-@@ -1932,8 +1933,24 @@
+@@ -1920,9 +1925,8 @@
+             isAtomicSegment: isAtomicMarker,
+         }));
+     }
+-    // Slash menu only allowed on the first line of the editor
+     isSlashMenuAllowed() {
+-        return this.state.cursorLine === 0;
++        return true;
+     }
+     // Helper method to check if cursor is at start of message (for slash command detection)
+     isAtStartOfMessage() {
+@@ -1932,8 +1936,19 @@
          const beforeCursor = currentLine.slice(0, this.state.cursorCol);
          return beforeCursor.trim() === "" || beforeCursor.trim() === "/";
      }
-+    // `/` 를 갓 친 순간, 그 자리가 문장 중간의 스킬 토큰 자리인지.
-+    // isAtStartOfMessage 는 줄 맨 앞만 보므로 중간에서는 팝업이 아예 열리지 않았다.
-+    isInlineSkillSlash() {
-+        if (!this.isSlashMenuAllowed())
-+            return false;
++    isInlineSlash() {
 +        const currentLine = this.state.lines[this.state.cursorLine] || "";
 +        const beforeCursor = currentLine.slice(0, this.state.cursorCol);
 +        return inlineSlashTokenAt(beforeCursor) !== null;
 +    }
++    isInlineDollar() {
++        const currentLine = this.state.lines[this.state.cursorLine] || "";
++        const beforeCursor = currentLine.slice(0, this.state.cursorCol);
++        return /(?:^|\s)\$[a-zA-Z0-9:_-]*$/.test(beforeCursor);
++    }
      isInSlashCommandContext(textBeforeCursor) {
 -        return this.isSlashMenuAllowed() && textBeforeCursor.trimStart().startsWith("/");
-+        if (!this.isSlashMenuAllowed())
-+            return false;
-+        // 줄 맨 앞은 종래대로 모든 커맨드를 연다.
-+        if (textBeforeCursor.trimStart().startsWith("/"))
-+            return true;
-+        // 문장 중간에서는 `/skill:` 만 연다. 빌트인은 메시지가 그것으로 시작할
-+        // 때만 실행되므로, 중간에 넣어 주면 글자로만 남는다.
-+        return inlineSlashTokenAt(textBeforeCursor) !== null;
++        return inlineSlashTokenAt(textBeforeCursor) !== null ||
++            (this.state.cursorLine === 0 && textBeforeCursor.trimStart().startsWith("/"));
      }
      // Autocomplete methods
      /**
@@ -132,12 +129,16 @@ diff --git a/dist/dollar-invocation-autocomplete.js b/dist/dollar-invocation-aut
  function commandName(command) {
      return "name" in command ? command.name : command.value;
  }
-@@ -21,8 +24,19 @@
-     if (cursorLine !== 0)
-         return null;
-     const match = textBeforeCursor.match(LEADING_DOLLAR_RUN_PATTERN);
+@@ -18,11 +21,20 @@
+     return description || undefined;
+ }
+ export function getDollarInvocationContext(textBeforeCursor, cursorLine, commands) {
+-    if (cursorLine !== 0)
+-        return null;
+-    const match = textBeforeCursor.match(LEADING_DOLLAR_RUN_PATTERN);
 -    if (!match)
 -        return null;
++    const match = cursorLine === 0 ? textBeforeCursor.match(LEADING_DOLLAR_RUN_PATTERN) : null;
 +    if (!match) {
 +        // 맨 앞 런이 아니면 문장 중간의 `$` 로 본다.
 +        const inline = textBeforeCursor.match(INLINE_DOLLAR_PATTERN);
@@ -154,3 +155,16 @@ diff --git a/dist/dollar-invocation-autocomplete.js b/dist/dollar-invocation-aut
      const knownSkills = new Set(commands.flatMap((command) => {
          const name = skillName(commandName(command));
          return name ? [name] : [];
+diff --git a/dist/slash-command-autocomplete.js b/dist/slash-command-autocomplete.js
+--- a/dist/slash-command-autocomplete.js
++++ b/dist/slash-command-autocomplete.js
+@@ -27,7 +27,8 @@
+         const skillName = isSkill ? name.slice(SKILL_COMMAND_PREFIX.length) : "";
+         if (isSkill &&
+             !explicitSkillNamespace &&
+-            (normalizedPrefix.length === 0 || !skillName.toLowerCase().startsWith(normalizedPrefix))) {
++            normalizedPrefix.length > 0 &&
++            !skillName.toLowerCase().startsWith(normalizedPrefix)) {
+             return [];
+         }
+         const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;

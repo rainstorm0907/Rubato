@@ -1,0 +1,196 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>TUI 접힘 — 화면안</title><style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#30363d;--acc:#58a6ff;--ok:#3fb950;--err:#f85149}
+*{box-sizing:border-box}
+body{margin:0;background:#08090c;color:var(--fg);padding:36px 20px 80px;
+ font:15px/1.65 -apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo",sans-serif}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:23px;margin:0 0 6px}
+.sub{color:var(--mut);font-size:14px;margin:0 0 12px}
+.real{display:inline-block;font-size:12px;color:var(--ok);border:1px solid #3fb95055;
+ background:#3fb9501a;border-radius:99px;padding:3px 11px;margin-bottom:26px}
+h2{font-size:16px;margin:38px 0 4px}
+.lead{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+.screen{border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#010409;margin:14px 0 6px}
+.sh{display:flex;align-items:center;gap:10px;padding:8px 13px;background:#161b22;border-bottom:1px solid var(--line)}
+.dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;background:#30363d}
+.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:last-child{background:#28c840}
+.st{font-size:12px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+.term{margin:0;padding:15px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+ font-size:12.5px;line-height:1.6;white-space:pre;overflow-x:auto;color:#c9d1d9}
+.nt{padding:9px 14px;background:#161b2299;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut)}
+.usr{color:#79c0ff;font-weight:600}
+.asst{color:#c9d1d9}
+.fold{color:#6e7681;cursor:pointer}
+.fdim{color:#484f58}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+.cols h3{margin:0 0 2px;font-size:13px;color:var(--mut);font-weight:600}
+.q{background:#0d1117;border:1px solid var(--line);border-left:3px solid var(--acc);
+ border-radius:7px;padding:16px 19px;margin:30px 0 0}
+.q ol{margin:8px 0 0;padding-left:20px}.q li{margin:7px 0;font-size:14px}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.88em;background:#1f2428;padding:1px 5px;border-radius:4px}
+</style></head><body><div class="wrap">
+
+<h1>TUI 접힘 — 화면안</h1>
+<p class="sub">아래 터미널 안의 도구 줄은 실제 senpi 컴포넌트를 렌더해서 ANSI 색까지 그대로 옮긴 것입니다.</p>
+<span class="real">● 실측 렌더 · 그림 아님</span>
+
+<h2>지금</h2>
+<p class="lead">도구마다 1줄씩. 접혀 있긴 한데 줄 수가 계속 쌓입니다.</p>
+
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — 현재</span></div>
+  <pre class="term"><span class="usr">› 접힘 상태 확인해줘</span>
+
+]8;;senpi-action:1\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">ls</span> ]8;;file:///Users/wy/Github-repos/Rubato/harness\<span style="color:rgb(138,190,183);">harness</span>]8;;\                                                                                 ]8;;\
+]8;;senpi-action:1\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">ls</span> ]8;;file:///Users/wy/Github-repos/Rubato/harness/prompts\<span style="color:rgb(138,190,183);">harness</span>]8;;\                                                                                 ]8;;\
+]8;;senpi-action:3\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">read</span> ]8;;file:///Users/wy/Github-repos/Rubato/src/index.ts\<span style="color:rgb(138,190,183);">src/index.ts</span>]8;;\                                                                          ]8;;\
+]8;;senpi-action:3\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">read</span> ]8;;file:///Users/wy/Github-repos/Rubato/harness/build.sh\<span style="color:rgb(138,190,183);">src/index.ts</span>]8;;\                                                                          ]8;;\
+]8;;senpi-action:4\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">grep</span> <span style="color:rgb(138,190,183);">/TODO/</span><span style="color:rgb(128,128,128);"> in src</span>                                                                         ]8;;\
+]8;;senpi-action:5\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">$ </span>npm run build                                                                            ]8;;\
+
+<span class="asst">확인했습니다. 접힘은 정상 동작 중입니다.</span></pre>
+  <div class="nt">도구 6개 = 6줄. 내용은 없고 자리만 찹니다.</div>
+</div>
+
+<h2>A안 — 조회 도구를 한 줄로 뭉침 <span style="color:var(--ok);font-size:13px">추천</span></h2>
+<p class="lead"><code>ls</code>·<code>read</code>·<code>grep</code>처럼 아무것도 바꾸지 않는 도구만 뭉칩니다. 클릭하면 펼쳐집니다.</p>
+
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — A안</span></div>
+  <pre class="term"><span class="usr">› 접힘 상태 확인해줘</span>
+
+<span class="fold">  ⋯ 탐색 5개  <span class="fdim">ls·read·grep</span>  <span class="fdim">+52줄</span></span>
+]8;;senpi-action:5\<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">$ </span>npm run build                                                                            ]8;;\
+
+<span class="asst">확인했습니다. 접힘은 정상 동작 중입니다.</span></pre>
+  <div class="nt">6줄 → 2줄. 쓰기·실행은 그대로 보입니다.</div>
+</div>
+
+<h2>B안 — 성공은 숨기고 에러만</h2>
+<p class="lead">가장 조용하지만 진행 상황이 안 보입니다.</p>
+
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — B안</span></div>
+  <pre class="term"><span class="usr">› 접힘 상태 확인해줘</span>
+
+<span class="asst">확인했습니다. 접힘은 정상 동작 중입니다.</span></pre>
+  <div class="nt">도구 줄 0. 뭘 했는지는 답변으로만 압니다.</div>
+</div>
+
+<h2>에러는 어느 안이든 보입니다</h2>
+
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">rubato — 에러</span></div>
+  <pre class="term"><span class="usr">› 테스트 돌려줘</span>
+
+<span class="fold">  ⋯ 탐색 2개  <span class="fdim">ls·read</span>  <span class="fdim">+31줄</span></span>
+]8;;senpi-action:7\<span style="background:rgb(60,40,40);"> </span><span style="color:rgb(212,212,212);">$ </span>npm <span style="color:rgb(78,201,176);">test</span>                                                                                 ]8;;\
+]8;;senpi-action:7\<span style="color:rgb(204,102,102);"></span><span style="background:rgb(60,40,40);"> </span><span style="color:rgb(128,128,128);">  expected 1 got 2</span>                                                                         ]8;;\
+
+<span class="asst">a.test.ts 에서 1을 기대했는데 2가 나왔습니다.</span></pre>
+  <div class="nt">실패한 명령과 그 꼬리 1줄은 항상 남습니다.</div>
+</div>
+
+<h2>펼쳤을 때 (클릭 / <code>ctrl+o</code>)</h2>
+<div class="cols">
+<div><h3>ls — 29줄</h3>
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">펼침</span></div>
+  <pre class="term">
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">ls</span> ]8;;file:///Users/wy/Github-repos/Rubato/harness\<span style="color:rgb(138,190,183);">harness</span>]8;;\                                                                                 
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-0.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-1.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-2.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-3.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-4.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-5.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-6.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-7.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-8.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-9.mjs</span>                                                           
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-10.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-11.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-12.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-13.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-14.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-15.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-16.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-17.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-18.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-19.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-20.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-21.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-22.mjs</span>                                                          
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">harness/rubato-pi/src/file-23.mjs</span>                                                          
+<span style="background:rgb(40,50,40);">                                                                                            </span></pre>
+  
+</div></div>
+<div><h3>bash — 23줄</h3>
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">펼침</span></div>
+  <pre class="term">
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">$ </span>npm run build                                                                            
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">[0/18] compiled module-0.ts</span>                                                                
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [1/18] compiled module-1.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [2/18] compiled module-2.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [3/18] compiled module-3.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [4/18] compiled module-4.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [5/18] compiled module-5.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [6/18] compiled module-6.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [7/18] compiled module-7.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [8/18] compiled module-8.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [9/18] compiled module-9.ts</span>                                                              
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [10/18] compiled module-10.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [11/18] compiled module-11.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [12/18] compiled module-12.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [13/18] compiled module-13.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [14/18] compiled module-14.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [15/18] compiled module-15.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [16/18] compiled module-16.ts</span>                                                            
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(128,128,128);">  [17/18] compiled module-17.ts</span>                                                            
+<span style="background:rgb(40,50,40);">                                                                                            </span></pre>
+  
+</div></div>
+</div>
+<div class="cols">
+<div><h3>edit — 접힘 / 펼침</h3>
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">edit</span></div>
+  <pre class="term">]8;;senpi-action:8\<span style="background:rgb(40,40,50);"> </span><span style="color:rgb(212,212,212);">edit</span> ]8;;file:///Users/wy/Github-repos/Rubato/src/a.ts\<span style="color:rgb(138,190,183);">src/a.ts</span>]8;;\                                                                              ]8;;\
+
+
+<span style="background:rgb(40,40,50);">                                                                                            </span>
+<span style="background:rgb(40,40,50);"> </span><span style="color:rgb(212,212,212);">edit</span> ]8;;file:///Users/wy/Github-repos/Rubato/src/a.ts\<span style="color:rgb(138,190,183);">src/a.ts</span>]8;;\                                                                              
+<span style="background:rgb(40,40,50);">                                                                                            </span></pre>
+  
+</div></div>
+<div><h3>todo — 항상 펼침</h3>
+<div class="screen">
+  <div class="sh"><span class="dots"><i></i><i></i><i></i></span><span class="st">todo</span></div>
+  <pre class="term">
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> </span><span style="color:rgb(212,212,212);">todo</span>                                                                                       
+<span style="background:rgb(40,50,40);">                                                                                            </span>
+<span style="background:rgb(40,50,40);"> {                                                                                          </span>
+<span style="background:rgb(40,50,40);">   "op": "write"                                                                            </span>
+<span style="background:rgb(40,50,40);"> }                                                                                          </span>
+<span style="background:rgb(40,50,40);"> Do the thing                                                                               </span>
+<span style="background:rgb(40,50,40);">                                                                                            </span></pre>
+  <div class="nt">접으면 남는 게 없어 그대로 둡니다.</div>
+</div></div>
+</div>
+
+<div class="q"><strong>확인 부탁드립니다</strong>
+<ol>
+<li><strong>A / B</strong> 중 어느 쪽으로 갈까요? (기본 A)</li>
+<li>뭉치는 줄에 <code>+52줄</code>처럼 숨은 분량을 표시할까요?</li>
+<li><code>ctrl+o</code> 펼침이 지금은 세션 내내 유지됩니다 — 턴 끝나면 자동으로 접을까요?</li>
+</ol></div>
+
+</div></body></html>
