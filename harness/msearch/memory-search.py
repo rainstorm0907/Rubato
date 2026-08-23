@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Search roo-channel memories from Redis Stack.
+Search agent memories from Redis Stack.
 
 CLI:
   python3 scripts/memory-search.py "query"
@@ -1335,25 +1335,125 @@ def select_result_amount(memories: list[dict[str, object]], limit: int) -> list[
     return selected
 
 
-def search_results(query: str, limit: int = RETURN_K) -> list[dict[str, object]]:
+def scope_filter(memories: list[dict[str, object]], scope: str | None) -> list[dict[str, object]]:
+    """한 저장소로 좁힌다. scope 가 None 이면 전체.
+
+    색인은 메모리 루트를 통째로 훑으므로 rel_path 가 `<identity>/repo/...` 로
+    시작한다. 그 첫 조각이 곳 저장소 id 다.
+    """
+    if scope is None:
+        return memories
+    kept: list[dict[str, object]] = []
+    for memory in memories:
+        rel = str(memory.get("rel_path", ""))
+        head = rel.split("/", 1)[0]
+        if head == scope:
+            kept.append(memory)
+    return kept
+
+
+def search_results(
+    query: str, limit: int = RETURN_K, scope: str | None = None
+) -> list[dict[str, object]]:
+    # 좁힐 때는 후보를 떄떄하게 뽑아야 한다. 랭킹을 끝낸 뒤 걸러내면 다른 저장소가
+    # 상위를 차지한 만큼 번째 손이가 빈다.
+    fetch = limit if scope is None else max(limit * 8, 40)
     if is_verbatim_query(query):
-        raw = raw_verbatim_candidates(query)[:limit]
+        raw = scope_filter(raw_verbatim_candidates(query), scope)[:limit]
         if raw:
             return raw
         # Literal wording is a fast path, not a requirement. When the user only
         # remembers a topic, locate the memory semantically instead of rejecting it.
         semantic_query = strip_verbatim_cues(query)
         if semantic_query:
-            return select_result_amount(search_memories(semantic_query, limit=limit), limit)
-    return select_result_amount(search_memories(query, limit=limit), limit)
+            found = scope_filter(search_memories(semantic_query, limit=fetch), scope)
+            return select_result_amount(found, limit)
+    found = scope_filter(search_memories(query, limit=fetch), scope)
+    return select_result_amount(found, limit)
+
+
+def indexed_scopes() -> list[str]:
+    """색인에 실제로 들어있는 저장소 id 목록."""
+    client = redis.from_url(REDIS_URL)
+    found: set[str] = set()
+    for key in client.scan_iter(match=f"{KEY_PREFIX}*", count=500):
+        try:
+            if client.type(key) != b"hash":
+                continue
+            rel = client.hget(key, "rel_path")
+        except redis.RedisError:
+            continue
+        if rel:
+            found.add(rel.decode("utf-8", "replace").split("/", 1)[0])
+    return sorted(found)
+
+
+def current_scope() -> str | None:
+    """현재 디렉터리에 해당하는 저장소 id.
+
+    rubato 의 auto identity 규칙을 그대로 따른다: cwd 의 basename 을 slug 로 바꾸고
+    정규화된 절대경로의 sha256 앞 8자리를 붙인다. 규칙이 갈라지면 엉뚝한 저장소를
+    가리키게 되므로, 결과가 색인에 없으면 None 을 돌려 전체 검색으로 떨어트린다.
+    """
+    root = str(Path.cwd().resolve())
+    slug = re.sub(r"[^a-z0-9]+", "-", Path(root).name.lower()).strip("-")[:40].rstrip("-")
+    if not slug:
+        slug = "agent"
+    digest = hashlib.sha256(root.encode("utf-8")).hexdigest()[:8]
+    return f"{slug}-{digest}"
+
+
+def resolve_scope(args: argparse.Namespace) -> str | None:
+    """None 이면 전체 검색.
+
+    기본은 현재 프로젝트다 — 대개는 지금 있는 곳의 기억을 찾는다. 단, 현재 저장소가
+    색인에 없으면(아직 안 쌓였거나 다른 곳에서 실행 중) 조용히 0건을 주는 대신
+    전체로 넘어간다. 검색이 안 되는 것보다 넓게 찾아주는 편이 낫다.
+    """
+    if args.all:
+        return None
+    if args.scope:
+        return args.scope
+    scope = current_scope()
+    if scope is None:
+        return None
+    return scope if scope in indexed_scopes() else None
+
+
+def ensure_index_fresh(quiet: bool = True) -> None:
+    """검색 직전에 색인이 메모리보다 뒤처졌는지 보고 따라잡는다.
+
+    메모리는 에이전트가 수시로 고친다. 사람이 색인 명령을 기억해야 한다면 반드시
+    잊어버리고, 그때 검색은 조용히 낡은 결과를 준다 — 틀렸다고 말해주지도 않는다.
+    평상시 비용은 20ms 안팽이라 매번 물어보는 편이 낫다.
+    """
+    if os.getenv("MSEARCH_NO_AUTOINDEX", "").strip() not in ("", "0"):
+        return
+    try:
+        import msearch_freshness
+
+        msearch_freshness.ensure_fresh(redis.from_url(REDIS_URL), quiet=quiet)
+    except Exception:
+        # 갱신은 거듭이다. 실패해도 검색은 기존 색인으로 그대로 진행한다.
+        pass
 
 
 def run_cli(args: argparse.Namespace) -> int:
+    if args.list_scopes:
+        scopes = indexed_scopes()
+        if not scopes:
+            print("(색인된 저장소 없음 — msearch --index 를 먼저)")
+            return 1
+        here = current_scope()
+        for scope in scopes:
+            print(f"{'* ' if scope == here else '  '}{scope}")
+        return 0
     query = " ".join(args.query).strip()
     if not query:
         print("query is required", file=sys.stderr)
         return 2
-    memories = search_results(query, limit=args.limit)
+    ensure_index_fresh(quiet=args.json or args.dual_run)
+    memories = search_results(query, limit=args.limit, scope=resolve_scope(args))
     if not memories:
         print("[]" if args.json else "NOT FOUND")
         return 1
@@ -1379,8 +1479,24 @@ def run_cli(args: argparse.Namespace) -> int:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search roo-channel memories")
+    parser = argparse.ArgumentParser(description="Search agent memories")
     parser.add_argument("query", nargs="*", help="query string for CLI mode")
+    parser.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="search every memory store, not just the current project's",
+    )
+    parser.add_argument(
+        "--scope",
+        metavar="ID",
+        help="search one memory store by its identity id (see --list-scopes)",
+    )
+    parser.add_argument(
+        "--list-scopes",
+        action="store_true",
+        help="list the indexed memory stores and exit",
+    )
     parser.add_argument("--limit", "-k", type=int, default=RETURN_K, help="number of results")
     parser.add_argument("--json", action="store_true", help="print structured search results")
     parser.add_argument(
@@ -1399,7 +1515,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    if args.query:
+    # --list-scopes 는 질의가 아니라 조회다. query 검사보다 먼저 통과시킨다.
+    if args.list_scopes or args.query:
         return run_cli(args)
     print("query is required", file=sys.stderr)
     return 2

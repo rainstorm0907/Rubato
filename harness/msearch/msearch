@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # msearch — 기억 검색 한 줄 진입점.
 #
-#   msearch '찾을 내용'      검색
+#   msearch '찾을 내용'      현재 프로젝트 기억에서 검색
+#   msearch -a '내용'       모든 기억에서 검색
+#   msearch --list-scopes    색인된 저장소 목록
 #   msearch --index          색인 갱신 (바뀐 파일만)
 #   msearch --reindex        전체 재색인
 #   msearch --doctor         설치 상태 진단
@@ -24,7 +26,7 @@ case "${1:-}" in
     exec "$py" "$here/memory-index.py" --force
     ;;
   -h|--help|"")
-    sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0
     ;;
 esac

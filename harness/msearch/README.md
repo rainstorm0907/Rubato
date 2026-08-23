@@ -10,13 +10,35 @@
 ## 쓰기
 
 ```
-msearch '찾을 내용'      검색
-msearch --index          색인 갱신 (바뀐 파일만)
-msearch --reindex        전체 재색인
-msearch --doctor         설치 상태 진단
+msearch '찾을 내용'            현재 프로젝트 기억에서 검색
+msearch -a '내용'              모든 기억에서 검색
+msearch --scope <id> '내용'    한 저장소로 좁혀서
+msearch --list-scopes          색인된 저장소 목록 (* = 현재 위치)
+msearch --index                색인 수동 갱신
+msearch --reindex              전체 재색인
+msearch --doctor               설치 상태 진단
 ```
 
 `--doctor` 부터 돌리면 된다. 뭐가 없는지와 다음에 뭘 할지 알려준다.
+
+## 스코프
+
+기본은 **현재 디렉터리에 해당하는 메모리 저장소**다. 색인은 메모리 루트를 통째로 훑으므로
+여러 프로젝트의 기억이 한 인덱스에 같이 있고, 그중 현재 곳의 것만 보여준다. `-a` 로 전체를 본다.
+
+현재 디렉터리가 색인에 없으면(아직 안 쌓였거나 메모리 밖에서 실행 중) 조용히 0건을 주는 대신
+전체 검색으로 떨어진다.
+
+## 색인은 알아서 따라온다
+
+검색할 때마다 색인이 실제 파일과 어긋나는지 보고, 뒤처졌으면 바뀐 파일만 다시 색인한다.
+메모리에 뭘 쓴 뒤의 검색은 반드시 최신을 본다 — 도구로 썼든 손으로 고쳤든 `git pull` 을 받았든
+상관없다.
+
+변경이 없으면 검사는 20ms 안팎이다(로컬 해시 대조만 한다). 끄려면 `MSEARCH_NO_AUTOINDEX=1`.
+
+별도의 git 훅은 안 건다 — memory-core 가 메모리 저장소의 `post-commit` 을 자기 것으로 쓰고
+매 startup 마다 재생성한다. 그 파일을 놓고 다투는 대신 상태를 본다.
 
 ## 필요한 것
 
@@ -66,6 +88,7 @@ MSEARCH_ROOT=~/notes MSEARCH_CHANNEL=notes msearch --index
 |------|------|
 | `msearch` | 진입점. 백엔드가 죽어 있으면 검색 대신 진단으로 보낸다 |
 | `msearch_config.py` | 모든 경로·이름 해석. 다른 파일은 여기서만 읽는다 |
+| `msearch_freshness.py` | 색인이 뒤처졌는지 보고 따라잡는다 |
 | `msearch_doctor.py` | 설치 진단 |
 | `memory-index.py` | 마크다운 → 청크 → 임베딩 → Redis |
 | `memory-search.py` | 하이브리드 검색과 랭킹 |
@@ -74,7 +97,6 @@ MSEARCH_ROOT=~/notes MSEARCH_CHANNEL=notes msearch --index
 
 ## 알아둘 것
 
-- **색인은 자동이 아니다.** 메모리에 새로 쓴 내용은 `msearch --index` 를 돌려야 잡힌다.
 - **검색 결과는 사용자 화면에만 뜬다.** 에이전트 컨텍스트로 자동 주입되지 않는다.
 - 색인은 `.git/` 과 `runtime/` 을 제외한다 — 기억이 아니라 기계 상태다.
 - 에피소드 v2 인덱스(sqlite)가 없으면 게이트는 전 건 통과시킨다. 순수 마크다운
