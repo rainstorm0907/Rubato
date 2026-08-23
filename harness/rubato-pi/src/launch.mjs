@@ -12,7 +12,6 @@ import { withNoChangelog } from "./no-changelog.mjs";
 import { argvHasModel, ensureSessionDefaults, sessionDefaultsLookCurrent } from "./session-defaults.mjs";
 import { replaceSystemPrompt } from "./system-prompt.mjs";
 import { SKILL_DIRS } from "./skills-section.mjs";
-import { syncSenpiTranscriptPatch } from "./sync-tui-patch.mjs";
 import { enginePackageJson, senpiCli, senpiPackageJson } from "./engine-paths.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -101,7 +100,6 @@ export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
 
 export async function spawnRubatoPi({ args = process.argv.slice(2), env = process.env, agentDir = defaultAgentDir() } = {}) {
   assertExactPin();
-  syncSenpiTranscriptPatch();
   ensureBroker({ env });
   const node = resolveNode24();
   mkdirSync(agentDir, { recursive: true });
