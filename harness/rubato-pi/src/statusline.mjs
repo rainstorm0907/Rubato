@@ -165,6 +165,97 @@ export function formatStatusline(input) {
   return `${statuslineSegments(input).join(" · ")}${formatCacheHit(input.cache)}`;
 }
 
+// ── 배경 작업 요약 ─────────────────────────────────────────────────
+//
+// 셸, 모니터, 서브에이전트는 모두 엔진의 `wake_source_state` 이벤트로 온다.
+// 셋 다 `{ id, description, startedAtMs }` 로 모양이 같아서 한 줄에 합칠 수 있다.
+// 모델 이름만 이벤트에 없어서 태스크 레코드를 따로 읽어 붙인다.
+
+/** 이벤트의 source 값과 화면에 쓸 글리프. 순서가 곧 표시 순서다. */
+export const BACKGROUND_SOURCES = Object.freeze([
+  { source: "senpi-task", glyph: "▸", field: "channels" },
+  { source: "terminal-background-sessions", glyph: "⌘", field: "items" },
+  { source: "terminal-monitors", glyph: "◉", field: "monitors" },
+]);
+
+/** `05:44`, 한 시간을 넘기면 `1:05:44`. 시계지 상대시간 표기가 아니다. */
+export function formatElapsedClock(startedAtMs, nowMs) {
+  const started = Number(startedAtMs);
+  if (!Number.isFinite(started)) return "";
+  const total = Math.max(0, Math.floor((Number(nowMs) - started) / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * 이벤트 페이로드를 표시용 항목으로 정규화한다.
+ * source 마다 배열이 담긴 필드 이름이 달라서 BACKGROUND_SOURCES 로 맞춘다.
+ */
+export function backgroundEntriesFromEvent(event) {
+  if (!event || typeof event !== "object") return null;
+  const spec = BACKGROUND_SOURCES.find((candidate) => candidate.source === event.source);
+  if (!spec) return null;
+  const raw = event[spec.field];
+  if (!Array.isArray(raw)) return { source: spec.source, entries: [] };
+  const entries = raw
+    .filter((entry) => entry && typeof entry === "object" && typeof entry.id === "string")
+    .map((entry) => ({
+      id: entry.id,
+      description: String(entry.description ?? entry.id),
+      startedAtMs: Number(entry.startedAtMs),
+    }));
+  return { source: spec.source, entries };
+}
+
+/** `reviewer Opus 5 05:44` — 모델은 있을 때만 낀다. */
+export function formatBackgroundEntry(entry, nowMs) {
+  const clock = formatElapsedClock(entry.startedAtMs, nowMs);
+  const model = entry.model ? shortModelLabel(entry.model) : "";
+  return [entry.description, model, clock].filter(Boolean).join(" ");
+}
+
+/**
+ * 소스별 묶음을 한 줄로 조립한다. 폭을 넘기면 뒤에서부터 접어 `+N` 으로 세되,
+ * 개수만은 절대 잘리지 않게 남긴다 — 몇 개가 도는지가 가장 중요한 정보다.
+ */
+export function formatBackgroundLine(groups, nowMs, width = 80) {
+  const chunks = [];
+  for (const spec of BACKGROUND_SOURCES) {
+    const entries = groups?.get?.(spec.source) ?? [];
+    if (entries.length === 0) continue;
+    const labels = entries.map((entry) => formatBackgroundEntry(entry, nowMs));
+    chunks.push({ glyph: spec.glyph, labels });
+  }
+  if (chunks.length === 0) return "";
+
+  for (let keep = maxLabels(chunks); keep >= 0; keep -= 1) {
+    const line = renderChunks(chunks, keep);
+    if (line.length <= width) return line;
+  }
+  return renderChunks(chunks, 0);
+}
+
+function maxLabels(chunks) {
+  return chunks.reduce((max, chunk) => Math.max(max, chunk.labels.length), 0);
+}
+
+/** keep 개까지만 이름을 쓰고 나머지는 `+N`. keep 이 0이면 개수만 남는다. */
+function renderChunks(chunks, keep) {
+  return chunks
+    .map(({ glyph, labels }) => {
+      const shown = keep > 0 ? labels.slice(0, keep) : [];
+      const hidden = labels.length - shown.length;
+      const parts = [...shown];
+      if (hidden > 0) parts.push(`+${hidden}`);
+      return `${glyph} ${parts.join(" · ")}`;
+    })
+    .join("   ");
+}
+
 export function truncateToWidth(text, width) {
   const plain = stripAnsi(text);
   if (width <= 0) return "";
