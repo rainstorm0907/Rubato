@@ -9,7 +9,7 @@ import { PIN } from "./policy.mjs";
 import { resolveRole } from "./role-contract.mjs";
 import { listNodeCandidates, pickNode, runningNode } from "./select-node.mjs";
 import { withNoChangelog } from "./no-changelog.mjs";
-import { argvHasModel, ensureSessionDefaults, sessionDefaultsLookCurrent } from "./session-defaults.mjs";
+import { argvHasModel, argvRestoresSession, ensureSessionDefaults, sessionDefaultsLookCurrent } from "./session-defaults.mjs";
 import { replaceSystemPrompt } from "./system-prompt.mjs";
 import { SKILL_DIRS } from "./skills-section.mjs";
 import { enginePackageJson, senpiCli, senpiPackageJson } from "./engine-paths.mjs";
@@ -76,7 +76,7 @@ export function skillPathArgs(dirs = SKILL_DIRS) {
 }
 
 export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
-  const modelArgs = argvHasModel(userArgs) ? [] : ["--model", DEFAULT_MODEL];
+  const modelArgs = argvHasModel(userArgs) || argvRestoresSession(userArgs) ? [] : ["--model", DEFAULT_MODEL];
   const interactiveTuiArgs = userArgs.some((token) => token === "--mode" || token.startsWith("--mode=")) ||
     userArgs.some((token) => token === "--tui-mode" || token.startsWith("--tui-mode="))
     ? []

@@ -48,6 +48,18 @@ test("an explicit --model is not overwritten", () => {
   assert.equal(args[args.indexOf("--model") + 1], "xai/grok-4.6");
 });
 
+test("resuming a session does not override its persisted model", () => {
+  const args = buildSenpiArgs(["--session", "/tmp/session.jsonl"]);
+  assert.equal(args.includes("--model"), false);
+  assert.deepEqual(args.slice(-2), ["--session", "/tmp/session.jsonl"]);
+});
+
+test("an explicit model still overrides a resumed session", () => {
+  const args = buildSenpiArgs(["--session", "/tmp/session.jsonl", "--model", "xai/grok-4.6"]);
+  assert.equal(args.filter((token) => token === "--model").length, 1);
+  assert.equal(args[args.indexOf("--model") + 1], "xai/grok-4.6");
+});
+
 test("interactive sessions default to fullscreen without overriding explicit modes", () => {
   const interactive = buildSenpiArgs([]);
   assert.equal(interactive[interactive.indexOf("--tui-mode") + 1], "fullscreen");

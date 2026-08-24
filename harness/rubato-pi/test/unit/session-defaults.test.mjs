@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   argvHasModel,
+  argvRestoresSession,
   ensureModelsConfig,
   ensureSessionDefaults,
   modelsLookCurrent,
@@ -13,6 +14,22 @@ test("launch keeps an explicit model flag and fills Opus otherwise", () => {
   assert.equal(argvHasModel(["--mode", "rpc"]), false);
   assert.equal(argvHasModel(["--model", "xai/grok-4.6"]), true);
   assert.equal(argvHasModel(["--provider", "xai"]), true);
+});
+
+test("session restoration flags preserve the persisted model", () => {
+  for (const argv of [
+    ["--session", "/tmp/session.jsonl"],
+    ["--continue"],
+    ["-c"],
+    ["--resume"],
+    ["-r"],
+  ]) {
+    assert.equal(argvRestoresSession(argv), true, argv.join(" "));
+  }
+  assert.equal(argvRestoresSession(["--session=/tmp/session.jsonl"]), false);
+  assert.equal(argvRestoresSession(["--session-id", "01abc"]), false);
+  assert.equal(argvRestoresSession(["--fork", "/tmp/session.jsonl"]), false);
+  assert.equal(argvRestoresSession(["--mode", "rpc"]), false);
 });
 
 test("session defaults pin Opus without dropping other settings", () => {

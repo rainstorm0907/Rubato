@@ -15,6 +15,13 @@ export function argvHasModel(argv) {
   return argv.some((token) => token === "--model" || token === "--provider" || token.startsWith("--model="));
 }
 
+export function argvRestoresSession(argv) {
+  return argv.some((token) =>
+    token === "--continue" || token === "-c" || token === "--resume" || token === "-r" ||
+    token === "--session",
+  );
+}
+
 const DISABLED_OAUTH_EXTENSIONS = ["claude-sdk-oauth", "cursor-cli-oauth"];
 
 function readJson(path, { exists, readFile }) {
