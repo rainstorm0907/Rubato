@@ -1,0 +1,92 @@
+diff --git a/dist/modes/interactive/components/assistant-message.d.ts b/dist/modes/interactive/components/assistant-message.d.ts
+index 699163f..f50bc86 100644
+--- a/dist/modes/interactive/components/assistant-message.d.ts
++++ b/dist/modes/interactive/components/assistant-message.d.ts
+@@ -16,6 +16,7 @@ export declare class AssistantMessageComponent extends Container {
+     private expanded;
+     private isStreaming;
+     private thinkingExpanded;
++    private thinkingOverride?;
+     private readonly thinkingAction;
+     constructor(message?: AssistantMessage, hideThinkingBlock?: boolean, markdownTheme?: MarkdownTheme, hiddenThinkingLabel?: string, outputPad?: number, markdownTransformers?: readonly MarkdownTransformer[]);
+     invalidate(): void;
+@@ -26,6 +27,7 @@ export declare class AssistantMessageComponent extends Container {
+     setOutputPad(padding: number): void;
+     render(width: number): string[];
+     updateContent(message: AssistantMessage, isStreaming?: boolean): void;
++    private syncThinkingExpansion;
+     private reconcileRenderDescriptors;
+     private createRenderChild;
+     private createMessageSignature;
+diff --git a/dist/modes/interactive/components/assistant-message.js b/dist/modes/interactive/components/assistant-message.js
+index 947324d..618f82f 100644
+--- a/dist/modes/interactive/components/assistant-message.js
++++ b/dist/modes/interactive/components/assistant-message.js
+@@ -18,9 +18,13 @@ export class AssistantMessageComponent extends Container {
+         this.expanded = false;
+         this.isStreaming = false;
+         this.thinkingExpanded = false;
++        this.thinkingOverride = undefined;
+         this.hideThinkingBlock = hideThinkingBlock;
+         this.thinkingAction = registerInternalAction(() => {
+-            this.thinkingExpanded = !this.thinkingExpanded;
++            // 손으로 누른 것은 자동 판정을 이긴다. 사고가 흐르는 중에 접었으면
++            // 끝날 때까지 접힌 채로, 끝난 뒤에 폈으면 펴진 채로 남는다.
++            this.thinkingOverride = !this.thinkingExpanded;
++            this.thinkingExpanded = this.thinkingOverride;
+             this.refreshContent();
+         });
+         this.markdownTheme = markdownTheme;
+@@ -86,6 +90,9 @@ export class AssistantMessageComponent extends Container {
+         const streamingChanged = this.isStreaming !== isStreaming;
+         this.isStreaming = isStreaming;
+         this.lastMessage = message;
++        // 사고의 열림/닫힘을 먼저 정하고 그 결과로 서명을 만든다. 순서가 반대면
++        // "마지막 델타 없이 endedAt 만 찍힌다" 는 접힘 순간이 서명 동일로 걸려 생략된다.
++        this.syncThinkingExpansion(message);
+         const messageSignature = this.createMessageSignature(message);
+         if (!streamingChanged && previousMessage === message && this.lastMessageSignature === messageSignature) {
+             return;
+@@ -154,11 +161,42 @@ export class AssistantMessageComponent extends Container {
+                 return assertNever(descriptor.kind);
+         }
+     }
++    /**
++     * 사고 블록은 자기 수명을 따라 열리고 닫힌다 — 델타가 흐르는 동안은 펼쳐서
++     * 그대로 보여주고, 마지막 조각에 endedAt 이 찍히면 접어서 라벨만 남긴다.
++     *
++     * 판정에 isStreaming 을 쓰지 않는 이유: 그것은 턴 전체가 흐르는지를 말하므로
++     * 사고가 끝나고 본문이 나오는 동안에도 참이다. 사고 파트 자신의 endedAt 이
++     * 우리가 접어야 하는 순간을 정확히 짚는다.
++     */
++    syncThinkingExpansion(message) {
++        let sawThinking = false;
++        let active = false;
++        for (const content of message.content) {
++            if (content.type !== "thinking")
++                continue;
++            sawThinking = true;
++            if (content.startedAt !== undefined && content.endedAt === undefined)
++                active = true;
++        }
++        if (!sawThinking) {
++            // 사고가 없는 메시지는 다음 사고를 위해 판정을 비워 둔다.
++            this.thinkingOverride = undefined;
++            this.thinkingExpanded = false;
++            return;
++        }
++        if (this.thinkingOverride !== undefined) {
++            this.thinkingExpanded = this.thinkingOverride;
++            return;
++        }
++        this.thinkingExpanded = active;
++    }
+     createMessageSignature(message) {
+         return createBoundedRenderSignature({
+             content: message.content,
+             hiddenThinkingLabel: this.hiddenThinkingLabel,
+             hideThinkingBlock: this.hideThinkingBlock,
++            thinkingExpanded: this.thinkingExpanded,
+             errorState: [message.diagnostics, message.errorMessage],
+             stopReason: message.stopReason,
+         });
