@@ -187,15 +187,29 @@ export function latestAssistantUsage(entries) {
  * 턴이 `think 1.0s` 로 찍혀 거짓말이 된다.
  */
 export function currentTurnTiming(entries, processStartedAt) {
-  if (!Array.isArray(entries) || !Number.isFinite(processStartedAt)) return null;
-  const waits = [];
-  const thinks = [];
-  let ttftMs;
+  if (!Array.isArray(entries)) return null;
+  const messages = [];
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const entry = entries[i];
     if (entry?.type !== "message") continue;
     const message = entry.message;
     if (message?.role === "user") break;
+    messages.push(message);
+  }
+  return turnTiming(messages, processStartedAt);
+}
+
+/**
+ * 위와 같은 계산을 이미 턴 단위로 잘린 메시지 배열에 대해 한다. TPS 알림처럼
+ * `agent_end` 가 그 턴의 assistant 메시지를 통째로 넘겨주는 자리에서 쓴다.
+ * 순서는 상관없다 — 평균이고, ttft 폴백만 첫 유효값을 잡는다.
+ */
+export function turnTiming(messages, processStartedAt) {
+  if (!Array.isArray(messages) || !Number.isFinite(processStartedAt)) return null;
+  const waits = [];
+  const thinks = [];
+  let ttftMs;
+  for (const message of messages) {
     const timing = message?.timing;
     if (message?.role !== "assistant" || timing?.processStartedAt !== processStartedAt) continue;
     // 실패/중단 호출은 애초에 timing 이 없어 여기서 걸러진다.

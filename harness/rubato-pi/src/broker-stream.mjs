@@ -11,6 +11,7 @@ const { createAssistantMessageEventStream } = await import(
 import { brokerUrl, catalogId } from "./broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "./broker-request.mjs";
 import { measurementRecorder, normalizeProviderUsage } from "./measurement-recorder.mjs";
+import { PROCESS_STARTED_AT } from "./process-start.mjs";
 
 const EMPTY_USAGE = Object.freeze({
   input: 0,
@@ -247,7 +248,7 @@ export function streamBroker(model, context, options = {}) {
   const wallNow = options.wallNow ?? (() => Date.now());
   const sentAtMs = monotonic();
   const sentAtWallMs = wallNow();
-  const processStartedAt = options.processStartedAt ?? Math.floor(Date.now() - performance.now());
+  const processStartedAt = options.processStartedAt ?? PROCESS_STARTED_AT;
   let firstOutputAtMs;
   // 한 호출은 [대기] → 첫 reasoning delta → [사고] → 첫 text delta → [생성] 이다.
   // 두 경계를 따로 찍어야 상태줄이 '기다린 시간'과 '생각한 시간'을 구분해 보여줄 수 있다.

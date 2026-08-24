@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultAgentDir, launchEnv } from "./brand.mjs";
+import { ensureAgentExtensions } from "./agent-extensions.mjs";
 import { ensureBroker, loadCatalog } from "./broker.mjs";
 import { DEFAULT_MODEL } from "./defaults.mjs";
 import { PIN } from "./policy.mjs";
@@ -106,6 +107,8 @@ export async function spawnRubatoPi({ args = process.argv.slice(2), env = proces
   // 카탈로그는 매번 받는다. 파일이 "이미 맞다"를 폴백 id 로만 보면
   // 브로커가 새로 연 프로바이더가 disabled 에 영영 남는다.
   // 쓰기를 건너뛰는 판단도 방금 받은 목록 기준이다.
+  // 우리가 소유한 전역 확장(현재 tps)을 senpi 가 자기 기본판으로 되돌리기 전에 깐다.
+  ensureAgentExtensions(agentDir);
   const catalog = await loadCatalog({ env });
   if (!sessionDefaultsLookCurrent(agentDir, { catalog })) {
     ensureSessionDefaults(agentDir, { catalog });

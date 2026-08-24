@@ -17,6 +17,7 @@ import {
   createBackgroundTracker,
   WAKE_SOURCE_STATE_EVENT,
 } from "../background-tracker.mjs";
+import { PROCESS_STARTED_AT } from "../process-start.mjs";
 
 /**
  * `mem:<identity> …` 은 회고 백로그를 세는 줄이라 늘 떠 있다. 정보가 아니라 소음이므로
@@ -34,7 +35,7 @@ function remainingColor(remaining) {
   return "error";
 }
 
-export function installStatusline(pi, { processStartedAt = Math.floor(Date.now() - performance.now()) } = {}) {
+export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } = {}) {
   pi.on("session_start", (_event, ctx) => {
     if (typeof ctx.ui?.setFooter !== "function") return;
 
