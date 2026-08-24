@@ -36,7 +36,7 @@ if (!runtime) test("thinking streams inside the expanded block on the real compo
   assert.equal(result.status, 0, output);
   const passed = Number(/(?:^|\s)pass (\d+)/m.exec(output)?.[1] ?? -1);
   const failed = Number(/(?:^|\s)fail (\d+)/m.exec(output)?.[1] ?? -1);
-  assert.ok(passed >= 5, `자식 테스트가 덜 돌았다(pass=${passed}):\n${output}`);
+  assert.ok(passed >= 7, `자식 테스트가 덜 돌았다(pass=${passed}):\n${output}`);
   assert.equal(failed, 0, output);
 });
 
@@ -196,4 +196,47 @@ if (runtime) test("a manual toggle overrides the automatic lifecycle", async () 
   component.updateContent(message, true);
   dispatchInternalAction(actionUrl);
   assert.ok(visible(component.render(WIDTH)).includes("두 번째 조각"), "끝난 뒤 펼친 것이 유지되지 않았다");
+});
+
+// 한 메시지 안에 사고 런이 여럿일 때(도구 호출 사이에 다시 생각) 접힘은 런 단위여야 한다.
+// 불리언 하나로 두면 뒤 런이 흐를 때 이미 끝난 앞 런의 산문까지 같이 펴진다.
+if (runtime) test("each thinking run collapses on its own lifecycle", async () => {
+  await initThemeOnce();
+  const { AssistantMessageComponent } = await import(`${pathToFileURL(assistantPath).href}?stream=${Date.now()}`);
+  const t0 = Date.now();
+  const message = { role: "assistant", content: [
+    { type: "thinking", thinking: "첫 사고", startedAt: t0, endedAt: t0 + 500 },
+    { type: "toolCall", id: "1", name: "read", arguments: {} },
+  ], timestamp: t0, stopReason: "stop" };
+  const component = new AssistantMessageComponent(message, true);
+  assert.ok(!visible(component.render(WIDTH)).includes("첫 사고"), "끝난 첫 런이 접히지 않았다");
+
+  message.content.push({ type: "thinking", thinking: "둘째 사고", startedAt: t0 + 1000 });
+  component.updateContent(message, true);
+  const text = visible(component.render(WIDTH));
+  assert.ok(text.includes("둘째 사고"), "새로 시작한 런이 펼쳐지지 않았다");
+  assert.ok(!text.includes("첫 사고"), "이미 끝난 앞 런이 뒤 런 때문에 되폈다");
+});
+
+// 앞 런에서 누른 선택이 뒤 런을 짓누르면 새 사고가 통째로 안 보인다.
+if (runtime) test("a manual toggle does not leak into the next thinking run", async () => {
+  await initThemeOnce();
+  const { AssistantMessageComponent } = await import(`${pathToFileURL(assistantPath).href}?stream=${Date.now()}`);
+  const { dispatchInternalAction } = await import(pathToFileURL(join(senpiDir, "dist/modes/interactive/internal-actions.js")).href);
+  const t0 = Date.now();
+  const message = { role: "assistant", content: [{ type: "thinking", thinking: "첫 사고", startedAt: t0 }], timestamp: t0, stopReason: "stop" };
+  const component = new AssistantMessageComponent(message, true);
+
+  const actionUrl = component.render(WIDTH)
+    .flatMap((line) => [...line.matchAll(/\x1b\]8;;(senpi-action:\d+)\x1b\\/g)].map((m) => m[1]))
+    .find(Boolean);
+  dispatchInternalAction(actionUrl); // 흐르는 1번 런을 손으로 접는다
+  assert.ok(!visible(component.render(WIDTH)).includes("첫 사고"), "손으로 접히지 않았다");
+
+  // 1번이 끝나고 도구를 거쳐 2번 런이 시작된다.
+  message.content[0].endedAt = t0 + 500;
+  message.content.push({ type: "toolCall", id: "1", name: "read", arguments: {} });
+  message.content.push({ type: "thinking", thinking: "둘째 사고", startedAt: t0 + 1000 });
+  component.updateContent(message, true);
+  assert.ok(visible(component.render(WIDTH)).includes("둘째 사고"), "앞 런의 선택이 뒤 런을 막았다");
 });
