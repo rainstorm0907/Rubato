@@ -51,7 +51,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f0")
@@ -113,7 +113,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f2")
@@ -141,7 +141,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f3")
@@ -168,7 +168,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f4")
@@ -180,7 +180,7 @@ describe("suspendOnSessionShutdown", () => {
     expect(summary).toEqual({ suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed: 1, failures: [] })
   })
 
-  test("#given a completed resident #when its session shuts down #then it suspends persisted_only preserving the completed status", async () => {
+  test("#given a completed resident #when its session reloads #then it suspends persisted_only preserving the completed status", async () => {
     // given
     const store = tempStore()
     seedRecord(store, {
@@ -196,7 +196,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f5")
@@ -227,7 +227,7 @@ describe("suspendOnSessionShutdown", () => {
     })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f6")
@@ -260,7 +260,7 @@ describe("suspendOnSessionShutdown", () => {
     })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f7")
@@ -289,7 +289,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const record = store.load("st_000000f8")
@@ -330,7 +330,7 @@ describe("suspendOnSessionShutdown", () => {
     })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     const resident = store.load("st_000000f9")
@@ -344,6 +344,83 @@ describe("suspendOnSessionShutdown", () => {
     expect(pending?.host_pid).toBe(HOST)
     expect(dequeued).toEqual([])
     expect(readEvents(store, "st_000000fa")).toEqual([])
+    expect(summary).toEqual({ suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed: 1, failures: [] })
+  })
+
+  test("#given resident children #when the parent session quits #then every live child is disposed instead of suspended", async () => {
+    const store = tempStore()
+    seedRecord(store, {
+      task_id: "st_00000100",
+      status: "completed",
+      residency_state: "resident",
+      execution_mode: "in-process",
+      host_pid: HOST,
+    })
+    const order: CallLog = []
+    const registry = new OrderRegistry(order)
+    registry.add(fakeHandle("st_00000100", "in-process", order))
+    const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
+
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+
+    expect(store.load("st_00000100")?.residency_state).toBe("disposed")
+    expect(readEvents(store, "st_00000100").at(-1)).toBe("destroyed")
+    expect(readEvents(store, "st_00000100")).not.toContain("suspended")
+    expect(summary).toEqual({ suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed: 1, failures: [] })
+  })
+
+  test("#given foreign resident children #when this parent session quits #then other sessions and hosts are untouched", async () => {
+    const store = tempStore()
+    seedRecord(store, {
+      task_id: "st_00000102",
+      parent_session_id: "session-b",
+      status: "completed",
+      residency_state: "resident",
+      host_pid: HOST,
+    })
+    seedRecord(store, {
+      task_id: "st_00000103",
+      status: "completed",
+      residency_state: "resident",
+      host_pid: FOREIGN_PID,
+    })
+    const registry = new FakeRegistry()
+    registry.add(fakeHandle("st_00000102", "in-process", []))
+    registry.add(fakeHandle("st_00000103", "in-process", []))
+    const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
+
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+
+    expect(store.load("st_00000102")?.residency_state).toBe("resident")
+    expect(store.load("st_00000103")?.residency_state).toBe("resident")
+    expect(registry.entries()).toHaveLength(2)
+    expect(summary).toEqual({ suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed: 0, failures: [] })
+  })
+
+  test("#given a queued child #when the parent session quits #then it is dequeued, cancelled, and disposed", async () => {
+    const store = tempStore()
+    seedRecord(store, {
+      task_id: "st_00000101",
+      status: "pending",
+      residency_state: "resident",
+      execution_mode: "in-process",
+      host_pid: HOST,
+    })
+    const dequeued: string[] = []
+    const lifecycle = createTaskLifecycle({
+      store,
+      registry: new FakeRegistry(),
+      config: settings(),
+      dequeuePending: (taskId) => dequeued.push(taskId),
+    })
+
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+
+    expect(dequeued).toEqual(["st_00000101"])
+    expect(store.load("st_00000101")?.status).toBe("cancelled")
+    expect(store.load("st_00000101")?.residency_state).toBe("disposed")
+    expect(readEvents(store, "st_00000101").at(-1)).toBe("destroyed")
+    expect(readEvents(store, "st_00000101")).not.toContain("suspended")
     expect(summary).toEqual({ suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed: 1, failures: [] })
   })
 
@@ -371,7 +448,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     expect(store.load("st_000000fb")?.residency_state).toBe("resident")
@@ -401,7 +478,7 @@ describe("suspendOnSessionShutdown", () => {
     const lifecycle = createTaskLifecycle({ store, registry, config: settings() })
 
     // when
-    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "quit" })
+    const summary = await lifecycle.suspendOnSessionShutdown({ parentSessionId: "parent-1", reason: "reload" })
 
     // then
     expect(handle.disposed()).toBe(true)

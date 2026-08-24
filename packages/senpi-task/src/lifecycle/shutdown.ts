@@ -19,6 +19,7 @@ export async function suspendOnSessionShutdown(
   context: LifecycleContext,
   input: SuspendInput,
 ): Promise<SuspendSummary> {
+  if (input.reason === "quit") return disposeOwnedOnQuit(context, input.parentSessionId)
   if (context.config.resume_children === false) return disposeAllOnShutdown(context)
 
   const failures: SuspendFailure[] = []
@@ -79,6 +80,35 @@ export async function suspendOnSessionShutdown(
     ...summary,
   })
   return summary
+}
+
+async function disposeOwnedOnQuit(context: LifecycleContext, parentSessionId: string): Promise<SuspendSummary> {
+  const failures: SuspendFailure[] = []
+  let disposed = 0
+  for (const handle of [...context.registry.entries()]) {
+    const record = context.store.load(handle.task_id)
+    if (!isOwnedChild(record, context, parentSessionId)) continue
+    try {
+      await destroyResidentTask(context, handle.task_id, "cancel")
+      disposed += 1
+    } catch (error) {
+      failures.push({ task_id: handle.task_id, error: String(error) })
+    }
+  }
+  for (const record of context.store.list().records) {
+    if (record.status !== "pending" || context.registry.get(record.task_id) !== undefined) continue
+    if (!isOwnedChild(record, context, parentSessionId)) continue
+    try {
+      context.dequeuePending(record.task_id)
+      context.store.transition(record.task_id, { type: "cancel", timestamp: nowIso(context) })
+      context.store.transition(record.task_id, { type: "dispose", timestamp: nowIso(context) })
+      context.store.appendEvent(record.task_id, { type: "destroyed", payload: { cause: "cancel" } })
+      disposed += 1
+    } catch (error) {
+      failures.push({ task_id: record.task_id, error: String(error) })
+    }
+  }
+  return { suspended_in_process: 0, suspended_rpc: 0, suspended_pending: 0, disposed, failures }
 }
 
 // Suspend one resident handle: the registry forgets it FIRST (stale outcome tracking loses
