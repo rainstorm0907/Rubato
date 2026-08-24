@@ -49,7 +49,7 @@ Pinned 2026-08. Names are replaceable mappings, not universal claims. Copy exact
 
 - **Fable 5** — problem framer. Optional framing and human-outcome review before execution or at a rare alignment gate; do not create a standing Fable teammate by default.
 - **Opus 5** — structurer. Strong default lead and default owner; may own a highly coupled architectural outcome.
-- **GPT-5.6 Sol** — hypothesis converger. The supervisor seat: adversarial review, independent verification, second opinion on a diagnosis the owner is stuck on. Give Sol ownership only when the proof itself is the deliverable. Operator note (2026-08): Sol quota is the scarcer wallet — a Sol child handed a debugging brief will dig through the code itself, and that legwork is the waste; Opus is the default owner.
+- **GPT-5.6 Sol** — hypothesis converger. The supervisor seat: adversarial review, independent verification, second opinion on a diagnosis the owner is stuck on. Give Sol ownership only when the proof itself is the deliverable. Operator note (2026-08): Sol quota is the scarcer wallet; Opus is the default owner.
 - **Grok 4.6** — action converger. Owner when the contract is settled and breadth of execution is the hard part. A regular child like any other (`task` with a model, or `team_create` with category `grok`), not a separate CLI lane.
 
 Verifier defaults when an independent check is worth the cost:
