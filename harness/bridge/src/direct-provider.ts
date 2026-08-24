@@ -278,12 +278,12 @@ class SenpiCredentialStore {
 const SERVICE_TIERS = new Set(["priority"]);
 
 export function fxBodyToPiStreamOptions(body: JsonObject): {
-  thinking?: string;
+  reasoning?: string;
   maxTokens?: number;
   serviceTier?: string;
 } {
   return {
-    ...(typeof body.reasoning === "string" ? { thinking: body.reasoning } : {}),
+    ...(typeof body.reasoning === "string" ? { reasoning: body.reasoning } : {}),
     ...(typeof body.maxOutputTokens === "number" ? { maxTokens: body.maxOutputTokens } : {}),
     ...(typeof body.service_tier === "string" && SERVICE_TIERS.has(body.service_tier) ? { serviceTier: body.service_tier } : {}),
   };
@@ -297,6 +297,8 @@ export async function* directProviderToFxSse(args: {
   xaiAuthPath?: string;
   cacheRetention?: CacheRetention;
   env?: NodeJS.ProcessEnv;
+  upstreamFetch?: typeof globalThis.fetch;
+  transport?: "auto" | "sse" | "websocket";
 }): AsyncGenerator<string> {
   if (args.model.startsWith("google-antigravity/")) {
     yield* antigravityToFxSse(args);
@@ -320,13 +322,14 @@ export async function* directProviderToFxSse(args: {
   const context = fxPromptToPiContext(args.body.prompt, args.body.tools, selected.provider, selected.modelId);
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;
   const stream = models.streamSimple(model, context, {
-    fetch: upstreamFetch,
+    fetch: args.upstreamFetch ?? upstreamFetch,
     signal: args.signal,
     sessionId: args.sessionId,
     affinitySessionId: args.sessionId,
     streamKind: "main",
     ...(headers ? { headers } : {}),
     maxRetries: 0,
+    ...(args.transport ? { transport: args.transport } : {}),
     ...(args.cacheRetention ? { cacheRetention: args.cacheRetention } : {}),
     ...fxBodyToPiStreamOptions(args.body),
   });

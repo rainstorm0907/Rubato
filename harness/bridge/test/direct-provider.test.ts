@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { zstdDecompressSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claudeCodeUserAgentFromTarget, claudeToolToFx, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, readClaudeSetupToken } from "../src/direct-provider.ts";
+import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, readClaudeSetupToken } from "../src/direct-provider.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("fx history and tools become pi-ai context without executing tools", () => {
@@ -42,9 +43,9 @@ test("xAI and Anthropic use the direct provider route", () => {
   assert.equal(isDirectModel("openai/gpt-5.6-sol"), false);
 });
 
-test("openai-codex fx bodies carry only priority service_tier into pi-ai stream options", () => {
+test("direct provider fx bodies carry reasoning and only priority service_tier into pi-ai options", () => {
   assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "priority", reasoning: "high" }), {
-    thinking: "high",
+    reasoning: "high",
     serviceTier: "priority",
   });
   assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "auto", maxOutputTokens: 1024 }), {
@@ -52,6 +53,40 @@ test("openai-codex fx bodies carry only priority service_tier into pi-ai stream 
   });
   assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "default" }), {});
   assert.deepEqual(fxBodyToPiStreamOptions({}), {});
+});
+
+test("Codex direct sends the configured reasoning effort on the upstream wire", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fx-codex-auth-"));
+  const authPath = join(directory, "auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  writeFileSync(authPath, JSON.stringify({
+    "openai-codex": { type: "oauth", access: `header.${payload}.signature`, refresh: "refresh", expires: Date.now() + 3_600_000 },
+  }));
+  let wireBody;
+  const upstreamFetch = async (_url, init) => {
+    const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
+    const encoded = new Headers(init?.headers).get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    wireBody = JSON.parse(encoded.toString("utf8"));
+    const sse = [
+      'data: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}',
+      'data: {"type":"response.completed","response":{"id":"r1","status":"completed","usage":{"input_tokens":1,"output_tokens":1,"output_tokens_details":{"reasoning_tokens":1}},"output":[]}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n");
+    return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  const frames = [];
+  for await (const frame of directProviderToFxSse({
+    model: "openai-codex/gpt-5.6-terra",
+    body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }], reasoning: "high" },
+    xaiAuthPath: authPath,
+    upstreamFetch,
+    transport: "sse",
+  })) {
+    frames.push(frame);
+  }
+  assert.ok(wireBody, `upstream fetch was not called: ${frames.join("")}`);
+  assert.deepEqual(wireBody.reasoning, { effort: "high", summary: "auto" });
 });
 
 test("Claude direct presents fx tools with Claude Code-compatible names", () => {
