@@ -4,7 +4,7 @@ import { CACHE_RETENTION } from "./defaults.mjs";
 
 export const BRAND_NAME = "\u{1D493}\u{1D496}\u{1D483}\u{1D482}\u{1D495}\u{1D490}";
 export const BRAND_ASCII = "rubato";
-export const DISPLAY_VERSION = "0.0.3";
+export const DISPLAY_VERSION = "0.0.4";
 export const CONFIG_DIR_NAME = ".rubato-pi";
 export const ENV_PREFIX = "RUBATO_PI";
 
