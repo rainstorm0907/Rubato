@@ -120,3 +120,11 @@ test("pi-ai cache usage becomes fx measured token usage", () => {
     outputTokens: { total: 1, reasoning: 48 },
   });
 });
+
+test("pi-ai missing usage stays unavailable while reported zero remains measured", () => {
+  assert.equal(piUsageToFx(undefined), undefined);
+  assert.deepEqual(piUsageToFx({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }), {
+    inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 0 },
+  });
+});

@@ -7,7 +7,7 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import type { CacheRetention } from "./config.ts";
-import { emptyFxUsage, gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
+import { gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
 import { encodeSseData, encodeSseDone } from "./sse.ts";
 import { upstreamFetch } from "./upstream-dispatcher.ts";
 
@@ -343,17 +343,24 @@ export async function* directProviderToFxSse(args: {
       yield encodeSseData({ type: "tool-input-end", id: event.toolCall.id });
       yield encodeSseData({ type: "tool-call", toolCallId: event.toolCall.id, toolName: selected.provider === "anthropic" ? claudeToolToFx(event.toolCall.name) : event.toolCall.name, input: event.toolCall.arguments, providerMetadata });
     } else if (event.type === "done") {
+      const usage = piUsageToFx(event.message.usage);
       yield encodeSseData({
         type: "finish",
         finishReason: { unified: event.reason === "toolUse" ? "tool-calls" : event.reason === "length" ? "length" : "stop", raw: event.reason },
-        usage: piUsageToFx(event.message.usage) ?? emptyFxUsage(),
+        ...(usage ? { usage } : {}),
         providerMetadata: gatewayProviderMetadata({ generationId, modelId: args.model, usage: event.message.usage }),
       });
       yield encodeSseDone();
       return;
     } else if (event.type === "error") {
       yield encodeSseData({ type: "error", message: event.error.errorMessage ?? event.reason, code: `${selected.provider}_direct` });
-      yield encodeSseData({ type: "finish", finishReason: { unified: "error", raw: event.reason }, usage: piUsageToFx(event.error.usage) ?? emptyFxUsage(), providerMetadata: gatewayProviderMetadata({ generationId, modelId: args.model, usage: event.error.usage }) });
+      const usage = piUsageToFx(event.error.usage);
+      yield encodeSseData({
+        type: "finish",
+        finishReason: { unified: "error", raw: event.reason },
+        ...(usage ? { usage } : {}),
+        providerMetadata: gatewayProviderMetadata({ generationId, modelId: args.model, usage: event.error.usage }),
+      });
       yield encodeSseDone();
       return;
     }

@@ -38,6 +38,25 @@ test("OpenCodex cache usage is visible to fx", async () => {
   });
 });
 
+test("OpenCodex missing usage stays unavailable instead of becoming zero", async () => {
+  const source = sseToStream(`event: response.completed\ndata: {"type":"response.completed","response":{"model":"xai/grok-4.6"}}\n\ndata: [DONE]\n\n`);
+  const frames: string[] = [];
+  for await (const frame of responsesSseToFxSse(source)) frames.push(frame);
+  const finish = collectFxEvents(frames).find((event) => event.type === "finish");
+  assert.equal(Object.hasOwn(finish, "usage"), false);
+});
+
+test("OpenCodex provider-reported zero usage remains measured zero", async () => {
+  const source = sseToStream(`event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":0,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":0},"output_tokens":0}}}\n\ndata: [DONE]\n\n`);
+  const frames: string[] = [];
+  for await (const frame of responsesSseToFxSse(source)) frames.push(frame);
+  const finish = collectFxEvents(frames).find((event) => event.type === "finish");
+  assert.deepEqual(finish.usage, {
+    inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 0 },
+  });
+});
+
 test("OpenCodex reasoning SSE stays out of text", async () => {
   const events = await convert("opencodex-reasoning.sse");
   assert.equal(events.find((event) => event.type === "reasoning-delta")?.delta, "think");

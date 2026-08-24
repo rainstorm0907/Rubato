@@ -72,6 +72,49 @@ test("델타를 보낸 뒤 끊기면 재시도를 막는다", async () => {
   );
 });
 
+test("model.end is recorded before the terminal stream event", async () => {
+  const order = [];
+  const measurementRecorder = {
+    activeTaskId: () => "session:1",
+    startCall: () => ({ callId: "model-1" }),
+    firstOutput: () => {},
+    observeToolReinsertion: () => {},
+    endCall: (_callId, fields) => order.push({ type: "model.end", fields }),
+  };
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(block({ type: "finish", finishReason: { unified: "stop" }, usage: { inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1 } } })));
+        controller.close();
+      },
+    }),
+  });
+  for await (const event of streamBroker(model, context, { fetch, sessionId: "session", measurementRecorder })) {
+    if (event.type === "done") order.push({ type: "stream.done" });
+  }
+  assert.deepEqual(order.map((event) => event.type), ["model.end", "stream.done"]);
+  assert.equal(order[0].fields.usage.outputTokens, 1);
+});
+
+test("measurement recorder failures never change model stream lifecycle", async () => {
+  const measurementRecorder = {
+    activeTaskId: () => "session:1",
+    startCall: () => { throw new Error("measurement disk failed"); },
+  };
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(block({ type: "finish", finishReason: { unified: "stop" } })));
+        controller.close();
+      },
+    }),
+  });
+  const events = await drain(streamBroker(model, context, { fetch, sessionId: "session", measurementRecorder }));
+  assert.equal(events.at(-1).type, "done");
+});
+
 test("도구 호출이 있어도 전송이 끊기면 성공으로 넘기지 않는다", async () => {
   const stream = streamBroker(model, context, {
     fetch: brokenFetch([

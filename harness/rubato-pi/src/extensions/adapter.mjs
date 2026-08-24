@@ -11,6 +11,7 @@ import { contractSkillsMessage, shouldInjectContractSkills } from "../contract-s
 import { installStatusline } from "./statusline.mjs";
 import { installSessionTitle } from "./session-title.mjs";
 import { installEvalSearchGuard } from "../eval-search-guard.mjs";
+import { installMeasurementHooks } from "../measurement-recorder.mjs";
 
 const omoExt = omoExtension;
 const { composeOmoSenpiExtension, omoSenpiComponents } = await import(omoExt);
@@ -34,6 +35,7 @@ const taskComponent = rubatoPiTaskComponent;
 export default async function rubatoPiAdapter(pi) {
   installStatusline(pi);
   installEvalSearchGuard(pi);
+  installMeasurementHooks(pi);
   const member = isTeamMemberProcess();
   const role = resolveRole();
   if (!member) installSessionTitle(pi);

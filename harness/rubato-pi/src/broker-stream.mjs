@@ -9,6 +9,7 @@ const { createAssistantMessageEventStream } = await import(
 );
 import { brokerUrl, catalogId } from "./broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "./broker-request.mjs";
+import { measurementRecorder, normalizeProviderUsage } from "./measurement-recorder.mjs";
 
 const EMPTY_USAGE = Object.freeze({
   input: 0,
@@ -198,7 +199,10 @@ export function applyFxEvent(output, event) {
   }
   if (event.type === "finish") {
     output.stopReason = stopReason(event.finishReason);
-    if (event.usage) output.usage = fxUsageToPi(event.usage);
+    if (event.usage) {
+      output.usage = fxUsageToPi(event.usage);
+      output.providerUsage = event.usage;
+    }
     if (output.stopReason === "error" || output.stopReason === "stop") settleBrokerOutput(output);
     return { events: [{ type: "done", reason: output.stopReason, message: output }] };
   }
@@ -229,11 +233,14 @@ function emptyAssistant() {
 export function streamBroker(model, context, options = {}) {
   const stream = createAssistantMessageEventStream();
   const output = emptyAssistant();
+  const recorder = options.measurementRecorder ?? measurementRecorder(options.env ?? process.env);
   output.model = catalogId(model);
   output.provider = model.provider;
   ;(async () => {
     stream.push({ type: "start", partial: output });
     let settled = false;
+    let measurementCallId;
+    let measurementEnded = false;
     // 이미 화면에 나간 것이 있으면 같은 턴을 다시 보낼 수 없다 — 업스트림은 이미
     // 토큰을 태웠고, 재시도하면 같은 텍스트가 두 번 나온다.
     let emittedDelta = false;
@@ -241,7 +248,15 @@ export function streamBroker(model, context, options = {}) {
       if ((event.type === "done" || event.type === "error") && settled) return;
       if (event.type === "done" || event.type === "error") settled = true;
       else emittedDelta = true;
+      if (measurementCallId && event.type !== "start" && event.type !== "done" && event.type !== "error") {
+        try { recorder?.firstOutput(measurementCallId, { outputType: event.type }); } catch {}
+      }
       stream.push(event);
+    };
+    const endMeasurement = (fields) => {
+      if (!measurementCallId || measurementEnded) return;
+      measurementEnded = true;
+      try { recorder?.endCall(measurementCallId, fields); } catch {}
     };
     try {
       const url = `${brokerUrl(options.env ?? process.env)}/v3/ai/language-model`;
@@ -251,6 +266,32 @@ export function streamBroker(model, context, options = {}) {
       if (typeof options.onPayload === "function") {
         const next = await options.onPayload(body, model);
         if (next !== undefined) body = next;
+      }
+      const taskId = options.taskId ?? recorder?.activeTaskId(options.sessionId);
+      const reinjectedToolResults = body.prompt?.filter?.((message) => message?.role === "tool") ?? [];
+      let measurement;
+      try {
+        measurement = recorder?.startCall({
+          taskId,
+          sessionId: options.sessionId,
+          provider: model.provider,
+          model: catalogId(model),
+          body,
+        });
+      } catch {}
+      measurementCallId = measurement?.callId;
+      for (const message of reinjectedToolResults) {
+        for (const part of message.content ?? []) {
+          try {
+            recorder?.observeToolReinsertion({
+              taskId,
+              sessionId: options.sessionId,
+              callId: measurementCallId,
+              toolCallId: part?.toolCallId,
+              toolName: part?.toolName,
+            });
+          } catch {}
+        }
       }
       const res = await (options.fetch ?? fetch)(url, {
         method: "POST",
@@ -280,11 +321,16 @@ export function streamBroker(model, context, options = {}) {
           buf = buf.slice(sep + 2);
           const event = parseSseBlock(block);
           if (!event || event.type === "done") continue;
-          for (const next of applyFxEvent(output, event).events) emit(next);
+          const applied = applyFxEvent(output, event).events;
+          if (applied.some((next) => next.type === "done" || next.type === "error")) {
+            endMeasurement({ status: output.stopReason, usage: normalizeProviderUsage(output.providerUsage) });
+          }
+          for (const next of applied) emit(next);
         }
       }
       if (!settled) {
         if (!settleBrokerOutput(output) && output.stopReason === "pending") output.stopReason = "stop";
+        endMeasurement({ status: output.stopReason, usage: normalizeProviderUsage(output.providerUsage) });
         emit({ type: "done", reason: output.stopReason, message: output });
       }
     } catch (error) {
@@ -293,6 +339,7 @@ export function streamBroker(model, context, options = {}) {
       // 엔진이 성공한 턴으로 읽어 재시도도 폴백도 걸지 않고, 잘린 인자로 도구가
       // 그대로 실행된다.
       if (options.signal?.aborted && settleBrokerOutput(output)) {
+        endMeasurement({ status: output.stopReason, usage: normalizeProviderUsage(output.providerUsage) });
         emit({ type: "done", reason: output.stopReason, message: output });
         return;
       }
@@ -301,6 +348,7 @@ export function streamBroker(model, context, options = {}) {
       // 엔진은 이 접두사를 재시도 금지 신호로 읽는다(agent-session 의
       // TURN_RETRY_SUPPRESSION_PREFIX). 델타 전 실패만 안전하게 다시 보낸다.
       output.errorMessage = emittedDelta ? `senpi:no-turn-retry:${reason}` : reason;
+      endMeasurement({ status: output.stopReason, error: reason, usage: normalizeProviderUsage(output.providerUsage) });
       emit({ type: "error", reason: output.stopReason, error: output });
     } finally {
       stream.end();

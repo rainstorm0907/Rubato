@@ -1,4 +1,4 @@
-import { emptyFxUsage, gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
+import { gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
 import { encodeSseData, encodeSseDone, iterateSse } from "./sse.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -56,10 +56,11 @@ function usageFromResponses(response: JsonObject | undefined): JsonObject | unde
 }
 
 function finishEvent(unified: string, raw: string, response: JsonObject | undefined, generation: { id: string; modelId: string }): JsonObject {
+  const usage = usageFromResponses(response);
   const event: JsonObject = {
     type: "finish",
     finishReason: { unified, raw },
-    usage: usageFromResponses(response) ?? emptyFxUsage(),
+    ...(usage ? { usage } : {}),
     providerMetadata: gatewayProviderMetadata({
       generationId: generation.id,
       modelId: generation.modelId,
