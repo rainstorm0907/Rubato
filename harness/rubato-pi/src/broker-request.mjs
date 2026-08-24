@@ -66,11 +66,16 @@ function toolContent(message) {
   ];
 }
 
+const SERVICE_TIERS = new Set(["priority"]);
+
 export function streamOptionsToFxRequest(options = {}) {
   const extra = {};
   if (typeof options.reasoning === "string" && options.reasoning) extra.reasoning = options.reasoning;
   if (typeof options.maxTokens === "number" && Number.isFinite(options.maxTokens)) {
     extra.maxOutputTokens = options.maxTokens;
+  }
+  if (typeof options.serviceTier === "string" && SERVICE_TIERS.has(options.serviceTier)) {
+    extra.service_tier = options.serviceTier;
   }
   return extra;
 }

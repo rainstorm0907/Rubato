@@ -272,6 +272,20 @@ class SenpiCredentialStore {
   }
 }
 
+const SERVICE_TIERS = new Set(["priority"]);
+
+export function fxBodyToPiStreamOptions(body: JsonObject): {
+  thinking?: string;
+  maxTokens?: number;
+  serviceTier?: string;
+} {
+  return {
+    ...(typeof body.reasoning === "string" ? { thinking: body.reasoning } : {}),
+    ...(typeof body.maxOutputTokens === "number" ? { maxTokens: body.maxOutputTokens } : {}),
+    ...(typeof body.service_tier === "string" && SERVICE_TIERS.has(body.service_tier) ? { serviceTier: body.service_tier } : {}),
+  };
+}
+
 export async function* directProviderToFxSse(args: {
   model: string;
   body: JsonObject;
@@ -303,11 +317,10 @@ export async function* directProviderToFxSse(args: {
     sessionId: args.sessionId,
     affinitySessionId: args.sessionId,
     streamKind: "main",
-    thinking: typeof args.body.reasoning === "string" ? args.body.reasoning : undefined,
     ...(headers ? { headers } : {}),
     maxRetries: 0,
     ...(args.cacheRetention ? { cacheRetention: args.cacheRetention } : {}),
-    maxTokens: typeof args.body.maxOutputTokens === "number" ? args.body.maxOutputTokens : undefined,
+    ...fxBodyToPiStreamOptions(args.body),
   });
 
   const generationId = newGatewayGenerationId();

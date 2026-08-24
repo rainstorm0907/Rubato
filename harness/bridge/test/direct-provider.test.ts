@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claudeCodeUserAgentFromTarget, claudeToolToFx, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, readClaudeSetupToken } from "../src/direct-provider.ts";
+import { claudeCodeUserAgentFromTarget, claudeToolToFx, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, readClaudeSetupToken } from "../src/direct-provider.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("fx history and tools become pi-ai context without executing tools", () => {
@@ -39,6 +39,18 @@ test("xAI and Anthropic use the direct provider route", () => {
   assert.equal(isDirectModel("anthropic/claude-opus-5"), true);
   assert.equal(isDirectModel("cursor/grok-4.6"), false);
   assert.equal(isDirectModel("openai/gpt-5.6-sol"), false);
+});
+
+test("openai-codex fx bodies carry only priority service_tier into pi-ai stream options", () => {
+  assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "priority", reasoning: "high" }), {
+    thinking: "high",
+    serviceTier: "priority",
+  });
+  assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "auto", maxOutputTokens: 1024 }), {
+    maxTokens: 1024,
+  });
+  assert.deepEqual(fxBodyToPiStreamOptions({ service_tier: "default" }), {});
+  assert.deepEqual(fxBodyToPiStreamOptions({}), {});
 });
 
 test("Claude direct presents fx tools with Claude Code-compatible names", () => {

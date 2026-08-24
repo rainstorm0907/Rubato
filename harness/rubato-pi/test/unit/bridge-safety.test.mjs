@@ -107,16 +107,16 @@ test("one slow health answer is not a death sentence", () => {
   }
 });
 
-test("restart prepares the replacement before killing the live bridge", () => {
+test("restart prepares the replacement before draining the live bridge", () => {
   // node_modules 가 없으면 npm install 이 도는 수십 초 동안 아무 세션도 모델을
   // 못 부른다 — 옛 브리지는 이미 죽어 있기 때문이다. 준비가 먼저다.
   const source = read("rubato-restart.sh");
   const install = source.indexOf("npm install");
-  const kill = source.search(/^\s*kill \$pids/m);
-  assert.ok(install > 0 && kill > 0);
-  assert.ok(install < kill, "옛 브리지를 죽인 뒤에 의존성을 깐다");
+  const drain = source.lastIndexOf("request_drain");
+  assert.ok(install > 0 && drain > 0);
+  assert.ok(install < drain, "옛 브리지를 drain 한 뒤에 의존성을 깐다");
   const nodeCheck = source.indexOf("command -v node");
-  assert.ok(nodeCheck > 0 && nodeCheck < kill, "새 브리지를 띄울 node 확인이 kill 뒤에 있다");
+  assert.ok(nodeCheck > 0 && nodeCheck < drain, "새 브리지를 띄울 node 확인이 drain 뒤에 있다");
 });
 
 test("restart leaves a line saying who asked for it", () => {
@@ -129,10 +129,9 @@ test("restart waits long enough for the replacement to answer", () => {
   // 6초는 느린 머신에서 그대로 exit 1 이 되었고, 그 실패가 ensureBroker 의
   // throw 로 이어져 세션 시작 자체를 막았다.
   const source = read("rubato-restart.sh");
-  const tail = source.slice(source.indexOf("starting bridge"));
-  const attempts = Number(tail.match(/\[ "\$n" -lt (\d+) \]/)?.[1] ?? 0);
-  const interval = Number(tail.match(/sleep ([\d.]+)/)?.[1] ?? 0);
-  assert.ok(attempts * interval >= 20, `replacement wait is only ${attempts * interval}s`);
+  const attempts = Number(source.match(/HEALTH_WAIT_ITERS="\$\{RUBATO_RESTART_HEALTH_ITERS:-(\d+)\}"/)?.[1] ?? 0);
+  const interval = Number(source.match(/SLEEP_S="\$\{RUBATO_RESTART_SLEEP:-([\d.]+)\}"/)?.[1] ?? 0);
+  assert.ok(attempts * interval >= 15, `replacement wait is only ${attempts * interval}s`);
 });
 
 test("restart refuses to kill anything when it cannot start a replacement", (t) => {
@@ -157,10 +156,12 @@ test("restart refuses to kill anything when it cannot start a replacement", (t) 
   assert.doesNotMatch(run.stderr, /stopping bridge/);
 });
 
-test("the bridge answers a signal by draining, not by dying", () => {
+test("the bridge ignores ordinary signals and drains only through admin auth", () => {
   const source = readFileSync(fileURLToPath(new URL("../../../bridge/src/server.ts", import.meta.url)), "utf8");
-  assert.match(source, /SIGTERM/);
-  assert.match(source, /SIGINT/);
+  assert.match(source, /signals = \["SIGTERM", "SIGINT"\]/);
+  assert.match(source, /ignoring \$\{signal\}/);
+  assert.match(source, /\/admin\/drain/);
+  assert.match(source, /x-rubato-admin/);
   assert.match(source, /inflight/);
   assert.match(source, /closeIdleConnections/);
 });

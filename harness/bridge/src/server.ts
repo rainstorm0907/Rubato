@@ -1,4 +1,7 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { dirname } from "node:path";
 import { loadConfig } from "./config.ts";
 import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
@@ -13,6 +16,13 @@ const STARTED_AT = Date.now();
 // 재기동이 그만큼 멈춰 있으면 그것대로 세션이 못 뜬다. 리스닝 소켓은 즉시
 // 놓기 때문에 새 브리지는 이 대기와 무관하게 곧바로 포트를 잡는다.
 const DEFAULT_DRAIN_MS = 30_000;
+const ADMIN_TOKEN_BYTES = 32;
+const DEFAULT_ADMIN_TOKEN_HEADER = "x-rubato-admin";
+
+export type AdminSecret = {
+  path: string;
+  token: string;
+};
 
 type BridgeState = {
   /** 진행 중인 업스트림 모델 호출 수. /healthz 가 이 수를 내보낸다. */
@@ -20,7 +30,51 @@ type BridgeState = {
   /** 종료 중인가. 종료 중에는 새 요청을 받지 않는다. */
   draining: boolean;
   drain?: Promise<void>;
+  admin?: AdminSecret;
 };
+
+/**
+ * 런타임 관리 비밀 파일 자리. 재기동 스크립트와 같은 규칙을 써야 한다.
+ * 포트마다 갈라 두는 이유는 한 머신에서 클론을 여럿 돌릴 때 비밀이 섞이지
+ * 않게 하기 위해서다. 경로를 덮으려면 FX_BRIDGE_ADMIN_SECRET 을 준다.
+ */
+export function adminSecretPath(env: NodeJS.ProcessEnv = process.env, port = 8788): string {
+  if (env.FX_BRIDGE_ADMIN_SECRET) return env.FX_BRIDGE_ADMIN_SECRET;
+  const platform = env.FX_BRIDGE_PLATFORM || process.platform;
+  const home = env.HOME;
+  if (home && platform === "darwin") {
+    return `${home}/Library/Application Support/rubato/bridge-${port}.admin`;
+  }
+  if (home) {
+    return `${env.XDG_RUNTIME_DIR ?? env.XDG_STATE_HOME ?? `${home}/.local/state`}/rubato/bridge-${port}.admin`;
+  }
+  return `${env.TMPDIR ?? "/tmp"}/rubato-bridge-${port}.admin`;
+}
+
+export function writeAdminSecretFile(path: string, token = randomBytes(ADMIN_TOKEN_BYTES).toString("hex")): AdminSecret {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${token}\n`, { encoding: "utf8", mode: 0o600, flag: "w" });
+  // umask 가 mode 를 가릴 수 있다. 쓴 뒤에 다시 조인다.
+  chmodSync(path, 0o600);
+  return { path, token };
+}
+
+export function tokensEqual(expected: string, provided: string | undefined): boolean {
+  if (!expected || !provided) return false;
+  const left = Buffer.from(expected);
+  const right = Buffer.from(provided);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+function adminTokenFromRequest(req: IncomingMessage): string | undefined {
+  const presented = header(req, DEFAULT_ADMIN_TOKEN_HEADER);
+  if (presented) return presented;
+  const authorization = header(req, "authorization");
+  if (!authorization) return undefined;
+  const match = /^Bearer\s+(\S+)/i.exec(authorization);
+  return match?.[1];
+}
 
 const STATE = new WeakMap<Server, BridgeState>();
 
@@ -52,7 +106,13 @@ function drainTimeoutMs(env: NodeJS.ProcessEnv): number {
  */
 export function drainAndClose(
   server: Server,
-  { timeoutMs = DEFAULT_DRAIN_MS, log = (message: string) => process.stderr.write(message), pollMs = 100 } = {},
+  {
+    timeoutMs = DEFAULT_DRAIN_MS,
+    log = (message: string) => {
+      process.stderr.write(message);
+    },
+    pollMs = 100,
+  }: { timeoutMs?: number; log?: (message: string) => void; pollMs?: number } = {},
 ): Promise<void> {
   const state = bridgeState(server);
   if (state.drain) return state.drain;
@@ -90,16 +150,28 @@ export function drainAndClose(
 }
 
 /**
- * SIGTERM/SIGINT 를 drain 으로 연결한다. `once` 라서 두 번째 시그널은 Node
- * 기본 동작으로 되돌아간다 — 기다리기 싫으면 한 번 더 보내면 된다.
+ * SIGTERM/SIGINT 를 무시한다. 공유 브리지는 세션·자식의 종료 신호로
+ * 내려가면 안 된다. 정상 종료는 인증된 POST /admin/drain 뿐이다.
+ * SIGKILL 은 잡을 수 없으니 supervisor 가 크래시 되살림을 맡는다.
  */
-export function installSignalHandlers(server: Server, { timeoutMs = DEFAULT_DRAIN_MS, exit = (code: number) => process.exit(code) } = {}): void {
-  for (const signal of ["SIGTERM", "SIGINT"] as const) {
-    process.once(signal, () => {
-      process.stderr.write(`fx-v3-bridge received ${signal}\n`);
-      void drainAndClose(server, { timeoutMs }).then(() => exit(0));
-    });
+export function installSignalHandlers(
+  _server?: Server,
+  {
+    log = (message: string) => process.stderr.write(message),
+    signals = ["SIGTERM", "SIGINT"] as const,
+  }: { log?: (message: string) => void; signals?: readonly NodeJS.Signals[] } = {},
+): () => void {
+  const attached: Array<{ signal: NodeJS.Signals; handler: () => void }> = [];
+  for (const signal of signals) {
+    const handler = () => {
+      log(`fx-v3-bridge ignoring ${signal}; drain only via authenticated POST /admin/drain\n`);
+    };
+    process.on(signal, handler);
+    attached.push({ signal, handler });
   }
+  return () => {
+    for (const { signal, handler } of attached) process.off(signal, handler);
+  };
 }
 
 function header(req: IncomingMessage, name: string): string | undefined {
@@ -273,9 +345,13 @@ export function listenErrorAction(error: NodeJS.ErrnoException, bind: string, po
 export function startBridge(
   env: NodeJS.ProcessEnv = process.env,
   {
-    log = (message: string) => process.stderr.write(message),
-    exit = (code: number) => process.exit(code),
-  } = {},
+    log = (message: string) => {
+      process.stderr.write(message);
+    },
+    exit = (code: number) => {
+      process.exit(code);
+    },
+  }: { log?: (message: string) => void; exit?: (code: number) => void } = {},
 ) {
   const config = loadConfig(env);
   // 값이 잘못됐으면 종료할 때가 아니라 지금 안다.
@@ -296,6 +372,23 @@ export function startBridge(
           inflight: state.inflight,
           draining: state.draining,
         });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/admin/drain") {
+        // 인증된 drain 만 정상 종료다. 응답을 먼저 닫고 나서 소켓을 거둔다 —
+        // closeAllConnections 가 이 요청을 중간에 끊으면 재기동 스크립트가
+        // 202 를 못 읽고 실패로 오해한다.
+        const secret = state.admin?.token;
+        if (!tokensEqual(secret ?? "", adminTokenFromRequest(req))) {
+          sendJson(res, 401, { error: { type: "unauthorized", message: "invalid admin token" } });
+          return;
+        }
+        sendJson(res, 202, {
+          ok: true,
+          draining: true,
+          inflight: state.inflight,
+        });
+        void drainAndClose(server, { timeoutMs: drainTimeoutMs(env), log }).then(() => exit(0));
         return;
       }
       if (state.draining) {
@@ -347,13 +440,23 @@ export function startBridge(
     // 로그가 거짓말을 한다.
     const address = server.address();
     const port = address && typeof address !== "string" ? address.port : config.port;
+    const state = bridgeState(server);
+    try {
+      state.admin = writeAdminSecretFile(adminSecretPath(env, port));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log(`fx-v3-bridge: cannot write admin secret: ${message}\n`);
+      exit(1);
+      return;
+    }
     log(`fx-v3-bridge listening on http://${config.bind}:${port} (pid ${process.pid})\n`);
+    log(`fx-v3-bridge admin secret: ${state.admin.path}\n`);
   });
   bridgeState(server);
   return server;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const server = startBridge();
-  installSignalHandlers(server, { timeoutMs: drainTimeoutMs(process.env) });
+  startBridge();
+  installSignalHandlers();
 }

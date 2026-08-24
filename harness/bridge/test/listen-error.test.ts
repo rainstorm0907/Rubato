@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { listenErrorAction, startBridge } from "../src/server.ts";
+import { isolatedAdminEnv } from "./helpers.ts";
 
 const SERVER_PATH = fileURLToPath(new URL("../src/server.ts", import.meta.url));
 
@@ -21,7 +22,7 @@ test("a taken port is not a crash — the bridge steps aside with exit 0", async
   const logs: string[] = [];
   const exits: number[] = [];
   const bridge = startBridge(
-    { FX_BRIDGE_BIND: "127.0.0.1", FX_BRIDGE_PORT: String(port) },
+    isolatedAdminEnv({ FX_BRIDGE_BIND: "127.0.0.1", FX_BRIDGE_PORT: String(port) }),
     { log: (message) => logs.push(message), exit: (code) => exits.push(code) },
   );
   await once(bridge, "error");

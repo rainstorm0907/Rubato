@@ -104,7 +104,8 @@ export function providerConfigs(catalog = FALLBACK_CATALOG) {
     api: API,
     models: models.map((model) => ({
       ...model,
-      api: API,
+      // Senpi /fast only attaches a service tier when model.api is this Responses API.
+      api: id === "openai-codex" ? "openai-codex-responses" : API,
       provider: id,
       baseUrl: "http://127.0.0.1:8788",
       cost: COST,

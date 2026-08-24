@@ -245,6 +245,13 @@ export function streamBroker(model, context, options = {}) {
     };
     try {
       const url = `${brokerUrl(options.env ?? process.env)}/v3/ai/language-model`;
+      let body = { ...contextToFxRequest(context), ...streamOptionsToFxRequest(options) };
+      // Senpi injects service_tier only through onPayload (service-tier.js → sdk.js).
+      // The custom broker never goes through openai-codex-responses, so call the hook here.
+      if (typeof options.onPayload === "function") {
+        const next = await options.onPayload(body, model);
+        if (next !== undefined) body = next;
+      }
       const res = await (options.fetch ?? fetch)(url, {
         method: "POST",
         headers: {
@@ -253,7 +260,7 @@ export function streamBroker(model, context, options = {}) {
           "ai-language-model-id": catalogId(model),
           ...(options.sessionId ? { "x-session-id": options.sessionId } : {}),
         },
-        body: JSON.stringify({ ...contextToFxRequest(context), ...streamOptionsToFxRequest(options) }),
+        body: JSON.stringify(body),
         signal: options.signal,
       });
       if (!res.ok) {

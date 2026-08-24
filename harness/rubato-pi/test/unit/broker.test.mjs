@@ -555,6 +555,13 @@ test("stream options carry thinking level and max tokens to the broker", () => {
   });
 });
 
+test("stream options copy only the priority Codex tier onto the fx body", () => {
+  assert.deepEqual(streamOptionsToFxRequest({ serviceTier: "priority" }), { service_tier: "priority" });
+  assert.deepEqual(streamOptionsToFxRequest({ serviceTier: "auto" }), {});
+  assert.deepEqual(streamOptionsToFxRequest({ serviceTier: "flex" }), {});
+  assert.deepEqual(streamOptionsToFxRequest({}), {});
+});
+
 test("streamBroker posts reasoning and maxOutputTokens", async () => {
   let body;
   const sse = [
@@ -603,6 +610,58 @@ test("broker providers have no Senpi OAuth config", () => {
     assert.equal(provider.auth.oauth.loginLabel, "Use the rubato broker");
     assert.equal(typeof provider.streamSimple, "function");
   }
+});
+
+test("openai-codex catalog models advertise the Responses API that /fast requires", () => {
+  const models = brokerProviders()
+    .flatMap((provider) => provider.getModels());
+  const codex = models.filter((model) => model.provider === "openai-codex");
+  assert.ok(codex.length > 0);
+  for (const model of codex) {
+    assert.equal(model.api, "openai-codex-responses", `${model.id} must expose openai-codex-responses`);
+  }
+  const grok = models.find((model) => model.id === "grok-4.6");
+  assert.equal(grok.api, "openai-completions");
+});
+
+test("streamBroker posts a service_tier injected by onPayload", async () => {
+  let body;
+  const sse = [
+    "data: {\"type\":\"text-start\",\"id\":\"t1\"}\n\n",
+    "data: {\"type\":\"text-delta\",\"id\":\"t1\",\"delta\":\"ok\"}\n\n",
+    "data: {\"type\":\"finish\",\"finishReason\":{\"unified\":\"stop\"}}\n\n",
+  ].join("");
+  const stream = streamBroker(
+    { provider: "openai-codex", id: "gpt-5.6-luna", api: "openai-codex-responses" },
+    { messages: [{ role: "user", content: "hi", timestamp: 1 }] },
+    {
+      env: { RUBATO_BROKER_URL: "http://127.0.0.1:8788" },
+      onPayload: (payload) => ({ ...payload, service_tier: "priority" }),
+      fetch: async (_url, init) => {
+        body = JSON.parse(init.body);
+        return {
+          ok: true,
+          body: {
+            getReader() {
+              const encoded = new TextEncoder().encode(sse);
+              let sent = false;
+              return {
+                async read() {
+                  if (sent) return { done: true, value: undefined };
+                  sent = true;
+                  return { done: false, value: encoded };
+                },
+              };
+            },
+          },
+        };
+      },
+    },
+  );
+  for await (const _event of stream) {
+    /* drain */
+  }
+  assert.equal(body.service_tier, "priority");
 });
 
 test("broker grok-4.6 keeps the vendor xhigh map so Shift+Tab can reach it", () => {

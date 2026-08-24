@@ -23,4 +23,6 @@ if ! NODE="$(rubato_find_node)"; then
   exit 2
 fi
 
+# exec 로 node 가 이 프로세스의 pid 를 물려받는다. supervisor 가 크래시(SIGKILL
+# 포함)를 되살릴 때 중간 셸이 끼면 죽은 쪽이 셸이 되어 브리지는 고아로 남는다.
 exec "$NODE" --experimental-strip-types "$ROOT/bridge/src/server.ts"

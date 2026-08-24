@@ -1,15 +1,13 @@
 #!/bin/sh
-# 브리지를 로그인 때 한 번 띄우는 supervisor 를 심는다.
+# 브리지를 로그인 때 띄우고, 크래시(SIGKILL 포함) 뒤에는 되살리는 supervisor 를 심는다.
 #
 #   install-supervisor.sh            계획만 출력한다
 #   install-supervisor.sh --apply    심고 지금 띄운다
 #   install-supervisor.sh --uninstall [--apply]
 #
-# **되살리는 장치가 아니다.** macOS 는 KeepAlive=false, Linux 는 Restart=no 다.
-# 브리지가 죽는 경우의 대부분은 우리가 보낸 SIGTERM(재기동)이라 supervisor 로
-# 막히지 않고, 오히려 되살리기를 켜면 `rubato-restart.sh` 의 kill/start 와 포트를
-# 두고 경쟁한다. 얻는 것은 하나다 — **재부팅·로그아웃 뒤 첫 세션이 브리지 기동을
-# 떠안지 않는 것.** 지금은 그 첫 세션이 npm install 까지 기다리다 못 뜰 수 있다.
+# 정상 종료(인증된 /admin/drain, exit 0)는 되살리지 않는다. `rubato restart` 가
+# drain 한 뒤 포트를 비우고 나서 새로 띄우기 때문이다. 크래시만 되살린다 —
+# SIGKILL 은 브리지가 잡을 수 없으니 여기가 유일한 복구다.
 #
 # supervisor 가 있든 없든 코드는 같다. `ensureBroker` 가 "살아 있으면 아무것도
 # 안 한다"로 시작하므로 lazy start 경로는 자연히 no-op 이 된다. 분기도 플래그도
@@ -66,9 +64,13 @@ darwin_write_plist() {
     <string>/bin/bash</string>
     <string>${ROOT}/scripts/start.sh</string>
   </array>
-  <!-- 로그인 때 한 번. 되살리지 않는다 — 위 주석 참고. -->
+  <!-- 로그인 때 띄우고, 크래시만 되살린다. exit 0(인증 drain)은 그대로 둔다. -->
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><false/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key><false/>
+    <key>Crashed</key><true/>
+  </dict>
   <key>ProcessType</key><string>Background</string>
   <key>WorkingDirectory</key><string>${ROOT}</string>
   <key>StandardOutPath</key><string>${LOG}</string>
@@ -97,8 +99,10 @@ Type=simple
 WorkingDirectory=${ROOT}
 ExecStart=/bin/bash ${ROOT}/scripts/start.sh
 Environment=FX_BRIDGE_PORT=${PORT}
-# 되살리지 않는다. 재기동은 rubato-restart.sh 가 소유한다.
-Restart=no
+# 크래시(SIGKILL 포함, 비정상 종료)만 되살린다. 인증 drain 은 exit 0 이라 그대로 둔다.
+# rubato-restart.sh 가 포트를 비운 뒤에 start 하므로 겹치지 않는다.
+Restart=on-failure
+RestartSec=1
 StandardOutput=append:${LOG}
 StandardError=append:${LOG}
 
@@ -118,7 +122,7 @@ install_darwin() {
   fi
   if [ "$APPLY" -eq 0 ]; then
     plan "쓴다: ${target}"
-    plan "launchctl bootstrap gui/$(id -u) ${target}  (RunAtLoad=true, KeepAlive=false)"
+    plan "launchctl bootstrap gui/$(id -u) ${target}  (RunAtLoad=true, KeepAlive crashed-only)"
     plan "로그: ${LOG}"
     return 0
   fi
@@ -153,7 +157,7 @@ install_linux() {
   fi
   if [ "$APPLY" -eq 0 ]; then
     plan "쓴다: ${target}"
-    plan "systemctl --user enable --now ${UNIT_NAME}  (Restart=no)"
+    plan "systemctl --user enable --now ${UNIT_NAME}  (Restart=on-failure)"
     plan "로그: ${LOG}"
     return 0
   fi

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
 import { startBridge } from "../src/server.ts";
+import { isolatedAdminEnv } from "./helpers.ts";
 
 async function listen(server: ReturnType<typeof createServer>): Promise<number> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -22,11 +23,11 @@ test("OpenCodex receives the fx session as affinity header and prompt cache key"
     res.end(`event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\ndata: [DONE]\n\n`);
   });
   const upstreamPort = await listen(upstream);
-  const bridge = startBridge({
+  const bridge = startBridge(isolatedAdminEnv({
     FX_BRIDGE_BIND: "127.0.0.1",
     FX_BRIDGE_PORT: "0",
     OPENCODEX_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
-  });
+  }));
   const bridgePort = await new Promise<number>((resolve) => {
     const check = () => {
       const address = bridge.address();
@@ -64,11 +65,11 @@ data: {"type":"response.created","response":{"model":"cursor/grok-4.6"}}
 `);
   });
   const upstreamPort = await listen(upstream);
-  const bridge = startBridge({
+  const bridge = startBridge(isolatedAdminEnv({
     FX_BRIDGE_BIND: "127.0.0.1",
     FX_BRIDGE_PORT: "0",
     OPENCODEX_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
-  });
+  }));
   const bridgePort = await new Promise<number>((resolve) => {
     const check = () => {
       const address = bridge.address();
