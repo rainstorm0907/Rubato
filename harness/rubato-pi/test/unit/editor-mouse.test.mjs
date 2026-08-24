@@ -323,4 +323,145 @@ if (!runtime) {
     tui.handleViewportInput("\x1b[<64;4;2M");
     assert.deepEqual(wheelDeltas, [-1]);
   });
+
+  // Interactive mode never puts the editor straight into the layout: it wraps it in a
+  // Container (interactive-mode.js `this.editorContainer.addChild(this.editor)`).
+  // A Container renders its children itself, so the layout tree ends at the container
+  // with no children and the focused editor is not a layout node. When the hit-test
+  // stopped there, drags fell through to the alt-screen clipboard selection: the
+  // highlight appeared but Backspace still deleted a single character.
+  test("editor wrapped in a Container is still hit-tested and Backspace clears the selection", async () => {
+    const { Editor } = await import(`${pathToFileURL(editorPath).href}?mouse=${Date.now()}`);
+    const { TuiAltScreen } = await import(`${pathToFileURL(altScreenPath).href}?mouse=${Date.now()}`);
+    const { Container } = await import(pathToFileURL(join(tuiDist, "tui.js")).href);
+    const { VStack } = await import(pathToFileURL(join(tuiDist, "components/v-stack.js")).href);
+    const { Text } = await import(pathToFileURL(join(tuiDist, "components/text.js")).href);
+
+    const terminal = {
+      rows: 20,
+      columns: 60,
+      write() {}, hideCursor() {}, showCursor() {}, start() {}, stop() {}, onData() {}, onResize() {},
+    };
+    const tui = new TuiAltScreen(terminal, false);
+    const editor = new Editor(tui, theme);
+    editor.setText("hello world");
+
+    const editorContainer = new Container();
+    editorContainer.addChild(editor);
+    tui.setLayoutRoot(new VStack([
+      { component: new Text("transcript line\n".repeat(8), 0, 0), grow: 1 },
+      { component: editorContainer },
+    ]));
+    tui.focusedComponent = editor;
+    tui.altScreenActive = true;
+    tui.doRender();
+
+    assert.equal(findBox(tui.currentLayout?.root, editor), undefined, "the editor is not its own layout node");
+    const box = tui.findFocusedMouseBox(editor);
+    assert.ok(box, "the container's box stands in for the focused editor");
+    assert.equal(box.component, editorContainer);
+
+    const px = editor.paddingX;
+    tui.handleViewportInput(mouse("press", box.rect.x + px, box.rect.y + 1));
+    tui.handleViewportInput(mouse("drag", box.rect.x + px + 5, box.rect.y + 1));
+    tui.handleViewportInput(mouse("release", box.rect.x + px + 5, box.rect.y + 1));
+
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 0 },
+      end: { line: 0, col: 5 },
+    });
+    assert.equal(tui.getSelectionBounds(), undefined, "the drag must not leak into clipboard selection");
+
+    editor.handleInput("\x7f");
+    assert.equal(editor.getText(), " world");
+    assert.equal(editor.getMouseSelection(), undefined);
+  });
+
+  // The wrapper box may only stand in for the editor when the editor is the container's
+  // only child. With a sibling above it, the container's origin is several rows higher
+  // than the editor's, and handleMouse would map a click to the wrong line. Falling back
+  // to clipboard selection is the correct outcome there.
+  test("a container with a sibling above the editor is not claimed", async () => {
+    const { Editor } = await import(`${pathToFileURL(editorPath).href}?mouse=${Date.now()}`);
+    const { TuiAltScreen } = await import(`${pathToFileURL(altScreenPath).href}?mouse=${Date.now()}`);
+    const { Container } = await import(pathToFileURL(join(tuiDist, "tui.js")).href);
+    const { VStack } = await import(pathToFileURL(join(tuiDist, "components/v-stack.js")).href);
+    const { Text } = await import(pathToFileURL(join(tuiDist, "components/text.js")).href);
+
+    const terminal = {
+      rows: 24,
+      columns: 60,
+      write() {}, hideCursor() {}, showCursor() {}, start() {}, stop() {}, onData() {}, onResize() {},
+    };
+    const tui = new TuiAltScreen(terminal, false);
+    const editor = new Editor(tui, theme);
+    editor.setText("AAAA\nBBBB\nCCCC");
+
+    const container = new Container();
+    container.addChild(new Text("BANNER\n", 0, 0));
+    container.addChild(editor);
+    tui.setLayoutRoot(new VStack([
+      { component: new Text("t\n".repeat(4), 0, 0), grow: 1 },
+      { component: container },
+    ]));
+    tui.focusedComponent = editor;
+    tui.altScreenActive = true;
+    tui.doRender();
+
+    assert.equal(tui.findFocusedMouseBox(editor), undefined, "a multi-child wrapper must not stand in for the editor");
+
+    const box = tui.currentLayout.root.children.at(-1);
+    tui.handleViewportInput(mouse("press", box.rect.x + editor.paddingX, box.rect.y + 3));
+    tui.handleViewportInput(mouse("drag", box.rect.x + editor.paddingX + 2, box.rect.y + 3));
+    assert.equal(editor.getMouseSelection(), undefined, "the editor must not claim a skewed drag");
+    assert.notEqual(tui.selectionAnchor, undefined, "the drag falls back to clipboard selection");
+  });
+
+  // The single-child wrapper is claimed, and its box origin is the editor's origin, so a
+  // click on the row that renders a given line selects that same line.
+  test("wrapper box origin matches the editor so clicks land on the rendered line", async () => {
+    const { Editor } = await import(`${pathToFileURL(editorPath).href}?mouse=${Date.now()}`);
+    const { TuiAltScreen } = await import(`${pathToFileURL(altScreenPath).href}?mouse=${Date.now()}`);
+    const { Container } = await import(pathToFileURL(join(tuiDist, "tui.js")).href);
+    const { VStack } = await import(pathToFileURL(join(tuiDist, "components/v-stack.js")).href);
+    const { Text } = await import(pathToFileURL(join(tuiDist, "components/text.js")).href);
+
+    const terminal = {
+      rows: 24,
+      columns: 60,
+      write() {}, hideCursor() {}, showCursor() {}, start() {}, stop() {}, onData() {}, onResize() {},
+    };
+    const tui = new TuiAltScreen(terminal, false);
+    const editor = new Editor(tui, theme);
+    editor.setText("AAAA\nBBBB\nCCCC");
+
+    const container = new Container();
+    container.addChild(editor);
+    tui.setLayoutRoot(new VStack([
+      { component: new Text("t\n".repeat(4), 0, 0), grow: 1 },
+      { component: container },
+    ]));
+    tui.focusedComponent = editor;
+    tui.altScreenActive = true;
+    tui.doRender();
+
+    const box = tui.findFocusedMouseBox(editor);
+    assert.equal(box?.component, container);
+
+    const plain = (line) => line.replace(/\x1b\[[0-9;]*m/g, "");
+    const rendered = container.render(60).map(plain);
+    const rowOfBBBB = rendered.findIndex((line) => line.includes("BBBB"));
+    assert.ok(rowOfBBBB > 0, "the editor renders BBBB inside the wrapper");
+
+    tui.handleViewportInput(mouse("press", box.rect.x + editor.paddingX, box.rect.y + rowOfBBBB));
+    tui.handleViewportInput(mouse("drag", box.rect.x + editor.paddingX + 2, box.rect.y + rowOfBBBB));
+    tui.handleViewportInput(mouse("release", box.rect.x + editor.paddingX + 2, box.rect.y + rowOfBBBB));
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 1, col: 0 },
+      end: { line: 1, col: 2 },
+    });
+
+    editor.handleInput("\x7f");
+    assert.equal(editor.getText(), "AAAA\nBB\nCCCC");
+  });
 }
