@@ -81,7 +81,10 @@ export function ensureSessionDefaults(
     ...current,
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL_ID,
-    hideThinkingBlock: current.hideThinkingBlock ?? true,
+    // 사고 델타는 세 프로바이더 모두 실시간으로 들어온다(실측: opus 13개/11.7s,
+    // grok 64개/44.6s, codex 4개, 빈 델타 0개). 숨김 경로는 그 산문을 그리지 않고
+    // Thinking... 라벨만 남기므로, 기본을 노출로 둬서 만들어지는 과정을 보여준다.
+    hideThinkingBlock: current.hideThinkingBlock ?? false,
     // 기본 3회(2+4+8초)는 브리지가 npm install 을 끼고 다시 뜨는 경우를 못 덮는다.
     // 5회면 약 62초까지 버틴다. 사용자가 적어 둔 값은 건드리지 않는다.
     retry: { maxRetries: 5, ...current.retry },
