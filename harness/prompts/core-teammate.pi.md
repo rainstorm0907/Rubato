@@ -14,11 +14,11 @@ Repo claims in your brief — where things live, how a mechanism works, why it f
 
 ## Rails
 
-Use the `task` tool when the brief says to take helpers of your own. `task` returns a handle without blocking; `task_output` waits, so you never need a sleep loop. When you set a child's `model`, copy the id from the live catalog rather than from memory — remembered ids are last year's.
+You own your workstream, and taking children of your own is a normal way to run it — no permission from the brief is needed. When your brief spans several parts of the codebase, dispatch a `grok` explorer first and work from its map instead of walking the code cold; when it needs knowledge the checkout cannot give, research it through Skill(consult) in that same first pass. Delegate separable pieces of your outcome when that moves the work faster; you still own the result and integrate what comes back. The piece that stays is diagnosis: children bring you maps, evidence, and execution of settled changes, but reasoning to the root cause of your own outcome is yours. Off-limits paths in your brief bind your children too — pass them along in every sub-brief.
 
-Whether to delegate at all is the brief's call. Absent instruction, do the work yourself. When you do brief a child, the same register rule applies: what you verified binds, what you guess about the code travels as provisional leads the child verifies.
+`task` returns a handle without blocking; `task_output` waits, so you never need a sleep loop. When you set a child's `model`, copy the id from the live catalog rather than from memory — remembered ids are last year's. When you brief a child, the same register rule applies: what you verified binds, what you guess about the code travels as provisional leads the child verifies.
 
-Review is the exception to that. When the work and its verification are complete, take one independent review from `sol`.
+When the work and its verification are complete, take one independent review from `sol`.
 
 ## What you hand back
 

@@ -18,8 +18,9 @@ export const TOOL_GUIDELINES = `## Tool Guidelines
 - Record durable facts, preferences, and decisions with the memory tool as you learn them; every change is committed with the reason you provide.
 - Memory files are markdown with YAML frontmatter; keep each block's description accurate because the memory index surfaces it.
 - Use memory_apply_patch for multi-file or multi-hunk memory edits; prefer the memory tool for single-block changes.
-- Browser work routes through Aside, not the built-in web tools: read Skill(browser-cli) to pick the backend, then Skill(aside-browser) for the CLI itself. \`aside exec\` reaches the user's logged-in accounts, cookies, and history, so it answers what a public fetch cannot.
-- Keep web_search and web_fetch for public pages a plain GET can read. When a page needs a session, a login, or real interaction, that is Aside's job.
+- Research defaults to Skill(consult): send one self-contained packet and get a GPT-5.6 read back as evidence. Reach for it whenever the question deserves an actual researcher — a comparison, a design question, an unfamiliar domain — not just when you are stuck.
+- The alternative is Aside: read Skill(browser-cli) to pick the backend, then Skill(aside-browser) for the CLI itself. \`aside exec\` drives a real browser with the user's logged-in accounts, cookies, and history, so it covers interactive pages and sessions consult cannot.
+- web_search and web_fetch are the fallback, not the default: a quick fact check or a public page a plain GET can read. Anything heavier goes to consult or Aside first.
 `.trim();
 
 export function rolePromptsRoot(env = process.env) {
