@@ -9,7 +9,7 @@ import {
   formatModelWithEffort,
   formatStatusline,
   formatWindow,
-  latestAssistantTiming,
+  currentTurnTiming,
   latestAssistantUsage,
   remainingPercent,
   repoBasename,
@@ -85,18 +85,60 @@ test("latest assistant usage walks the branch backwards", () => {
   assert.equal(latestAssistantUsage([]), null);
 });
 
-test("latest assistant timing skips stale and malformed persisted entries", () => {
-  const timing = latestAssistantTiming([
+test("turn timing skips stale and malformed persisted entries", () => {
+  const timing = currentTurnTiming([
     { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 100, modelDurationMs: 200 } } },
     { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 300, modelDurationMs: 900 } } },
     { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: NaN } } },
     { type: "message", message: { role: "assistant", timing: {} } },
   ], 42);
-  assert.deepEqual(timing, { processStartedAt: 42, ttftMs: 300, modelDurationMs: 900 });
-  assert.equal(latestAssistantTiming([
+  // waitMs 가 없던 예전 엔트리는 가장 최근 ttft 로 떨어진다.
+  assert.deepEqual(timing, { waitMs: 300, calls: 1 });
+  assert.equal(currentTurnTiming([
     { type: "message", message: { role: "assistant", timing: { processStartedAt: 41, ttftMs: 500 } } },
   ], 42), null);
-  assert.equal(latestAssistantTiming([], 42), null);
+  assert.equal(currentTurnTiming([], 42), null);
+});
+
+test("a previous process's persisted turn never renders as the current one", () => {
+  const entries = [
+    { type: "message", message: { role: "user" } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 41, ttftMs: 900, waitMs: 900, thinkMs: 5_000 } } },
+  ];
+  assert.equal(currentTurnTiming(entries, 42), null);
+  assert.equal(formatLatency(currentTurnTiming(entries, 42)), "");
+});
+
+test("the turn average is the mean of its calls, not the last call", () => {
+  const timing = currentTurnTiming([
+    { type: "message", message: { role: "user" } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 1_000, waitMs: 1_000, thinkMs: 6_000 } } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 2_000, waitMs: 2_000, thinkMs: 2_000 } } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 600, waitMs: 600 } } },
+  ], 42);
+  assert.equal(timing.calls, 3);
+  assert.equal(timing.waitMs, 1_200);
+  // 사고 없는 세 번째 호출은 think 평균을 끌어내리지 않는다.
+  assert.equal(timing.thinkMs, 4_000);
+  assert.equal(formatLatency(timing), "delay 1.2s · think 4.0s");
+});
+
+test("a new user message resets the turn average", () => {
+  const previous = [
+    { type: "message", message: { role: "user" } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 8_000, waitMs: 8_000, thinkMs: 9_000 } } },
+  ];
+  assert.equal(formatLatency(currentTurnTiming(previous, 42)), "delay 8.0s · think 9.0s");
+  const next = [
+    ...previous,
+    { type: "message", message: { role: "user" } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 400, waitMs: 400 } } },
+  ];
+  const timing = currentTurnTiming(next, 42);
+  assert.equal(timing.calls, 1);
+  assert.equal(timing.waitMs, 400);
+  assert.equal(timing.thinkMs, undefined);
+  assert.equal(formatLatency(timing), "delay 400ms");
 });
 
 test("latency milliseconds render as ms under a second, seconds above it", () => {
@@ -111,8 +153,11 @@ test("latency milliseconds render as ms under a second, seconds above it", () =>
   assert.equal(formatLatencyMs(Number.MAX_VALUE), "");
 });
 
-test("the latency footer segment shows ttft but never raw turn duration", () => {
-  assert.equal(formatLatency({ ttftMs: 420, modelDurationMs: 3400 }), "delay 420ms");
+test("the latency footer segment shows wait and thinking but never raw turn duration", () => {
+  assert.equal(formatLatency({ waitMs: 1_200, thinkMs: 4_000 }), "delay 1.2s · think 4.0s");
+  assert.equal(formatLatency({ waitMs: 420, modelDurationMs: 3400 }), "delay 420ms");
+  // 사고가 없으면 think 자체를 그리지 않는다. `think 0ms` 는 쓰지 않는다.
+  assert.equal(formatLatency({ waitMs: 420, thinkMs: 0 }), "delay 420ms");
   assert.equal(formatLatency({ modelDurationMs: 1200 }), "");
   assert.equal(formatLatency({ ttftMs: 200 }), "delay 200ms");
   assert.equal(formatLatency({}), "");
@@ -197,6 +242,48 @@ test("installStatusline paints effort and the model context window", () => {
   assert.equal(footer.render(70)[0], left);
   assert.ok(!footer.render(70)[0].includes(BRAND_NAME));
   assert.equal(colors.at(-1), "dim");
+});
+
+test("the footer averages wait and thinking across the current turn's model calls", () => {
+  let factory;
+  const ctx = {
+    cwd: "/Users/wy/Github-repos/agent-taskforce",
+    model: { id: "anthropic/claude-opus-5", contextWindow: 1_000_000 },
+    thinkingLevel: "high",
+    getContextUsage: () => ({ tokens: 400_000, contextWindow: 1_000_000, percent: 40 }),
+    sessionManager: {
+      getBranch: () => [
+        // 이전 턴 — 평균에 섞이면 안 된다.
+        { type: "message", message: { role: "user" } },
+        { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 9_000, waitMs: 9_000, thinkMs: 9_000 } } },
+        { type: "message", message: { role: "user" } },
+        { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 1_000, waitMs: 1_000, thinkMs: 6_000 } } },
+        { type: "message", message: { role: "tool" } },
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            usage: { input: 20, cacheRead: 80, cacheWrite: 0 },
+            timing: { processStartedAt: 42, ttftMs: 1_400, waitMs: 1_400, thinkMs: 2_000 },
+          },
+        },
+      ],
+    },
+    ui: { setFooter(next) { factory = next; } },
+  };
+  const pi = {
+    on(event, handler) {
+      if (event === "session_start") handler({ type: "session_start", reason: "startup" }, ctx);
+    },
+  };
+  installStatusline(pi, { processStartedAt: 42 });
+  const footer = factory(
+    { requestRender() {} },
+    { fg: (_color, text) => text },
+    { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
+  );
+  const rendered = footer.render(160)[0];
+  assert.equal(rendered.includes("Cache 80% · delay 1.2s · think 4.0s"), true, rendered);
 });
 
 test("the footer shows current-process ttft without rendering raw turn duration", () => {

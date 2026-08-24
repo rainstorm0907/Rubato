@@ -98,7 +98,8 @@ test("model.end is recorded before the terminal stream event", async () => {
 });
 
 test("ttft starts at the first content delta, not an empty frame opener", async () => {
-  const times = [100, 350, 600];
+  // 전송, 첫 출력(text delta), text 도장, 종료.
+  const times = [100, 350, 350, 600];
   const monotonic = () => times.shift();
   const fetch = async () => ({
     ok: true,
@@ -126,8 +127,77 @@ test("ttft starts at the first content delta, not an empty frame opener", async 
     sentAt: 1_700_000_000_000,
     processStartedAt: 1234,
     ttftMs: 250,
+    // 사고가 없던 호출은 첫 텍스트까지가 통째로 대기다. thinkMs 는 아예 붙지 않는다.
+    waitMs: 250,
     modelDurationMs: 500,
   });
+});
+
+test("reasoning then text splits the call into wait and think", async () => {
+  // 호출 순서: 전송, 첫 출력(reasoning delta), reasoning 도장, text 도장, 종료.
+  const times = [100, 600, 600, 4_600, 5_000];
+  const monotonic = () => times.shift();
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        const push = (event) => controller.enqueue(new TextEncoder().encode(block(event)));
+        push({ type: "reasoning-start" });
+        push({ type: "reasoning-delta", delta: "생각" });
+        push({ type: "reasoning-end" });
+        push({ type: "text-start" });
+        push({ type: "text-delta", delta: "답" });
+        push({ type: "finish", finishReason: { unified: "stop" } });
+        controller.close();
+      },
+    }),
+  });
+  let last;
+  for await (const event of streamBroker(model, context, {
+    fetch,
+    env: {},
+    monotonic,
+    wallNow: () => 1_700_000_000_000,
+    processStartedAt: 1234,
+  })) last = event;
+  const timing = last.message.timing;
+  assert.equal(timing.ttftMs, 500);
+  assert.equal(timing.waitMs, 500);
+  assert.equal(timing.thinkMs, 4_000);
+});
+
+test("an empty reasoning opener does not start the thinking clock", async () => {
+  // Anthropic 은 display 가 "omitted" 일 때 내용 없는 reasoning 블록을 먼저 연다.
+  // 그걸 사고 시작으로 세면 업스트림 대기가 통째로 think 로 옮겨간다.
+  // 빈 reasoning delta 도 첫 출력 시각은 찍지만 사고 시계는 건드리지 않는다.
+  const times = [100, 200, 3_100, 3_500];
+  const monotonic = () => times.shift();
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        const push = (event) => controller.enqueue(new TextEncoder().encode(block(event)));
+        push({ type: "reasoning-start" });
+        push({ type: "reasoning-delta", delta: "" });
+        push({ type: "reasoning-end" });
+        push({ type: "text-start" });
+        push({ type: "text-delta", delta: "답" });
+        push({ type: "finish", finishReason: { unified: "stop" } });
+        controller.close();
+      },
+    }),
+  });
+  let last;
+  for await (const event of streamBroker(model, context, {
+    fetch,
+    env: {},
+    monotonic,
+    wallNow: () => 1_700_000_000_000,
+    processStartedAt: 1234,
+  })) last = event;
+  const timing = last.message.timing;
+  assert.equal(timing.thinkMs, undefined);
+  assert.equal(timing.waitMs, 3_000);
 });
 
 test("a call with no emitted delta (pure tool call) still gets a turn duration but no ttft", async () => {

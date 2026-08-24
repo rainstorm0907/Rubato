@@ -176,19 +176,45 @@ export function latestAssistantUsage(entries) {
  * `output.timing` 은 broker-stream 이 성공한 모델 호출이 끝날 때 붙인다 (measurement
  * 기록기와 무관하게 항상 계산 — RUBATO_MEASUREMENT_LOG 가 꺼져 있어도 값이 있다).
  * 세션 파일에도 저장되므로 현재 프로세스 표식이 맞고 표시할 숫자가 유효한 값만 고른다.
+ *
+ * 한 사용자 턴은 도구 루프 때문에 모델 호출 여러 번으로 갈라진다. 마지막 호출만 보여주면
+ * 숫자가 호출마다 튀므로 현재 턴에 속한 호출들의 평균을 낸다. 턴 경계는 브랜치 엔트리에서
+ * 직접 뽑는다 — 마지막 user 메시지 뒤의 assistant 들이 곧 현재 턴이다. 이러면 measurement
+ * 기록기(RUBATO_MEASUREMENT_LOG)가 꺼져 있어도 동작하고, 새 user 메시지가 들어오는 순간
+ * 평균이 저절로 리셋된다.
+ *
+ * think 는 사고한 호출들만 모아 평균낸다. 사고 없는 호출을 0 으로 섞으면 실제로 4초 생각한
+ * 턴이 `think 1.0s` 로 찍혀 거짓말이 된다.
  */
-export function latestAssistantTiming(entries, processStartedAt) {
+export function currentTurnTiming(entries, processStartedAt) {
   if (!Array.isArray(entries) || !Number.isFinite(processStartedAt)) return null;
+  const waits = [];
+  const thinks = [];
+  let ttftMs;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const entry = entries[i];
     if (entry?.type !== "message") continue;
     const message = entry.message;
+    if (message?.role === "user") break;
     const timing = message?.timing;
     if (message?.role !== "assistant" || timing?.processStartedAt !== processStartedAt) continue;
+    // 실패/중단 호출은 애초에 timing 이 없어 여기서 걸러진다.
     if (!validLatencyMs(timing.ttftMs)) continue;
-    return timing;
+    if (ttftMs === undefined) ttftMs = timing.ttftMs;
+    if (validLatencyMs(timing.waitMs)) waits.push(timing.waitMs);
+    if (validLatencyMs(timing.thinkMs)) thinks.push(timing.thinkMs);
   }
-  return null;
+  if (ttftMs === undefined) return null;
+  return {
+    waitMs: mean(waits) ?? ttftMs,
+    ...(thinks.length === 0 ? {} : { thinkMs: mean(thinks) }),
+    calls: waits.length || 1,
+  };
+}
+
+function mean(values) {
+  if (values.length === 0) return undefined;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function validLatencyMs(ms) {
@@ -202,10 +228,16 @@ export function formatLatencyMs(ms) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** 상태줄에는 답변 길이에 독립적인 첫 토큰 지연만 속도로 표시한다. */
+/**
+ * 상태줄에는 답변 길이에 독립적인 대기/사고 시간만 속도로 표시한다.
+ * `delay 1.2s · think 4.0s`. 사고가 없던 턴은 `delay` 만 그린다 — `think 0ms` 는 거짓말이다.
+ */
 export function formatLatency(timing) {
-  const ttft = formatLatencyMs(timing?.ttftMs);
-  return ttft ? `delay ${ttft}` : "";
+  const delay = formatLatencyMs(timing?.waitMs ?? timing?.ttftMs);
+  if (!delay) return "";
+  // 0 은 사고를 안 한 것과 구분되지 않으므로 그리지 않는다.
+  const think = timing?.thinkMs ? formatLatencyMs(timing.thinkMs) : "";
+  return think ? `delay ${delay} · think ${think}` : `delay ${delay}`;
 }
 
 export function statuslineSegments({ model, remaining, window, branch, repo }) {

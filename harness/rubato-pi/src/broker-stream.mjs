@@ -249,6 +249,10 @@ export function streamBroker(model, context, options = {}) {
   const sentAtWallMs = wallNow();
   const processStartedAt = options.processStartedAt ?? Math.floor(Date.now() - performance.now());
   let firstOutputAtMs;
+  // 한 호출은 [대기] → 첫 reasoning delta → [사고] → 첫 text delta → [생성] 이다.
+  // 두 경계를 따로 찍어야 상태줄이 '기다린 시간'과 '생각한 시간'을 구분해 보여줄 수 있다.
+  let firstReasoningAtMs;
+  let firstTextAtMs;
   ;(async () => {
     stream.push({ type: "start", partial: output });
     let settled = false;
@@ -265,10 +269,17 @@ export function streamBroker(model, context, options = {}) {
         // 사용자 중단도 성공한 모델 응답은 아니므로 timing 을 붙이지 않는다.
         if (event.type === "done" && !options.signal?.aborted) {
           const endedAtMs = monotonic();
+          // reasoning 이 없으면 think 구간 자체가 없다. 그때 waitMs 는 첫 텍스트까지의
+          // 시간이고, 상태줄은 think 를 아예 그리지 않는다 — `think 0ms` 는 거짓말이다.
+          const phaseStartMs = firstReasoningAtMs ?? firstTextAtMs;
           output.timing = {
             sentAt: sentAtWallMs,
             processStartedAt,
             ...(firstOutputAtMs === undefined ? {} : { ttftMs: firstOutputAtMs - sentAtMs }),
+            ...(phaseStartMs === undefined ? {} : { waitMs: phaseStartMs - sentAtMs }),
+            ...(firstReasoningAtMs === undefined || firstTextAtMs === undefined
+              ? {}
+              : { thinkMs: firstTextAtMs - firstReasoningAtMs }),
             // 요청 변환/onPayload/선택적 측정 준비부터 종단 프레임까지의 전체 broker 호출 시간이다.
             modelDurationMs: endedAtMs - sentAtMs,
           };
@@ -280,6 +291,15 @@ export function streamBroker(model, context, options = {}) {
         const isContentDelta = event.type === "text_delta" ||
           event.type === "thinking_delta" || event.type === "toolcall_delta";
         if (isContentDelta && firstOutputAtMs === undefined) firstOutputAtMs = monotonic();
+        // 빈 reasoning delta 는 사고 시계를 시작하지 않는다. Anthropic 은 display 가
+        // "omitted" 일 때 내용 없는 reasoning 블록을 먼저 열 수 있는데, 그걸 사고 시작으로
+        // 세면 업스트림 대기 시간이 think 로 옮겨가 delay 가 0 에 가까워진다.
+        if (event.type === "thinking_delta" && firstReasoningAtMs === undefined && event.delta) {
+          firstReasoningAtMs = monotonic();
+        }
+        if (event.type === "text_delta" && firstTextAtMs === undefined && event.delta) {
+          firstTextAtMs = monotonic();
+        }
       }
       if (measurementCallId && event.type !== "start" && event.type !== "done" && event.type !== "error") {
         try { recorder?.firstOutput(measurementCallId, { outputType: event.type }); } catch {}

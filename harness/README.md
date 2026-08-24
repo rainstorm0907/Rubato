@@ -334,24 +334,42 @@ body를 그대로 파일로 남긴다. **개인정보·비밀 유출 위험이 �
 아니다 — 사용자가 원한 건 '이번 턴이 느렸는지, 느렸다면 첫 토큰 전이었는지 후였는지'다.
 
 broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assistant 메시지에
-`timing: { sentAt, processStartedAt, ttftMs, modelDurationMs }`를 붙인다. 첫 실제 텍스트·reasoning·
-도구 인자 delta가 올 때까지를 TTFT로 세고, 빈 start 프레임은 세지 않는다. 이 계산은 측정 기록기와
-완전히 독립이고, **`RUBATO_MEASUREMENT_LOG`가 꺼져 있어도 항상 계산된다** — 실제 속도를 보려고
-프롬프트 다이제스트 기록까지 켤 필요는 없다.
+`timing: { sentAt, processStartedAt, ttftMs, waitMs, thinkMs, modelDurationMs }`를 붙인다. 첫 실제
+텍스트·reasoning·도구 인자 delta가 올 때까지를 TTFT로 세고, 빈 start 프레임은 세지 않는다. 이 계산은
+측정 기록기와 완전히 독립이고, **`RUBATO_MEASUREMENT_LOG`가 꺼져 있어도 항상 계산된다** — 실제
+속도를 보려고 프롬프트 다이제스트 기록까지 켤 필요는 없다.
 
-상태줄은 현재 프로세스가 만든 가장 최근의 유효한 timing에서 `delay 420ms`만 붙인다
-(`formatLatency`, `src/statusline.mjs`). 이전 프로세스에서 세션 파일에 저장된 값, 실패·중단된 호출,
-델타 없이 끝난 호출은 표시하지 않는다. `modelDurationMs`는 답변 길이에 따라 늘어나는 raw duration이라
-속도처럼 보이지 않도록 상태줄에서는 숨기되, 오프라인 분석용 데이터에는 그대로 남긴다.
+한 호출은 [대기] → 첫 reasoning delta → [사고] → 첫 text delta → [생성]이다. `waitMs`는 업스트림이
+입을 열기까지, `thinkMs`는 사고에서 첫 텍스트까지다. 사고가 없으면 `waitMs`는 첫 텍스트까지가 통째로
+대기이고 `thinkMs`는 아예 붙지 않는다. 내용 없는 reasoning delta(Anthropic이 display가 `"omitted"`일 때
+여는 빈 블록)는 사고 시작으로 세지 않는다 — 그러면 업스트림 대기가 think로 옮겨가 delay가 0에 가까워진다.
+`ttftMs`는 이름도 의미도 그대로 남겨 기존 로그와 `scripts/analyze-measurements.mjs`가 계속 돈다.
 
-실측 예시(2026-08-24, xai/grok-4.6, 실제 브리지 호출):
+상태줄은 **현재 턴에 속한 모델 호출들의 평균**을 `delay 1.2s · think 4.0s`로 붙인다
+(`currentTurnTiming` + `formatLatency`, `src/statusline.mjs`). 한 사용자 턴은 도구 루프 때문에 호출
+여러 번으로 갈라지므로 마지막 호출만 보여주면 숫자가 호출마다 튄다. 턴 경계는 브랜치 엔트리에서
+직접 뽑는다 — 마지막 user 메시지 뒤의 assistant 들이 곧 현재 턴이다. 그래서 measurement 기록기가
+꺼져 있어도 동작하고, 새 user 메시지가 들어오면 평균이 저절로 리셋되며, 턴 도중에는 지금까지 끝난
+호출들의 러닝 평균이 보인다. `think`는 **실제로 사고한 호출들만** 모아 평균낸다 — 사고 없는 호출을
+0으로 섞으면 98초를 생각한 턴이 절반으로 찍혀 거짓말이 된다. 사고가 하나도 없던 턴은 `delay`만 그리고
+`think 0ms`는 쓰지 않는다. 이전 프로세스에서 세션 파일에 저장된 값, 실패·중단된 호출, 델타 없이 끝난
+호출은 표시하지 않는다. `modelDurationMs`는 답변 길이에 따라 늘어나는 raw duration이라 속도처럼
+보이지 않도록 상태줄에서는 숨기되, 오프라인 분석용 데이터에는 그대로 남긴다.
+
+실측 예시(2026-08-24, anthropic/claude-opus-5, 실제 브리지 호출 — 증명 + 도구 호출 한 턴):
 
 ```
-✦ Grok 4.6 · 100%(256K) · rubato/base · Rubato · Cache 2% · delay 2.0s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
+✦ Opus 5 xhigh · 100%(1M) · rubato/base · Rubato · Cache 2% · delay 3.2s · think 98.2s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
 ```
 
-(`ttftMs: 1981.1`, `modelDurationMs: 4927.7` — 같은 호출을
-`scripts/analyze-measurements.mjs`로 분석한 결과와 일치한다.)
+뒤에 있는 호출별 실제 숫자는 이렇다. 도구 결과를 받은 두 번째 호출은 사고를 하지 않았고, 그래서
+`think` 평균을 49초로 끌어내리지 않는다.
+
+| 호출 | waitMs | thinkMs | modelDurationMs |
+|---|---|---|---|
+| 1 (증명 + 도구 호출) | 4810 | 98212 | 121042 |
+| 2 (도구 결과 이후 마무리) | 1635 | — | 14122 |
+| 턴 평균 | 3222 | 98212 | |
 
 ## 레이아웃
 

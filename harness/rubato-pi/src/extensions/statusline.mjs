@@ -6,7 +6,7 @@ import {
   formatContext,
   formatLatency,
   formatModelWithEffort,
-  latestAssistantTiming,
+  currentTurnTiming,
   latestAssistantUsage,
   remainingPercent,
   repoBasename,
@@ -76,7 +76,7 @@ export function installStatusline(pi, { processStartedAt = Math.floor(Date.now()
           const window = usage?.contextWindow ?? ctx.model?.contextWindow;
           const branchEntries = ctx.sessionManager?.getBranch?.() ?? [];
           const cache = cacheHitPercent(latestAssistantUsage(branchEntries));
-          const latency = formatLatency(latestAssistantTiming(branchEntries, processStartedAt));
+          const latency = formatLatency(currentTurnTiming(branchEntries, processStartedAt));
           const parts = [
             {
               text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
