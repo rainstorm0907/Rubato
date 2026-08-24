@@ -97,6 +97,56 @@ test("model.end is recorded before the terminal stream event", async () => {
   assert.equal(order[0].fields.usage.outputTokens, 1);
 });
 
+test("ttft starts at the first content delta, not an empty frame opener", async () => {
+  const times = [100, 350, 600];
+  const monotonic = () => times.shift();
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(block({ type: "text-start" })));
+        controller.enqueue(new TextEncoder().encode(block({ type: "text-delta", delta: "hi" })));
+        controller.enqueue(new TextEncoder().encode(block({ type: "finish", finishReason: { unified: "stop" } })));
+        controller.close();
+      },
+    }),
+  });
+  // measurementRecorder is not passed and RUBATO_MEASUREMENT_LOG is unset in this process,
+  // so measurementRecorder(options.env) resolves to undefined — timing must not depend on it.
+  let last;
+  for await (const event of streamBroker(model, context, {
+    fetch,
+    env: {},
+    monotonic,
+    wallNow: () => 1_700_000_000_000,
+    processStartedAt: 1234,
+  })) last = event;
+  assert.equal(last.type, "done");
+  assert.deepEqual(last.message.timing, {
+    sentAt: 1_700_000_000_000,
+    processStartedAt: 1234,
+    ttftMs: 250,
+    modelDurationMs: 500,
+  });
+});
+
+test("a call with no emitted delta (pure tool call) still gets a turn duration but no ttft", async () => {
+  const fetch = async () => ({
+    ok: true,
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(block({ type: "finish", finishReason: { unified: "stop" } })));
+        controller.close();
+      },
+    }),
+  });
+  let last;
+  for await (const event of streamBroker(model, context, { fetch, env: {} })) last = event;
+  const timing = last.message.timing;
+  assert.equal(timing.ttftMs, undefined);
+  assert.equal(typeof timing.modelDurationMs, "number");
+});
+
 test("measurement recorder failures never change model stream lifecycle", async () => {
   const measurementRecorder = {
     activeTaskId: () => "session:1",
@@ -113,6 +163,34 @@ test("measurement recorder failures never change model stream lifecycle", async 
   });
   const events = await drain(streamBroker(model, context, { fetch, sessionId: "session", measurementRecorder }));
   assert.equal(events.at(-1).type, "done");
+});
+
+test("measurement recorder construction failure degrades to recording off", async () => {
+  let fetched = false;
+  const fetch = async () => {
+    fetched = true;
+    return {
+      ok: true,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(block({ type: "finish", finishReason: { unified: "stop" } })));
+          controller.close();
+        },
+      }),
+    };
+  };
+  const events = await drain(streamBroker(model, context, {
+    fetch,
+    env: { RUBATO_MEASUREMENT_LOG: "/dev/null/unwritable.jsonl" },
+  }));
+  assert.equal(fetched, true);
+  assert.equal(events.at(-1).type, "done");
+});
+
+test("failed attempts do not carry display timing", async () => {
+  const last = (await drain(streamBroker(model, context, { fetch: brokenFetch([]), env: {} }))).at(-1);
+  assert.equal(last.type, "error");
+  assert.equal(last.error.timing, undefined);
 });
 
 test("도구 호출이 있어도 전송이 끊기면 성공으로 넘기지 않는다", async () => {

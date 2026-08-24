@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { brandProfile, defaultAgentDir, launchEnv } from "../../src/brand.mjs";
+import { brandProfile, defaultAgentDir, defaultMeasurementLogPath, launchEnv } from "../../src/brand.mjs";
 
 test("brand is rubato and never uses the omo config dir", () => {
   const brand = brandProfile();
@@ -29,4 +29,28 @@ test("launch env isolates state and clears the omo native badge", () => {
   assert.equal(parsed.configDir, ".rubato-pi");
   assert.equal(env.FX_CACHE_RETENTION, "long");
   assert.equal(env.PI_CACHE_RETENTION, "long");
+});
+
+test("measurement recording defaults off and needs an explicit opt-in", () => {
+  const off = launchEnv({ HOME: "/tmp/home" }, "/tmp/home/.rubato-pi/agent");
+  assert.equal(off.RUBATO_MEASUREMENT_LOG, undefined);
+});
+
+test("RUBATO_MEASUREMENT=1 derives a log path under the agent profile dir", () => {
+  const env = launchEnv({ HOME: "/tmp/home", RUBATO_MEASUREMENT: "1" }, "/tmp/home/.rubato-pi/agent");
+  assert.match(env.RUBATO_MEASUREMENT_LOG, /^\/tmp\/home\/\.rubato-pi\/agent\/measurements\/.+\.jsonl$/);
+});
+
+test("an explicit RUBATO_MEASUREMENT_LOG is never overridden by the convenience toggle", () => {
+  const env = launchEnv(
+    { HOME: "/tmp/home", RUBATO_MEASUREMENT: "1", RUBATO_MEASUREMENT_LOG: "/tmp/custom.jsonl" },
+    "/tmp/home/.rubato-pi/agent",
+  );
+  assert.equal(env.RUBATO_MEASUREMENT_LOG, "/tmp/custom.jsonl");
+});
+
+test("the derived measurement log path is stable per process and stamped with wall time", () => {
+  const now = () => new Date("2026-08-24T12:34:56.789Z");
+  const path = defaultMeasurementLogPath("/tmp/home/.rubato-pi/agent", { now, pid: 4242 });
+  assert.equal(path, "/tmp/home/.rubato-pi/agent/measurements/2026-08-24T12-34-56-789Z-4242.jsonl");
 });

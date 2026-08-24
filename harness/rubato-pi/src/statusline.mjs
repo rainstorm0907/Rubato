@@ -172,6 +172,42 @@ export function latestAssistantUsage(entries) {
   return null;
 }
 
+/**
+ * `output.timing` 은 broker-stream 이 성공한 모델 호출이 끝날 때 붙인다 (measurement
+ * 기록기와 무관하게 항상 계산 — RUBATO_MEASUREMENT_LOG 가 꺼져 있어도 값이 있다).
+ * 세션 파일에도 저장되므로 현재 프로세스 표식이 맞고 표시할 숫자가 유효한 값만 고른다.
+ */
+export function latestAssistantTiming(entries, processStartedAt) {
+  if (!Array.isArray(entries) || !Number.isFinite(processStartedAt)) return null;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    if (entry?.type !== "message") continue;
+    const message = entry.message;
+    const timing = message?.timing;
+    if (message?.role !== "assistant" || timing?.processStartedAt !== processStartedAt) continue;
+    if (!validLatencyMs(timing.ttftMs)) continue;
+    return timing;
+  }
+  return null;
+}
+
+function validLatencyMs(ms) {
+  return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 && ms <= Number.MAX_VALUE / 1000;
+}
+
+/** `340ms` 이하 1초, 그 위는 `1.2s`. 소음을 줄이려 소수점 하나만 남긴다. */
+export function formatLatencyMs(ms) {
+  if (!validLatencyMs(ms)) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** 상태줄에는 답변 길이에 독립적인 첫 토큰 지연만 속도로 표시한다. */
+export function formatLatency(timing) {
+  const ttft = formatLatencyMs(timing?.ttftMs);
+  return ttft ? `ttft ${ttft}` : "";
+}
+
 export function statuslineSegments({ model, remaining, window, branch, repo }) {
   const parts = [`✦ ${model}`, formatContext(remaining, window)];
   if (branch) parts.push(branch);

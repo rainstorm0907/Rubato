@@ -4,9 +4,12 @@ import {
   appendBrandMark,
   cacheHitPercent,
   formatContext,
+  formatLatency,
+  formatLatencyMs,
   formatModelWithEffort,
   formatStatusline,
   formatWindow,
+  latestAssistantTiming,
   latestAssistantUsage,
   remainingPercent,
   repoBasename,
@@ -82,6 +85,40 @@ test("latest assistant usage walks the branch backwards", () => {
   assert.equal(latestAssistantUsage([]), null);
 });
 
+test("latest assistant timing skips stale and malformed persisted entries", () => {
+  const timing = latestAssistantTiming([
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 100, modelDurationMs: 200 } } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: 300, modelDurationMs: 900 } } },
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 42, ttftMs: NaN } } },
+    { type: "message", message: { role: "assistant", timing: {} } },
+  ], 42);
+  assert.deepEqual(timing, { processStartedAt: 42, ttftMs: 300, modelDurationMs: 900 });
+  assert.equal(latestAssistantTiming([
+    { type: "message", message: { role: "assistant", timing: { processStartedAt: 41, ttftMs: 500 } } },
+  ], 42), null);
+  assert.equal(latestAssistantTiming([], 42), null);
+});
+
+test("latency milliseconds render as ms under a second, seconds above it", () => {
+  assert.equal(formatLatencyMs(340), "340ms");
+  assert.equal(formatLatencyMs(999), "999ms");
+  assert.equal(formatLatencyMs(1000), "1.0s");
+  assert.equal(formatLatencyMs(3420), "3.4s");
+  assert.equal(formatLatencyMs(undefined), "");
+  assert.equal(formatLatencyMs(null), "");
+  assert.equal(formatLatencyMs(-1), "");
+  assert.equal(formatLatencyMs(NaN), "");
+  assert.equal(formatLatencyMs(Number.MAX_VALUE), "");
+});
+
+test("the latency footer segment shows ttft but never raw turn duration", () => {
+  assert.equal(formatLatency({ ttftMs: 420, modelDurationMs: 3400 }), "ttft 420ms");
+  assert.equal(formatLatency({ modelDurationMs: 1200 }), "");
+  assert.equal(formatLatency({ ttftMs: 200 }), "ttft 200ms");
+  assert.equal(formatLatency({}), "");
+  assert.equal(formatLatency(null), "");
+});
+
 test("statusline order is model, remaining with window, branch, repo, cache", () => {
   assert.equal(repoBasename("/Users/wy/Github-repos/agent-taskforce"), "agent-taskforce");
   assert.equal(
@@ -152,6 +189,7 @@ test("installStatusline paints effort and the model context window", () => {
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
   // Cache is a `·` segment now: glued to the repo it read as a repo-owned number.
+  // No timing on this branch, so no latency segment appears.
   const left = "✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80%";
   assert.deepEqual(footer.render(120), [appendBrandMark(left, 120)]);
   assert.match(footer.render(120)[0], new RegExp(`${BRAND_NAME}$`));
@@ -159,6 +197,49 @@ test("installStatusline paints effort and the model context window", () => {
   assert.equal(footer.render(70)[0], left);
   assert.ok(!footer.render(70)[0].includes(BRAND_NAME));
   assert.equal(colors.at(-1), "dim");
+});
+
+test("the footer shows current-process ttft without rendering raw turn duration", () => {
+  let factory;
+  const ctx = {
+    cwd: "/Users/wy/Github-repos/agent-taskforce",
+    model: { id: "anthropic/claude-opus-5", contextWindow: 1_000_000 },
+    thinkingLevel: "high",
+    getContextUsage: () => ({ tokens: 400_000, contextWindow: 1_000_000, percent: 40 }),
+    sessionManager: {
+      getBranch: () => [
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            usage: { input: 20, cacheRead: 80, cacheWrite: 0 },
+            timing: { sentAt: 1_700_000_000_000, processStartedAt: 42, ttftMs: 420, modelDurationMs: 3400 },
+          },
+        },
+      ],
+    },
+    ui: {
+      setFooter(next) {
+        factory = next;
+      },
+    },
+  };
+  const pi = {
+    on(event, handler) {
+      if (event === "session_start") handler({ type: "session_start", reason: "startup" }, ctx);
+    },
+  };
+
+  installStatusline(pi, { processStartedAt: 42 });
+  const footer = factory(
+    { requestRender() {} },
+    { fg: (_color, text) => text },
+    { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
+  );
+  const left = "✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80% · ttft 420ms";
+  const rendered = footer.render(140)[0];
+  assert.equal(rendered.startsWith(left), true);
+  assert.equal(rendered.includes("turn"), false);
 });
 
 test("the brand mark sits on the right only when the terminal is wide", () => {

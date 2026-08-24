@@ -4,7 +4,9 @@ import {
   formatBackgroundLine,
   formatCacheHit,
   formatContext,
+  formatLatency,
   formatModelWithEffort,
+  latestAssistantTiming,
   latestAssistantUsage,
   remainingPercent,
   repoBasename,
@@ -32,7 +34,7 @@ function remainingColor(remaining) {
   return "error";
 }
 
-export function installStatusline(pi) {
+export function installStatusline(pi, { processStartedAt = Math.floor(Date.now() - performance.now()) } = {}) {
   pi.on("session_start", (_event, ctx) => {
     if (typeof ctx.ui?.setFooter !== "function") return;
 
@@ -72,7 +74,9 @@ export function installStatusline(pi) {
           const usage = ctx.getContextUsage?.();
           const remaining = remainingPercent(usage?.percent);
           const window = usage?.contextWindow ?? ctx.model?.contextWindow;
-          const cache = cacheHitPercent(latestAssistantUsage(ctx.sessionManager?.getBranch?.() ?? []));
+          const branchEntries = ctx.sessionManager?.getBranch?.() ?? [];
+          const cache = cacheHitPercent(latestAssistantUsage(branchEntries));
+          const latency = formatLatency(latestAssistantTiming(branchEntries, processStartedAt));
           const parts = [
             {
               text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
@@ -85,6 +89,7 @@ export function installStatusline(pi) {
           const repo = repoBasename(ctx.cwd);
           if (repo) parts.push({ text: repo, color: "text" });
           if (cache != null) parts.push({ text: `Cache ${cache}%`, color: "dim" });
+          if (latency) parts.push({ text: latency, color: "dim" });
 
           const painted = parts
             .map((part) => (theme?.fg ? theme.fg(part.color, part.text) : part.text))

@@ -293,6 +293,66 @@ ChatGPT 구독 OAuth backend에 직접 실측한 결과 `prompt_cache_retention:
 
 fx는 세션 저장 모드에서만 `x-session-id`/`x-session-affinity`를 보냈다. `--no-save`로 돌리면 두 헤더가 아예 없고, bridge의 `sessionId`가 `undefined`가 되어 `prompt_cache_key`도 실리지 않는다. xAI와 codex는 이 값이 서버 affinity의 전부이므로 `--no-save` 반복 호출은 매번 cold를 부른다. 비용을 재거나 캐시를 논할 때는 저장 모드로 돌린다 (`~/.fx/usage.jsonl` 기록도 `--no-save`에서는 남지 않았다).
 
+## 측정 기록 — 기본은 꺼져 있다
+
+호출마다 TTFT·모델 소요·호출 사이 대기·프로바이더 토큰 사용량(캐시 읽기/쓰기 분해)·컨텍스트
+세그먼트 다이제스트를 남기는 기록기가 `harness/rubato-pi/src/measurement-recorder.mjs`에 있다.
+`RUBATO_MEASUREMENT_LOG=<path>`가 켜져 있을 때만 동작하고, 꺼져 있으면 `measurementRecorder()`가
+`undefined`를 돌려줘 완전한 no-op이다 — 벤치마크 스크립트(`scripts/run-measurement-benchmarks.mjs`)
+말고는 아무도 이 변수를 켜지 않았으므로, 지금까지 실사용 세션은 아무것도 기록하지 않았다.
+
+**일상 세션에서 켜려면 경로를 손으로 만들 필요 없이 `RUBATO_MEASUREMENT=1`.** `launchEnv()`
+(`src/brand.mjs`)가 `RUBATO_MEASUREMENT_LOG`가 이미 안 잡혀 있을 때만
+`~/.rubato-pi/agent/measurements/<ISO시각>-<pid>.jsonl`을 대신 채운다. 직접 경로를 준
+`RUBATO_MEASUREMENT_LOG`가 있으면 그쪽이 항상 이긴다.
+
+**기본은 여전히 꺼짐이다.** 두 변수 다 없으면 정상 세션은 0에 가까운 비용을 낸다 — 실측(이 머신,
+Apple M4): ~870KB 컨텍스트에서 `contextSegments()`(직렬화 + sha256 해시)가 호출당 약 1ms,
+~1MB 이벤트 줄의 `appendFileSync`가 약 0.7ms. 3MB짜리 극단적으로 큰 프롬프트에서도 약 4.3ms다.
+모델 호출 자체가 보통 수백 ms~수십 초인 것과 비교하면 무시할 수 있는 수준이라, 기본을 켜둘 만큼
+안전하지만 그래도 명시적 opt-in으로 남겨 뒀다 — 기록은 디스크에 프롬프트 다이제스트와 도구 결과
+존재 여부를 남기고, 이건 사용자가 원할 때만 쌓여야 하는 흔적이다.
+
+`RUBATO_MEASUREMENT_CAPTURE_RAW=1` + `RUBATO_MEASUREMENT_RAW_DIR=<dir>`는 호출마다 전체 요청
+body를 그대로 파일로 남긴다. **개인정보·비밀 유출 위험이 있으므로 기본은 언제나 꺼짐이고, 진단이
+필요할 때만 짧게 켠다.**
+
+동시에 여러 rubato 세션이 같은 로그 파일에 append 할 때: `appendFileSync`는 `O_APPEND`로 열어
+커널이 write 오프셋을 직렬화하므로 각 프로세스의 한 줄은 서로 끼어들지 않는다 — 실측으로 두 개의
+동시 프로세스가 300KB, 5MB짜리 줄을 각각 섞어 써도(macOS/APFS) 깨진 줄이 하나도 없었다. 다만
+`RUBATO_MEASUREMENT=1`로 자동 생성한 경로는 프로세스마다 다른 파일명(타임스탬프+pid)이라 애초에
+같은 파일에 몰릴 일이 거의 없다 — 같은 파일에 몰리는 경우는 `RUBATO_MEASUREMENT_LOG`를 여러
+세션에 똑같이 손으로 준 경우뿐이다.
+
+분석은 `scripts/analyze-measurements.mjs events.jsonl`. TTFT·모델 소요·초당 토큰·캐시 드롭 후보
+진단·태스크 단위 합산을 JSON으로 뽑는다.
+
+## 상태줄의 '실제 속도'
+
+상태줄(`src/extensions/statusline.mjs`)은 기존에 모델·컨텍스트 잔량·브랜치·레포·`Cache N%`만
+보여줬고, 실제 응답이 얼마나 걸렸는지는 없었다. `tok/s`나 캐시율은 처리량이지 벽시계 지연이
+아니다 — 사용자가 원한 건 '이번 턴이 느렸는지, 느렸다면 첫 토큰 전이었는지 후였는지'다.
+
+broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assistant 메시지에
+`timing: { sentAt, processStartedAt, ttftMs, modelDurationMs }`를 붙인다. 첫 실제 텍스트·reasoning·
+도구 인자 delta가 올 때까지를 TTFT로 세고, 빈 start 프레임은 세지 않는다. 이 계산은 측정 기록기와
+완전히 독립이고, **`RUBATO_MEASUREMENT_LOG`가 꺼져 있어도 항상 계산된다** — 실제 속도를 보려고
+프롬프트 다이제스트 기록까지 켤 필요는 없다.
+
+상태줄은 현재 프로세스가 만든 가장 최근의 유효한 timing에서 `ttft 420ms`만 붙인다
+(`formatLatency`, `src/statusline.mjs`). 이전 프로세스에서 세션 파일에 저장된 값, 실패·중단된 호출,
+델타 없이 끝난 호출은 표시하지 않는다. `modelDurationMs`는 답변 길이에 따라 늘어나는 raw duration이라
+속도처럼 보이지 않도록 상태줄에서는 숨기되, 오프라인 분석용 데이터에는 그대로 남긴다.
+
+실측 예시(2026-08-24, xai/grok-4.6, 실제 브리지 호출):
+
+```
+✦ Grok 4.6 · 100%(256K) · rubato/base · Rubato · Cache 2% · ttft 2.0s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
+```
+
+(`ttftMs: 1981.1`, `modelDurationMs: 4927.7` — 같은 호출을
+`scripts/analyze-measurements.mjs`로 분석한 결과와 일치한다.)
+
 ## 레이아웃
 
 ```text

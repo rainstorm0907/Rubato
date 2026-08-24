@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { performance } from "node:perf_hooks";
 import { senpiNested } from "./engine-paths.mjs";
 
 // pi-ai 는 senpi 가 자기 node_modules 에 품고 있다. bare import 로 쓰면 이 패키지
@@ -233,9 +234,21 @@ function emptyAssistant() {
 export function streamBroker(model, context, options = {}) {
   const stream = createAssistantMessageEventStream();
   const output = emptyAssistant();
-  const recorder = options.measurementRecorder ?? measurementRecorder(options.env ?? process.env);
+  let recorder = options.measurementRecorder;
+  if (recorder === undefined) {
+    try { recorder = measurementRecorder(options.env ?? process.env); } catch {}
+  }
   output.model = catalogId(model);
   output.provider = model.provider;
+  // 벽시계 지연은 측정 기록기(recorder)와 별개로 항상 계산한다. RUBATO_MEASUREMENT_LOG
+  // 가 꺼져 있어도(기본값) 상태줄은 '실제 속도'를 보여줘야 하고, performance.now() 두
+  // 번 빼는 비용은 무시할 수 있다 — JSON 직렬화나 해시가 전혀 없다.
+  const monotonic = options.monotonic ?? (() => performance.now());
+  const wallNow = options.wallNow ?? (() => Date.now());
+  const sentAtMs = monotonic();
+  const sentAtWallMs = wallNow();
+  const processStartedAt = options.processStartedAt ?? Math.floor(Date.now() - performance.now());
+  let firstOutputAtMs;
   ;(async () => {
     stream.push({ type: "start", partial: output });
     let settled = false;
@@ -246,8 +259,28 @@ export function streamBroker(model, context, options = {}) {
     let emittedDelta = false;
     const emit = (event) => {
       if ((event.type === "done" || event.type === "error") && settled) return;
-      if (event.type === "done" || event.type === "error") settled = true;
-      else emittedDelta = true;
+      if (event.type === "done" || event.type === "error") {
+        settled = true;
+        // 에러와 사용자 중단은 직전 성공 턴의 속도를 덮지 않는다. 도구가 살아 있는
+        // 사용자 중단도 성공한 모델 응답은 아니므로 timing 을 붙이지 않는다.
+        if (event.type === "done" && !options.signal?.aborted) {
+          const endedAtMs = monotonic();
+          output.timing = {
+            sentAt: sentAtWallMs,
+            processStartedAt,
+            ...(firstOutputAtMs === undefined ? {} : { ttftMs: firstOutputAtMs - sentAtMs }),
+            // 요청 변환/onPayload/선택적 측정 준비부터 종단 프레임까지의 전체 broker 호출 시간이다.
+            modelDurationMs: endedAtMs - sentAtMs,
+          };
+        }
+      } else {
+        emittedDelta = true;
+        // TTFT 는 빈 start/end 프레임이 아니라 사용자가 실제로 볼 첫 내용이다.
+        // 텍스트와 reasoning delta, 도구 인자 delta 를 토큰으로 세고 frame opener 는 세지 않는다.
+        const isContentDelta = event.type === "text_delta" ||
+          event.type === "thinking_delta" || event.type === "toolcall_delta";
+        if (isContentDelta && firstOutputAtMs === undefined) firstOutputAtMs = monotonic();
+      }
       if (measurementCallId && event.type !== "start" && event.type !== "done" && event.type !== "error") {
         try { recorder?.firstOutput(measurementCallId, { outputType: event.type }); } catch {}
       }

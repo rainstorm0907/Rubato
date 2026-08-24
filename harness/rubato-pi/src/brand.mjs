@@ -24,6 +24,21 @@ export function defaultAgentDir(home = homedir()) {
   return join(home, CONFIG_DIR_NAME, "agent");
 }
 
+/**
+ * `RUBATO_MEASUREMENT_LOG=<path>` is the low-level toggle the recorder itself checks
+ * (measurement-recorder.mjs `enabled()`) and stays the way to route measurements to a
+ * chosen file, e.g. from run-measurement-benchmarks.mjs. For everyday interactive use,
+ * nobody wants to construct a path by hand, so `RUBATO_MEASUREMENT=1` picks one under the
+ * agent profile dir when RUBATO_MEASUREMENT_LOG was not already set explicitly.
+ * Recording defaults OFF: neither var set means measurementRecorder() stays a no-op, so a
+ * normal session pays nothing (measured: contextSegments() on an ~870KB context costs under
+ * 1ms, appendFileSync for a ~1MB event line under 0.7ms).
+ */
+export function defaultMeasurementLogPath(agentDir, { now = () => new Date(), pid = process.pid } = {}) {
+  const stamp = now().toISOString().replace(/[:.]/g, "-");
+  return join(agentDir, "measurements", `${stamp}-${pid}.jsonl`);
+}
+
 export function launchEnv(baseEnv, agentDir) {
   const env = { ...baseEnv };
   delete env.OMO_NATIVE;
@@ -36,5 +51,8 @@ export function launchEnv(baseEnv, agentDir) {
   env.DO_NOT_TRACK = "1";
   env.FX_CACHE_RETENTION = env.FX_CACHE_RETENTION ?? CACHE_RETENTION;
   env.PI_CACHE_RETENTION = env.PI_CACHE_RETENTION ?? CACHE_RETENTION;
+  if (env.RUBATO_MEASUREMENT === "1" && !env.RUBATO_MEASUREMENT_LOG) {
+    env.RUBATO_MEASUREMENT_LOG = defaultMeasurementLogPath(agentDir);
+  }
   return env;
 }
