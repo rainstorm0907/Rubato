@@ -81,10 +81,11 @@ export function ensureSessionDefaults(
     ...current,
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL_ID,
-    // 사고 델타는 세 프로바이더 모두 실시간으로 들어온다(실측: opus 13개/11.7s,
-    // grok 64개/44.6s, codex 4개, 빈 델타 0개). 숨김 경로는 그 산문을 그리지 않고
-    // Thinking... 라벨만 남기므로, 기본을 노출로 둬서 만들어지는 과정을 보여준다.
-    hideThinkingBlock: current.hideThinkingBlock ?? false,
+    // true 는 "안 보여준다" 가 아니라 "접어 둔다" 는 뜻이다. 렌더러는
+    // hideThinkingBlock && !thinkingExpanded 로 판정하므로, true 여야 라벨을
+    // 눌러 펴고 그 안에서 사고가 흐른다. false 로 두면 접기 자체가 사라져
+    // 산문이 본문에 그대로 쏟아진다.
+    hideThinkingBlock: current.hideThinkingBlock ?? true,
     // 기본 3회(2+4+8초)는 브리지가 npm install 을 끼고 다시 뜨는 경우를 못 덮는다.
     // 5회면 약 62초까지 버틴다. 사용자가 적어 둔 값은 건드리지 않는다.
     retry: { maxRetries: 5, ...current.retry },

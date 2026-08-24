@@ -44,7 +44,7 @@ test("session defaults pin Opus without dropping other settings", () => {
   assert.equal(next.defaultProvider, "anthropic");
   assert.equal(next.defaultModel, "claude-opus-5");
   assert.equal(next.theme, "dark");
-  assert.equal(next.hideThinkingBlock, false);
+  assert.equal(next.hideThinkingBlock, true);
   assert.equal(next.tips, false);
   assert.ok(next.disabledBuiltinExtensions.includes("claude-sdk-oauth"));
   assert.ok(next.disabledBuiltinExtensions.includes("cursor-cli-oauth"));
@@ -54,10 +54,10 @@ test("session defaults pin Opus without dropping other settings", () => {
 test("session defaults preserve an explicit thinking visibility preference", () => {
   const next = ensureSessionDefaults("/tmp/agent", {
     exists: (path) => path.endsWith("settings.json"),
-    readFile: () => JSON.stringify({ hideThinkingBlock: true }),
+    readFile: () => JSON.stringify({ hideThinkingBlock: false }),
     writeFile: () => {},
   });
-  assert.equal(next.hideThinkingBlock, true);
+  assert.equal(next.hideThinkingBlock, false);
 });
 
 test("models.json disables vercel and other foreign builtins without dropping user providers", () => {
