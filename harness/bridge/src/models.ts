@@ -67,6 +67,6 @@ export function opencodexModelsToFxCatalog(payload: unknown): { object: "list"; 
 export function removeDirectProviderModels(proxied: JsonObject[]): JsonObject[] {
   return proxied.filter((entry) => {
     const id = asString(entry.id);
-    return id && !id.startsWith("openai/") && !id.startsWith("xai/") && !id.startsWith("anthropic/");
+    return id && !id.startsWith("openai/") && !id.startsWith("xai/") && !id.startsWith("anthropic/") && !id.startsWith("google-antigravity/");
   });
 }

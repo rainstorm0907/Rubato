@@ -225,6 +225,7 @@ async function proxyChat(
   config: ReturnType<typeof loadConfig>,
   req: IncomingMessage,
   res: ServerResponse,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const model = header(req, "ai-language-model-id");
   const sessionId = header(req, "x-session-id") ?? header(req, "x-session-affinity");
@@ -260,6 +261,7 @@ async function proxyChat(
         sessionId,
         signal: controller.signal,
         cacheRetention: config.cacheRetention,
+        env,
       })) {
         if (controller.signal.aborted || res.writableEnded || !res.writable) break;
         res.write(frame);
@@ -407,7 +409,7 @@ export function startBridge(
       if (req.method === "POST" && url.pathname === "/v3/ai/language-model") {
         state.inflight += 1;
         try {
-          await proxyChat(config, req, res);
+          await proxyChat(config, req, res, env);
         } finally {
           state.inflight -= 1;
         }

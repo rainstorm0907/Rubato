@@ -37,6 +37,7 @@ test("fx history and tools become pi-ai context without executing tools", () => 
 test("xAI and Anthropic use the direct provider route", () => {
   assert.equal(isDirectModel("xai/grok-4.6"), true);
   assert.equal(isDirectModel("anthropic/claude-opus-5"), true);
+  assert.equal(isDirectModel("google-antigravity/gemini-3.7-flash"), true);
   assert.equal(isDirectModel("cursor/grok-4.6"), false);
   assert.equal(isDirectModel("openai/gpt-5.6-sol"), false);
 });

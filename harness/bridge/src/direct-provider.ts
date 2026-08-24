@@ -8,6 +8,7 @@ import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
 import type { CacheRetention } from "./config.ts";
 import { gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
+import { antigravityToFxSse } from "./antigravity.ts";
 import { encodeSseData, encodeSseDone } from "./sse.ts";
 import { upstreamFetch } from "./upstream-dispatcher.ts";
 
@@ -18,7 +19,7 @@ const DEFAULT_XAI_AUTH_PATH = join(homedir(), ".senpi", "agent", "auth.json");
 
 export function isDirectModel(model: string): boolean {
   return model.startsWith("xai/") || model.startsWith("anthropic/") || model.startsWith("claude-")
-    || model.startsWith("openai-codex/");
+    || model.startsWith("openai-codex/") || model.startsWith("google-antigravity/");
 }
 
 type DirectProvider = "xai" | "anthropic" | "openai-codex";
@@ -46,6 +47,8 @@ export const DIRECT_CATALOG = [
   { id: "openai-codex/gpt-5.6-sol", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
   { id: "openai-codex/gpt-5.6-luna", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
   { id: "openai-codex/gpt-5.6-terra", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "google-antigravity/gemini-3.7-flash", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
+  { id: "google-antigravity/gemini-3.1-pro", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
 ];
 
 export function claudeCodeUserAgentFromTarget(target: string): string {
@@ -293,7 +296,12 @@ export async function* directProviderToFxSse(args: {
   signal?: AbortSignal;
   xaiAuthPath?: string;
   cacheRetention?: CacheRetention;
+  env?: NodeJS.ProcessEnv;
 }): AsyncGenerator<string> {
+  if (args.model.startsWith("google-antigravity/")) {
+    yield* antigravityToFxSse(args);
+    return;
+  }
   const selected = providerModel(args.model);
   const authContext = selected.provider === "anthropic"
     ? { env: async (name: string) => name === "ANTHROPIC_OAUTH_TOKEN" ? await readClaudeSetupToken() : undefined, fileExists: async () => false }

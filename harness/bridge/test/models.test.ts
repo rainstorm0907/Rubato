@@ -27,6 +27,7 @@ test("direct providers never reappear through OpenCodex", () => {
       { id: "gpt-5.6-sol", owned_by: "openai" },
       { id: "gpt-5.7-pro", owned_by: "openai" },
       { id: "cursor/gpt-5.6-sol", owned_by: "cursor" },
+      { id: "google-antigravity/gemini-3.7-flash", owned_by: "google" },
     ],
   });
   const filtered = removeDirectProviderModels(catalog.data);
