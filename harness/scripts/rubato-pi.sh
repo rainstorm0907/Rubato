@@ -129,6 +129,37 @@ if [ -z "${RUBATO_NO_VAULT-}" ] && [ -f "$HOME/.config/cmux/cmux.json" ]; then
   "$NODE" "$HERE/cmux-vault.mjs" --apply >/dev/null 2>&1 || true
 fi
 
+# 브리지 supervisor 를 심는다. 없으면 로그인 때 브리지가 안 뜨고, 크래시나
+# SIGKILL 뒤에 아무도 되살리지 않는다 — rubato-restart.sh 는 "supervisor 가
+# 되살린다" 를 전제로 SIGKILL 뒤 재기동을 건너뛰는 분기가 있어서, supervisor 가
+# 없는 머신에서는 그 자리가 그대로 정전이 된다.
+#
+# 이미 등록돼 있으면 아무것도 안 한다. install-supervisor.sh --apply 는 매번
+# bootout→bootstrap 을 하므로(새 plist 를 읽히려고) 그대로 부르면 세션을 띄울
+# 때마다 살아 있는 브리지를 내렸다 올린다. 등록 여부를 여기서 먼저 본다.
+# 끄려면 RUBATO_NO_SUPERVISOR=1.
+if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; then
+  _sv_label="${RUBATO_SUPERVISOR_LABEL:-dev.rubato.bridge}"
+  _sv_installed=1
+  case "$(uname -s)" in
+    Darwin)
+      launchctl print "gui/$(id -u)/${_sv_label}" >/dev/null 2>&1 || _sv_installed=0
+      ;;
+    Linux)
+      _sv_unit="${RUBATO_SUPERVISOR_UNIT:-rubato-bridge.service}"
+      if command -v systemctl >/dev/null 2>&1; then
+        [ "$(systemctl --user show "$_sv_unit" -p LoadState --value 2>/dev/null)" = "loaded" ] || _sv_installed=0
+      fi
+      ;;
+    *) ;;
+  esac
+  if [ "$_sv_installed" -eq 0 ]; then
+    splash step "브리지 supervisor"
+    "$HERE/install-supervisor.sh" --apply >/dev/null 2>&1 || true
+  fi
+  unset _sv_label _sv_installed _sv_unit 2>/dev/null || true
+fi
+
 # fetch 가 아직이면 여기서 받는다. 이미 끝났으면 wait 은 즉시 돌아온다.
 if [ -n "${UPDATE_PID-}" ]; then
   splash step "업데이트 확인"
