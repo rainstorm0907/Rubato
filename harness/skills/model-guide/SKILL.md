@@ -35,11 +35,13 @@ Route by asking: **what part is hardest to get right?**
 |---|---|
 | Understanding people, product value, or what should be built | problem framer — usually a framing step or human dialogue, not a standing teammate |
 | Cross-stream architecture, contracts, integration | structurer — often the lead itself |
-| Discovering and proving the correct technical change | hypothesis converger |
+| Discovering and proving the correct technical change | the outcome's current owner — diagnosis is judgment, not a delegable phase (see the debugging note) |
 | Executing a settled change across tools, files, runtime | action converger |
 | Falsifying a material implementation | fresh verifier with a *different* profile from the writer |
 
 Two convergers are not interchangeable: a hypothesis converger compresses the answer space, an action converger compresses the action space. A patch built by an action converger is well checked by a hypothesis converger — their failure modes rarely overlap. Neither substitutes for a framer when the variables of the problem are themselves undecided.
+
+Debugging is the case that tempts misrouting. The diagnosis is judgment, and judgment stays with the session that owns the outcome — lead and teammate alike. Default shape: a `grok` explorer maps the terrain and gathers evidence, the owner reasons to the root cause, and execution of the settled fix routes by breadth as usual. Hand a debugging workstream to a child only when it is genuinely separable and runs parallel to other work; then the owner is Opus, with Sol as its reviewer.
 
 ## 3. Current catalog mapping (operational — verify against the live catalog)
 
@@ -47,7 +49,7 @@ Pinned 2026-08. Names are replaceable mappings, not universal claims. Copy exact
 
 - **Fable 5** — problem framer. Optional framing and human-outcome review before execution or at a rare alignment gate; do not create a standing Fable teammate by default.
 - **Opus 5** — structurer. Strong default lead and default owner; may own a highly coupled architectural outcome.
-- **GPT-5.6 Sol** — hypothesis converger. Owner when root-cause discovery, algorithmic reasoning, invariants, performance diagnosis, or proof is the hard part; if Sol finds the cause, Sol implements the fix and regression test. Operator note (2026-08): Sol quota is the scarcer wallet — reserve Sol ownership for workstreams where that loop is genuinely the bottleneck; Opus is the default owner otherwise.
+- **GPT-5.6 Sol** — hypothesis converger. The supervisor seat: adversarial review, independent verification, second opinion on a diagnosis the owner is stuck on. Give Sol ownership only when the proof itself is the deliverable. Operator note (2026-08): Sol quota is the scarcer wallet — a Sol child handed a debugging brief will dig through the code itself, and that legwork is the waste; Opus is the default owner.
 - **Grok 4.6** — action converger. Owner when the contract is settled and breadth of execution is the hard part. A regular child like any other (`task` with a model, or `team_create` with category `grok`), not a separate CLI lane.
 
 Verifier defaults when an independent check is worth the cost:
@@ -63,7 +65,7 @@ Defaults, not mandatory pairings. A clear low-risk task may use owner self-verif
 - One bounded technical outcome → one owner.
 - One material or ambiguous outcome → owner + verifier.
 - Two genuinely independent outcomes → two owners; verifier only if integration risk warrants.
-- Unclear root cause → one hypothesis-converger owner first; competing hypotheses only when evidence paths are genuinely separable.
+- Unclear root cause → the owner diagnoses from a `grok` map; only a genuinely separable, parallel debugging workstream gets a child owner, and that owner is Opus.
 - Product or UX uncertainty → framing before execution, then the chosen owners.
 
 Do not build a four-model org chart just because all models are available.
