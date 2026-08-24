@@ -35,6 +35,7 @@ export default async function rubatoPiAdapter(pi) {
   installStatusline(pi);
   installEvalSearchGuard(pi);
   const member = isTeamMemberProcess();
+  const role = resolveRole();
   if (!member) installSessionTitle(pi);
   if (!leadOverlayLoaded(process.argv) && !member) {
     await dagOverlay(pi);
@@ -47,11 +48,11 @@ export default async function rubatoPiAdapter(pi) {
   pi.on("session_start", (event, ctx) => {
     const entries = ctx.sessionManager?.getEntries?.() ?? [];
     if (!shouldInjectContractSkills(event.reason, entries)) return;
-    pi.sendMessage(contractSkillsMessage(), { triggerTurn: false, deliverAs: "nextTurn" });
+    pi.sendMessage(contractSkillsMessage(role), { triggerTurn: false, deliverAs: "nextTurn" });
   });
 
   pi.on("before_agent_start", async (event) => ({
-    systemPrompt: replaceSystemPrompt(event.systemPrompt ?? "", resolveRole()),
+    systemPrompt: replaceSystemPrompt(event.systemPrompt ?? "", role),
   }));
 
   pi.on("tool_call", async (event) => {
