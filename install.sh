@@ -196,6 +196,17 @@ else
   ok "필수 계약 스킬 확인"
 fi
 
+head_ "단계 3.5 · 확장"
+# senpi 가 agentDir/extensions 를 훑어 자동으로 불러오는 사용자 확장이다.
+# harness/rubato-pi/src/extensions/ 의 것들과 다르다 — 저쪽은 launch.mjs 가
+# 경로를 직접 지정해 실어 넣는 하네스 부품이라 설치라는 단계가 없다.
+if [ "$APPLY" -eq 0 ]; then
+  plan "harness/scripts/install-extensions.sh  (번들 → agentDir/extensions, 있는 것은 유지)"
+else
+  "$HARNESS/scripts/install-extensions.sh" >/dev/null || { err "확장 설치 실패"; exit 1; }
+  ok "번들 확장"
+fi
+
 fi   # ONLY_SHELL 스킵 끝
 
 head_ "단계 4 · alias"

@@ -86,10 +86,13 @@ printf '\n%s== 새 커밋 %s개 ==%s\n' "$BOLD" "$BEHIND" "$RST"
 git log --oneline --no-decorate "HEAD..origin/$BRANCH" | sed 's/^/  /'
 
 CHANGED="$(git diff --name-only "HEAD..origin/$BRANCH")"
-need_deps=0; need_prompts=0; need_skills=0; need_engine=0; need_shell=0
+need_deps=0; need_prompts=0; need_skills=0; need_engine=0; need_shell=0; need_extensions=0
 echo "$CHANGED" | grep -q '^package\.json\|^bun\.lock\|^harness/package\.json\|^harness/rubato-pi/package\.json' && need_deps=1
 echo "$CHANGED" | grep -q '^harness/prompts/' && need_prompts=1
 echo "$CHANGED" | grep -q '^harness/skills/' && need_skills=1
+# 자동 로드되는 사용자 확장. 설치기 자신이 바뀌어도 다시 깐다 — 설치 규칙이
+# 바뀐 경우이므로 내용이 그대로여도 배치가 달라질 수 있다.
+echo "$CHANGED" | grep -q '^harness/extensions/\|^harness/scripts/install-extensions\.sh' && need_extensions=1
 echo "$CHANGED" | grep -q '^packages/' && need_engine=1
 # 셸 설정은 alias 블록과 cmux Vault 등록이다. 둘 다 내 집(~/.zshrc, ~/.config/cmux)
 # 을 고치는 일이라 소스를 받는 것만으로는 반영되지 않는다.
@@ -101,9 +104,10 @@ printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 [ "$need_deps" = 1 ]    && echo "  의존성 설치"
 [ "$need_prompts" = 1 ] && echo "  시스템 프롬프트 합성"
 [ "$need_skills" = 1 ]  && echo "  번들 스킬 → ~/.agents/skills"
+[ "$need_extensions" = 1 ] && echo "  번들 확장 → agentDir/extensions"
 [ "$need_shell" = 1 ]   && echo "  셸 alias 블록 · cmux 세션 복원"
 [ "$need_engine" = 1 ]  && echo "  엔진 플러그인 빌드 ${DIM}(몇 분 걸려요)${RST}"
-[ "$need_deps$need_prompts$need_skills$need_engine$need_shell" = "00000" ] && echo "  ${DIM}없음 — 소스만 받으면 돼요${RST}"
+[ "$need_deps$need_prompts$need_skills$need_extensions$need_engine$need_shell" = "000000" ] && echo "  ${DIM}없음 — 소스만 받으면 돼요${RST}"
 
 # 로컬 수정이 있어도 멈추지 않는다.
 #
@@ -244,6 +248,12 @@ fi
 
 if [ "$need_skills" = 1 ]; then
   "$HARNESS/scripts/install-skills.sh" >/dev/null 2>&1 && ok "번들 스킬" || warn "스킬 설치 경고"
+fi
+
+# 확장은 덮어쓰지 않는다. 이 디렉터리는 Orca 가 심는 확장(orca-*.ts)과
+# 사람이 손본 판이 같이 사는 자리라, 새 파일만 넣고 있는 것은 둔다.
+if [ "$need_extensions" = 1 ]; then
+  "$HARNESS/scripts/install-extensions.sh" >/dev/null 2>&1 && ok "번들 확장" || warn "확장 설치 경고"
 fi
 
 # 셸 alias 블록. install.sh 가 정본이라 여기서 목록을 베끼지 않고 그걸 부른다.
