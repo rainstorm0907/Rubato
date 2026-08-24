@@ -112,9 +112,9 @@ test("latency milliseconds render as ms under a second, seconds above it", () =>
 });
 
 test("the latency footer segment shows ttft but never raw turn duration", () => {
-  assert.equal(formatLatency({ ttftMs: 420, modelDurationMs: 3400 }), "ttft 420ms");
+  assert.equal(formatLatency({ ttftMs: 420, modelDurationMs: 3400 }), "delay 420ms");
   assert.equal(formatLatency({ modelDurationMs: 1200 }), "");
-  assert.equal(formatLatency({ ttftMs: 200 }), "ttft 200ms");
+  assert.equal(formatLatency({ ttftMs: 200 }), "delay 200ms");
   assert.equal(formatLatency({}), "");
   assert.equal(formatLatency(null), "");
 });
@@ -236,7 +236,7 @@ test("the footer shows current-process ttft without rendering raw turn duration"
     { fg: (_color, text) => text },
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
-  const left = "✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80% · ttft 420ms";
+  const left = "✦ Opus 5 high · 60%(1M) · main · agent-taskforce · Cache 80% · delay 420ms";
   const rendered = footer.render(140)[0];
   assert.equal(rendered.startsWith(left), true);
   assert.equal(rendered.includes("turn"), false);

@@ -205,7 +205,7 @@ export function formatLatencyMs(ms) {
 /** 상태줄에는 답변 길이에 독립적인 첫 토큰 지연만 속도로 표시한다. */
 export function formatLatency(timing) {
   const ttft = formatLatencyMs(timing?.ttftMs);
-  return ttft ? `ttft ${ttft}` : "";
+  return ttft ? `delay ${ttft}` : "";
 }
 
 export function statuslineSegments({ model, remaining, window, branch, repo }) {

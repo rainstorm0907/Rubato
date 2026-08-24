@@ -339,7 +339,7 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 완전히 독립이고, **`RUBATO_MEASUREMENT_LOG`가 꺼져 있어도 항상 계산된다** — 실제 속도를 보려고
 프롬프트 다이제스트 기록까지 켤 필요는 없다.
 
-상태줄은 현재 프로세스가 만든 가장 최근의 유효한 timing에서 `ttft 420ms`만 붙인다
+상태줄은 현재 프로세스가 만든 가장 최근의 유효한 timing에서 `delay 420ms`만 붙인다
 (`formatLatency`, `src/statusline.mjs`). 이전 프로세스에서 세션 파일에 저장된 값, 실패·중단된 호출,
 델타 없이 끝난 호출은 표시하지 않는다. `modelDurationMs`는 답변 길이에 따라 늘어나는 raw duration이라
 속도처럼 보이지 않도록 상태줄에서는 숨기되, 오프라인 분석용 데이터에는 그대로 남긴다.
@@ -347,7 +347,7 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 실측 예시(2026-08-24, xai/grok-4.6, 실제 브리지 호출):
 
 ```
-✦ Grok 4.6 · 100%(256K) · rubato/base · Rubato · Cache 2% · ttft 2.0s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
+✦ Grok 4.6 · 100%(256K) · rubato/base · Rubato · Cache 2% · delay 2.0s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
 ```
 
 (`ttftMs: 1981.1`, `modelDurationMs: 4927.7` — 같은 호출을
