@@ -89,6 +89,55 @@ test("Codex direct sends the configured reasoning effort on the upstream wire", 
   assert.deepEqual(wireBody.reasoning, { effort: "high", summary: "auto" });
 });
 
+// 위의 fxPromptToPiContext 테스트는 우리 변환까지만 본다. 여기는 pi-ai 직렬화까지 끌고 가서
+// 실제 상류 요청 바디에 base64 가 있는지를 본다 — "우리가 넘겼다" 와
+// "모델에게 닿는다" 는 다른 명제다. tools 를 꼭 준다 — 없으면 pi-ai 가
+// tool call 을 <unavailable-tool-result> 로 바꾸면서 이미지를 [image] 로 지운다.
+test("a read image reaches the codex wire as input_image", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fx-codex-image-"));
+  const authPath = join(directory, "auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  writeFileSync(authPath, JSON.stringify({
+    "openai-codex": { type: "oauth", access: `header.${payload}.signature`, refresh: "refresh", expires: Date.now() + 3_600_000 },
+  }));
+  let wireBody;
+  const upstreamFetch = async (_url, init) => {
+    const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
+    const encoded = new Headers(init?.headers).get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    wireBody = encoded.toString("utf8");
+    return new Response([
+      'data: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  for await (const _frame of directProviderToFxSse({
+    model: "openai-codex/gpt-5.6-sol",
+    body: {
+      prompt: [
+        { role: "user", content: [{ type: "text", text: "look" }, { type: "image", data: "UUFB", mimeType: "image/png" }] },
+        { role: "assistant", content: [{ type: "tool-call", toolCallId: "c1", toolName: "read", input: { path: "a.png" } }] },
+        {
+          role: "tool",
+          content: [{
+            type: "tool-result",
+            toolCallId: "c1",
+            toolName: "read",
+            output: [{ type: "text", text: "Read image file" }, { type: "image", data: "UkVBRA", mimeType: "image/png" }],
+          }],
+        },
+      ],
+      tools: [{ name: "read", description: "read", inputSchema: { type: "object", properties: { path: { type: "string" } } } }],
+    },
+    xaiAuthPath: authPath,
+    upstreamFetch,
+    transport: "sse",
+  })) { /* drain */ }
+  assert.ok(wireBody, "upstream fetch was not called");
+  assert.match(wireBody, /data:image\/png;base64,UUFB/);
+  assert.match(wireBody, /data:image\/png;base64,UkVBRA/);
+});
+
 test("Claude direct presents fx tools with Claude Code-compatible names", () => {
   assert.equal(fxToolToClaude("read_file"), "Read");
   assert.equal(claudeToolToFx("Read"), "read_file");
