@@ -68,16 +68,25 @@ describe("resolveMemoryIdentity auto mode", () => {
 })
 
 describe("resolveMemoryIdentity explicit mode", () => {
-  it("#given explicit id 'backend-lead' #when resolved #then the dir is agents/backend-lead-<hash>", () => {
+  it("#given a slug-safe explicit id 'backend-lead' #when resolved #then the dir is agents/backend-lead with no hash suffix", () => {
     // given / when
     const identity = resolveMemoryIdentity("backend-lead", "/repo/alpha", {})
     // then
-    const expectedId = `backend-lead-${expectedHash("backend-lead")}`
+    expect(identity.safeSlug).toBe("backend-lead")
+    expect(identity.id).toBe("backend-lead")
+    expect(identity.paths.root).toBe(
+      join(homedir(), ".omo", "memory", AGENTS_DIRNAME, "backend-lead"),
+    )
+  })
+
+  it("#given an explicit id that is not slug-safe #when resolved #then the hash suffix disambiguates it", () => {
+    // given / when
+    const identity = resolveMemoryIdentity("Backend Lead", "/repo/alpha", {})
+    // then
+    const expectedId = `backend-lead-${expectedHash("Backend Lead")}`
     expect(identity.safeSlug).toBe("backend-lead")
     expect(identity.id).toBe(expectedId)
-    expect(identity.paths.root).toBe(
-      join(homedir(), ".omo", "memory", AGENTS_DIRNAME, expectedId),
-    )
+    expect(identity.id).not.toBe("backend-lead")
   })
 
   it("#given an explicit id with surrounding whitespace #when resolved #then it matches the trimmed form", () => {

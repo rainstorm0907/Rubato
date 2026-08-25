@@ -50,6 +50,14 @@ function deriveAutoId(cwd: string): { id: string; safeSlug: string } {
 
 function deriveExplicitId(trimmedValue: string): { id: string; safeSlug: string } {
   const safeSlug = sanitizeToSlug(trimmedValue)
+  // An explicit agent name is operator-chosen, so it becomes the directory name verbatim
+  // when it is already slug-safe: the id is what search results print, and a hash suffix
+  // is noise a reader (human or model) cannot act on. Path safety does not depend on the
+  // suffix -- sanitizeToSlug strips every character outside [a-z0-9-], so traversal is
+  // impossible either way. The suffix still disambiguates auto ids, where two distinct
+  // cwds can share a basename; a collision between two chosen names is operator error and
+  // is surfaced rather than silently split into separate stores.
+  if (trimmedValue === safeSlug) return { id: safeSlug, safeSlug }
   return { id: `${safeSlug}-${shortHash(trimmedValue)}`, safeSlug }
 }
 

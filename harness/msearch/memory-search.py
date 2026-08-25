@@ -1388,19 +1388,56 @@ def indexed_scopes() -> list[str]:
     return sorted(found)
 
 
+def explicit_agent_name() -> str | None:
+    """프로젝트 설정에 박힌 memory.agent 값.
+
+    cwd 에서 위로 거슬러 올라가며 <dir>/.omo/omo.jsonc 를 찾는다. rubato 의 설정
+    탐색과 같은 순서다. 주석이 섞인 jsonc 이므로 정규식으로만 뽑는다 — 이 값은 색인
+    스코프일 뿐이라 완전한 파서가 필요없고, 못 찾으면 auto 로 떨어진다.
+    """
+    here = Path.cwd().resolve()
+    for directory in [here, *here.parents]:
+        config = directory / ".omo" / "omo.jsonc"
+        if not config.is_file():
+            continue
+        try:
+            text = config.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        text = re.sub(r"//[^\n]*", "", text)
+        match = re.search(r'"agent"\s*:\s*"([^"]+)"', text)
+        if match is None:
+            return None
+        value = match.group(1).strip()
+        return None if value in ("", "auto") else value
+    return None
+
+
 def current_scope() -> str | None:
     """현재 디렉터리에 해당하는 저장소 id.
 
-    rubato 의 auto identity 규칙을 그대로 따른다: cwd 의 basename 을 slug 로 바꾸고
-    정규화된 절대경로의 sha256 앞 8자리를 붙인다. 규칙이 갈라지면 엉뚝한 저장소를
-    가리키게 되므로, 결과가 색인에 없으면 None 을 돌려 전체 검색으로 떨어트린다.
+    rubato 의 identity 규칙을 그대로 따른다(`memory-core/src/identity/resolve.ts`).
+    명시된 memory.agent 가 있고 그게 이미 slug 안전하면 그 이름 그대로, 아니면 문자열
+    해시를 붙인다. 명시값이 없으면 cwd 경로 해시(auto)다. 규칙이 갈라지면 엉뚱한
+    저장소를 가리키게 되므로, 결과가 색인에 없으면 None 을 돌려 전체로 떨어트린다.
     """
+
+    def to_slug(value: str) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")[:40].rstrip("-")
+        return slug or "agent"
+
+    explicit = explicit_agent_name()
+    if explicit is not None:
+        slug = to_slug(explicit)
+        if explicit == slug:
+            return slug
+        digest = hashlib.sha256(explicit.encode("utf-8")).hexdigest()[:8]
+        return f"{slug}-{digest}"
+
     root = str(Path.cwd().resolve())
-    slug = re.sub(r"[^a-z0-9]+", "-", Path(root).name.lower()).strip("-")[:40].rstrip("-")
-    if not slug:
-        slug = "agent"
     digest = hashlib.sha256(root.encode("utf-8")).hexdigest()[:8]
-    return f"{slug}-{digest}"
+    return f"{to_slug(Path(root).name)}-{digest}"
+
 
 
 def resolve_scope(args: argparse.Namespace) -> str | None:

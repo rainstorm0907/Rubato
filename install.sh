@@ -230,7 +230,8 @@ alias rubato-soul="\$RUBATO_HARNESS/scripts/rubato-soul.sh"
 # 모델 카탈로그를 든 bridge(:8788) 를 죽였다 살린다.
 alias rubato-restart="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
 alias rbr="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
-# msearch — 기억 검색.
+# msearch — 기억 검색. alias 는 사람이 쓰는 대화형 셸용이고,
+# 에이전트가 부르는 비대화형 bash 는 rc 를 안 읽으므로 ~/.local/bin 심링크가 정본이다.
 alias msearch="\$RUBATO_HARNESS/msearch/msearch"
 $ALIAS_END
 EOF
@@ -268,6 +269,26 @@ else
     ok "alias 블록을 넣었다 ($RC)"
   fi
   add_manual "새 셸을 열거나 'source $RC' 해야 alias 가 먹는다"
+fi
+
+head_ "단계 4.2 · msearch 를 PATH 에"
+# alias 는 대화형 셸에서만 산다. 에이전트가 도구로 부르는 bash 는 비대화형이라
+# rc 를 안 읽어서 alias 가 없다 — 프롬프트는 msearch 로 기억을 찾으라고 지시하는데
+# 정작 그 명령이 없는 상태가 오래 갔다. 심링크가 그 구멍을 막는다.
+MSEARCH_LINK="$HOME/.local/bin/msearch"
+MSEARCH_SRC="$HARNESS/msearch/msearch"
+if [ "$APPLY" -eq 0 ]; then
+  plan "$MSEARCH_LINK -> $MSEARCH_SRC 심링크를 만든다"
+elif [ "$(readlink "$MSEARCH_LINK" 2>/dev/null)" = "$MSEARCH_SRC" ]; then
+  ok "msearch 심링크 이미 맞다"
+else
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$MSEARCH_SRC" "$MSEARCH_LINK"
+  ok "msearch 를 PATH 에 놓았다 ($MSEARCH_LINK)"
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) : ;;
+    *) add_manual "~/.local/bin 이 PATH 에 없다. rc 에 추가해야 msearch 가 잡힌다" ;;
+  esac
 fi
 
 head_ "단계 4.5 · cmux 세션 복원 (선택)"
