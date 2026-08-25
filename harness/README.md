@@ -34,10 +34,33 @@ alias는 `~/.zshrc`의 마커 블록(`# >>> rubato aliases >>>`) 하나로 관�
 | `rubato`, `rubato-pi` | 세션을 띄운다 |
 | `rubato-soul` | 역할별 조립 없이 `Documents/SOUL.md`만 시스템 프롬프트로 |
 | `rubato-restart`, `rbr` | 공유 bridge 를 인증 drain 한 뒤 교체하고 `/health` 까지 확인 |
-| `msearch` | 기억 검색 |
+| `msearch` | 기억 검색. alias 와 별개로 `~/.local/bin/msearch` 심링크가 정본이다 — 에이전트가 부르는 bash 는 비대화형이라 rc 를 안 읽는다 |
 
 설치 후에는 `rubato update`가 이 블록과 cmux 세션 복원까지 같이 따라온다.
 셸 설정만 다시 심고 싶으면 `./install.sh --apply --only-shell`.
+
+## 기억
+
+저장소는 `~/.omo/memory/agents/<이름>/repo` 이고 git 저장소다. 이름은 프로젝트별로 정하며 `<레포>/.omo/omo.jsonc` 의 `memory.agent` 가 결정한다. 슬러그 안전한 이름은 해시 없이 그대로 디렉터리가 되고, 미지정(`auto`)이면 cwd 경로 해시가 붙는다. **Rubato 와 agent-taskforce 는 `rubato` 한 저장소를 쓴다** — 레포는 둘이어도 판단이 한 덩어리다.
+
+디렉터리가 둘로 갈린다.
+
+| | 무엇 | 바뀌면 |
+|---|---|---|
+| `decisions/` | 판단 — 왜 그 방식이었나, 무엇을 버렸나 | **덮어쓴다** |
+| `reference/` | 조회용 사실 — 레이아웃, 카탈로그, 경로 | 더한다 |
+
+**한 파일이 한 질문의 현재 답만 갖는다.** 답이 바뀌면 그 파일을 고치고, 이력은 git 이 갖는다. 문서가 시간을 말하지 않으므로("예전엔 X였다") 문서 안에서 모순이 생길 자리가 없다 — 서로를 정정하는 문서가 이 저장소의 대표적 실패다.
+
+무엇을 쓰고 무엇을 지우는지는 저장소 안의 `skills/memory-discipline/SKILL.md` 가 정본이고 모델이 매번 읽는다. 그 파일의 seed 는 `packages/memory-core/src/seeds/memory-discipline.ts` 이므로 **고칠 때는 seed 를 고친다** — 저장소 사본만 고치면 이 기기에서만 산다.
+
+읽기는 `msearch` 뿐이다. `/search` 는 세션 JSONL 전문검색이고 `memory` 툴은 쓰기 전용이라 읽기가 없다. 자동 주입은 하지 않는다.
+
+dream 은 규칙이 결정하는 것만 실행하고(6개월 지난 facts 아카이빙, 원장에 없는 `system/` 파일 강등) 판단이 결정하는 것은 보고만 한다(모순, 중복 병합, 승격).
+
+회수 기준선은 `agent-taskforce/reference/memory-benchmark.sh` 로 잰다. 질의는 각 결정 문서의 `## 증상` 절에서 기계적으로 뽑으므로 사후에 지어낼 수 없다.
+
+다른 머신에서 한 번씩 해야 하는 손질은 [docs/rubato/memory-migration.md](../docs/rubato/memory-migration.md).
 
 수동으로 각 단계를 실행해야 할 때만 아래를 쓴다:
 
@@ -159,7 +182,7 @@ Rubato (keepitmello)                       component를 고른 엔진 + 이 harn
 
 파일 이름의 `.pi` 는 계보 표시다. fx 런타임용 판이 따로 있던 시절의 흔적이고, 지금은 pi 판만 남는다.
 
-시스템 프롬프트는 통째 교체다. `.build/lead.pi.md` 또는 `teammate.pi.md` + `dispatching`/`dispatched` 스킬이 본문이고, Senpi/OMO 기본 프롬프트는 버린다. 프로젝트 컨텍스트·memory·스킬 목록·cwd만 남긴다. 다만 memory 블록에 실제로 실리는 것은 `memory.project` 화이트리스트에 적힌 `system/` 파일뿐이고, 기본값은 빈 목록이라 AGENT_ID 만 남는다 — 나머지는 msearch 로 찾아 읽는다. 교체 방식이 `customPrompt`가 아니라 **엔진이 만든 프롬프트를 정규식으로 뜯어 재조립**하는 것이라, 상류가 블록을 추가하면 조용히 사라진다. `test/unit/prompt-drift.test.mjs`가 엔진 산출물과 우리 것을 대조한다.
+시스템 프롬프트는 통째 교체다. `.build/lead.pi.md` 또는 `teammate.pi.md` + `dispatching`/`dispatched` 스킬이 본문이고, Senpi/OMO 기본 프롬프트는 버린다. 프로젝트 컨텍스트·memory·스킬 목록·cwd만 남긴다. 다만 memory 블록에 실제로 실리는 것은 `memory.project` 화이트리스트에 적힌 `system/` 파일뿐이고, 기본값은 빈 목록이라 AGENT_ID 만 남는다 — 나머지는 msearch 로 찾아 읽는다(기억 구조는 아래 「기억」 절). 교체 방식이 `customPrompt`가 아니라 **엔진이 만든 프롬프트를 정규식으로 뜯어 재조립**하는 것이라, 상류가 블록을 추가하면 조용히 사라진다. `test/unit/prompt-drift.test.mjs`가 엔진 산출물과 우리 것을 대조한다.
 
 팀은 OMO 런타임을 유지한다. `team_create` / `task` / `task_send` / 보드. 팀원 모델은 리드가 고르고, 띄우기 전에 역할·모델 배치안을 채팅으로 보여 승낙을 받는다. `~/.omo/omo.jsonc` 카테고리 라우팅은 읽지 않는다. `/login`은 중계기 경로다. OMO 스킬팩은 안 실리고, `~/.agents/skills`만 본다.
 
