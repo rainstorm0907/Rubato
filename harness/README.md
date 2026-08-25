@@ -377,6 +377,7 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 Rubato/
   packages/                upstream 엔진. component 선택은 packages/omo-senpi/src/extension/component-list.ts
   docs/rubato/             이 포크의 정책 (component-policy.md)
+                           기억 저장소 마이그레이션 (memory-migration.md)
   harness/
     README.md
     prompts/               역할별 시스템 프롬프트 정본 (build.sh 로 합성)

@@ -11,6 +11,7 @@
 | 설치 | 루트 `install.sh` (기본 dry-run, 실제 설치는 `--apply`) |
 | 하네스 정본 | [`harness/README.md`](harness/README.md) |
 | 이 포크가 upstream과 다른 점 | [`docs/rubato/component-policy.md`](docs/rubato/component-policy.md) |
+| 기억 저장소 마이그레이션 (다른 머신에서 한 번씩) | [`docs/rubato/memory-migration.md`](docs/rubato/memory-migration.md) |
 | 오버레이 설계 | [`harness/docs/rubato-pi-design.md`](harness/docs/rubato-pi-design.md) |
 | 역할별 시스템 프롬프트 | `harness/prompts/` (조각이 정본, `build.sh` 로 합성) |
 | 번들 스킬 | `harness/skills/` |
