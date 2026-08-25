@@ -117,3 +117,30 @@ upstream 받는 절차는 [`docs/rubato/component-policy.md`](docs/rubato/compon
 `packages/` 아래를 건드리면 upstream 규약이 적용된다. QA 게이트, 증거 기록, PR 정책 전부 upstream 문서에 있다 → [`docs/upstream/AGENTS.upstream.md`](docs/upstream/AGENTS.upstream.md).
 
 **포크에서 하는 수정은 적을수록 유리하다.** upstream 머지 비용이 그만큼 붙는다. 고치기 전에 오버레이(`harness/rubato-pi/`)에서 해결되는지 먼저 본다.
+
+## 돌고 있는 엔진(`node_modules/`)을 고칠 때
+
+TUI 처럼 화면에 보이는 것 상당수는 `packages/` 가 아니라 **설치된 Senpi**
+(`node_modules/@code-yeongyu/senpi/dist/`)에서 온다. 거기를 고쳐야 할 때가 있다.
+
+**`node_modules` 를 손으로 고치지 않는다.** 고치면 그 머신에서만 동작한다 —
+추적되지 않으니 커밋도 안 되고, 다음 `bun install` 이나 `postinstall.mjs` 가
+덮어써서 사라진다. 위의 "쓰는 사람은 여러 머신에 있다" 가 여기서도 그대로 적용된다.
+
+대신 **벤더 patch 를 만든다.** 임시 작업 공간에서 고치고, 그 차이를 patch 파일
+하나로 떠서 커밋한다. 그러면 자동 업데이트가 가져가서 모든 머신에 먹는다.
+
+```bash
+bun run vendor:patch open senpi              # 임시 작업 공간을 열고 경로를 알려준다
+#   .../work 에서 편집한다. .../base 는 비교 기준이니 건드리지 않는다
+bun run vendor:patch save senpi <change-id>   # 새 patch 파일 하나를 만든다
+node postinstall.mjs && bun run test:patches  # 적용과 검증
+```
+
+- **기존 patch 는 고치지 않는다.** 되돌리거나 바꾸려면 그 위에 얇는 새 patch 를 만든다.
+- 테스트는 `node_modules/` 밖 `patch-tests/` 에 두고, **실제로 도는 사본**을 대상으로 쓴다.
+- 이미 손으로 고쳐버렸다면, 그 파일을 따로 복사해두고 `node postinstall.mjs` 로
+  설치본을 되돌린 다음 위 절차를 처음부터 밟는다. `open` 은 설치본이 series 와
+  어긋나면 멈추므로, 되돌리지 않으면 아예 시작할 수 없다.
+
+자세한 것은 [`docs/rubato/component-policy.md`](docs/rubato/component-policy.md) 의 “벤더 patch” 절.
