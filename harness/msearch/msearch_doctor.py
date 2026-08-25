@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import msearch_config as config
+import msearch_env
 
 OK = "ok"
 MISSING = "missing"
@@ -33,22 +35,30 @@ def _print(status: str, label: str, detail: str = "") -> None:
 
 
 def check_python_deps() -> list[str]:
-    missing: list[str] = []
-    for module, package in (
-        ("redis", "redis"),
-        ("dotenv", "python-dotenv"),
-        ("openai", "openai"),
-        ("konlpy", "konlpy"),
-    ):
-        try:
-            __import__(module)
-        except ImportError:
-            missing.append(package)
-    if missing:
-        _print("fail", f"python 패키지 {len(missing)}개 없음", f"pip3 install {' '.join(missing)}")
+    mismatches = msearch_env.problems()
+    if mismatches:
+        _print("fail", "python 환경이 requirements.lock 과 다름", "\n         ".join(mismatches))
     else:
-        _print("ok", "python 패키지")
-    return missing
+        _print("ok", "python 환경 (requirements.lock)")
+    return mismatches
+
+
+def check_java() -> bool:
+    expected = msearch_env.runtime_versions()["JAVA_MAJOR"]
+    try:
+        output = subprocess.run(
+            ["java", "-version"], capture_output=True, text=True, timeout=5, check=False
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        _print("fail", "Java 없음", f"JDK {expected} 필요: {error}")
+        return False
+    match = re.search(r'version "(\d+)', output.stderr or output.stdout)
+    actual = match.group(1) if match else ""
+    if actual != expected:
+        _print("fail", f"Java {actual or '알 수 없음'}", f"JDK {expected} 필요")
+        return False
+    _print("ok", f"Java {actual} (KoNLPy)")
+    return True
 
 
 def check_redis() -> bool:
@@ -66,8 +76,7 @@ def check_redis() -> bool:
             "fail",
             f"redis 연결 ({config.REDIS_URL})",
             "Redis Stack 이 필요하다 (RediSearch 모듈 포함, 일반 redis 로는 안 된다):\n"
-            "           docker run -d -p 6380:6379 --name msearch-redis redis/redis-stack-server:latest\n"
-            "         또는 brew tap redis-stack/redis-stack && brew install redis-stack\n"
+            "           Redis 8.4.0 + Search 8.4.2 기준은 harness/msearch/README.md 참고\n"
             f"         원인: {error}",
         )
         return False
@@ -85,7 +94,21 @@ def check_redis() -> bool:
         )
         return False
 
-    _print("ok", f"redis + RediSearch ({config.REDIS_URL})")
+    expected = msearch_env.runtime_versions()
+    server_info = client.info("server")
+    module_info = client.info("modules")
+    actual_redis = str(server_info.get("redis_version", ""))
+    actual_search = str(module_info.get("search_version", ""))
+    if actual_redis != expected["REDIS_VERSION"] or actual_search != expected["SEARCH_VERSION"]:
+        _print(
+            "fail",
+            "redis 런타임이 runtime.lock 과 다름",
+            f"Redis {actual_redis or '알 수 없음'} (필요 {expected['REDIS_VERSION']})\n"
+            f"         Search {actual_search or '알 수 없음'} (필요 {expected['SEARCH_VERSION']})",
+        )
+        return False
+
+    _print("ok", f"Redis {actual_redis} + Search {actual_search} ({config.REDIS_URL})")
     return True
 
 
@@ -155,13 +178,14 @@ def main() -> int:
     print()
 
     missing = check_python_deps()
+    java_ready = check_java()
     redis_ready = check_redis()
     key_ready = check_api_key()
     corpus = check_corpus()
     indexed = check_index(redis_ready)
 
     print()
-    if missing or not redis_ready or not key_ready:
+    if missing or not java_ready or not redis_ready or not key_ready:
         print("아직 못 돈다. 위의 fail 부터 처리하면 된다.")
         return 1
     if not indexed:

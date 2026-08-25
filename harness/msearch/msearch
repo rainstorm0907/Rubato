@@ -13,27 +13,41 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
-# 파이썬은 세 단계로 고른다. 최근 배포판의 시스템 파이썬은 PEP 668 로 잠겨 있어
-# (`EXTERNALLY-MANAGED`) 전역 pip 설치가 막히므로, 옆에 venv 가 있으면 그것을 먼저 쓴다.
-# venv 가 없으면 예전처럼 python3 을 그대로 쓴다 — 이미 전역에 깔아 둔 머신은 안 바뀐다.
+# 명시한 파이썬은 그대로 존중한다. 자동 선택은 잠금과 일치하는 환경만 고른다.
+# 설치가 중간에 끊겨 실행 파일만 남은 venv 는 선택하지 않는다.
 py="${MSEARCH_PYTHON:-}"
 if [ -z "$py" ]; then
-  if [ -x "$here/.venv/bin/python" ]; then py="$here/.venv/bin/python"; else py="python3"; fi
+  if [ -x "$here/.venv/bin/python" ] && "$here/.venv/bin/python" "$here/msearch_env.py" >/dev/null 2>&1; then
+    py="$here/.venv/bin/python"
+  else
+    py="python3"
+  fi
 fi
+env_ok=0
+"$py" "$here/msearch_env.py" >/dev/null 2>&1 && env_ok=1
 
 case "${1:-}" in
   --doctor)
     exec "$py" "$here/msearch_doctor.py"
     ;;
+  -h|--help|"")
+    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+esac
+
+if [ "$env_ok" -ne 1 ]; then
+  echo "msearch: Python 환경이 저장소 잠금과 다릅니다." >&2
+  echo >&2
+  exec "$py" "$here/msearch_doctor.py"
+fi
+
+case "${1:-}" in
   --index)
     exec "$py" "$here/memory-index.py" --incremental
     ;;
   --reindex)
     exec "$py" "$here/memory-index.py" --force
-    ;;
-  -h|--help|"")
-    sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
-    exit 0
     ;;
 esac
 

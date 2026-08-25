@@ -44,57 +44,62 @@ msearch --doctor               설치 상태 진단
 
 | 항목 | 누가 챙기나 |
 |------|------|
-| python 패키지 (`redis`, `python-dotenv`, `openai`, `konlpy`) | `install.sh --apply` 가 `harness/msearch/.venv` 에 넣는다 |
-| Redis Stack | **손으로 깐다** (아래) |
+| Python 3.13.2 + 패키지 잠금 | `install.sh --apply` 가 `harness/msearch/.venv` 에 재현한다 |
+| JDK 17 | **손으로 깐다** (`brew install openjdk@17`) |
+| Redis 8.4.0 + Search 8.4.2 | **손으로 깐다** (아래) |
 | `OPENAI_API_KEY` | **손으로 넣는다** (아래) |
 
-세 개가 다 서야 검색이 돈다. 어디까지 됐는지는 `msearch --doctor` 한 곳에서만 판정한다.
+네 개가 다 서야 검색이 돈다. 어디까지 됐는지는 `msearch --doctor` 한 곳에서만 판정한다.
 
 ### python
 
-`install.sh --apply` 가 알아서 한다. 전역에 이미 네 패키지가 있으면 건드리지 않고,
-없을 때만 `harness/msearch/.venv` 를 세운다. `msearch` 는 그 venv 가 있으면 쓰고
-없으면 `python3` 로 떨어지므로, 예전부터 전역에 깔아 둔 머신은 아무것도 안 바뀐다.
-다른 파이썬을 쓰려면 `MSEARCH_PYTHON` 으로 지정한다.
+정상 기준은 [`runtime.lock`](runtime.lock)에 두고, 설치기는 그 Python 버전과
+[`requirements.lock`](requirements.lock)의 전체 패키지 버전이 일치하는 환경만 쓴다.
+`install.sh --apply`는 머신의 전역 패키지를 재사용하지 않고 `harness/msearch/.venv`를
+잠금대로 임시 경로에서 완성한 뒤 바꾼다. 설치가 끊겨 불완전한 venv가 남아도 런처는 선택하지 않는다.
+다른 파이썬을 명시하려면 `MSEARCH_PYTHON`을 쓰되 `msearch --doctor`에서 잠금 일치를 확인한다.
+정확한 Python patch 버전은 `uv`가 받아서 venv를 만들므로 머신의 기본 Python 버전에 기대지 않는다.
 
 시스템 파이썬에 `pip install` 이 `externally-managed-environment` 로 거부당하는 것은
 PEP 668 이다. `--break-system-packages` 로 뚫는 대신 venv 를 쓰는 이유가 그것이다.
 
-### Redis Stack
+### Redis
 
-**RediSearch(`FT.*`) 모듈이 있어야 한다.** 여기서 두 번 걸린다:
+정상 기준은 `runtime.lock`의 **Redis 8.4.0 + Search 8.4.2**다. 이 조합에서 색인, BM25, vector,
+`FT.HYBRID`를 검증했다. `redis-server --version`만 보지 말고 `INFO modules`의
+`search_version`까지 확인해야 한다.
 
-- **`brew install redis` 는 안 된다.** homebrew-core 의 redis 8.x 는 모듈 없이 빌드돼
-  있어서 `MODULE LIST` 에 `vectorset` 하나만 나오고 `FT.CREATE` 가 없다. 버전이 8 이라
-  "Redis 8 부터 검색이 본체에 들어갔다"는 말과 겹쳐 맞아 보이는데, 그 빌드가 아니다.
-- **brew 로 깔면 cask 라 `brew trust` 를 한 번 물어본다.** tap 은 Redis 쪽 공식
-  (`github.com/redis-stack/homebrew-redis-stack`)이지만 homebrew-core 가 아니라서다.
+macOS에서는 Redis 공식 tap의 8.4.0 cask를 고정 커밋에서 설치한다:
 
 ```bash
-docker run -d -p 6380:6379 --name msearch-redis redis/redis-stack-server:latest
+brew tap redis/redis
+tap="$(brew --repo redis/redis)"
+git -C "$tap" checkout eb1de700eae6b3a2c398f2c287ed9650c6710cea
+brew trust --cask redis/redis/redis
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask redis/redis/redis
+git -C "$tap" switch -
 ```
 
-또는:
+그 cask는 arm64와 x86_64용 8.4.0 바이너리 및 Search 모듈을 함께 담는다. 설치 뒤에는
+tap을 원래 브랜치로 돌려도 설치된 8.4.0은 유지된다. 자동 업그레이드는 검증 전까지 하지 않는다.
+
+6380으로 띄우고 확인한다:
 
 ```bash
-brew tap redis-stack/redis-stack
-brew trust --cask redis-stack/redis-stack/redis-stack-server
-brew install --cask redis-stack-server
+redis-server /opt/homebrew/etc/redis.conf --port 6380
+redis-cli -p 6380 INFO server | grep redis_version       # 8.4.0
+redis-cli -p 6380 INFO modules | grep search_version     # 8.4.2
+redis-cli -p 6380 COMMAND INFO FT.CREATE FT.HYBRID       # 둘 다 있어야 함
 ```
 
-확인은 포트가 아니라 모듈로 한다. 포트가 열려 있어도 모듈이 없으면 색인이 못 선다:
-
-```bash
-redis-cli -p 6380 COMMAND INFO FT.CREATE   # 비어 있으면 잘못 깐 것이다
-```
-
-**계속 켜두기.** cask 는 `brew services` 가 관리하지 않으므로 로그인 때 뜨게 하려면
+**계속 켜두기.** cask는 `brew services`가 관리하지 않으므로 로그인 때 뜨게 하려면
 직접 건다. macOS 예시 (`~/Library/LaunchAgents/dev.msearch.redis.plist`):
 
 ```xml
 <key>ProgramArguments</key>
 <array>
-  <string>/opt/homebrew/bin/redis-stack-server</string>
+  <string>/opt/homebrew/bin/redis-server</string>
+  <string>/opt/homebrew/etc/redis.conf</string>
   <string>--port</string><string>6380</string>
   <string>--daemonize</string><string>no</string>
 </array>
@@ -143,6 +148,10 @@ MSEARCH_ROOT=~/notes MSEARCH_CHANNEL=notes msearch --index
 |------|------|
 | `msearch` | 진입점. 백엔드가 죽어 있으면 검색 대신 진단으로 보낸다 |
 | `msearch_config.py` | 모든 경로·이름 해석. 다른 파일은 여기서만 읽는다 |
+| `msearch_env.py` | Python·패키지가 두 잠금 파일과 일치하는지 판정한다 |
+| `runtime.lock` | 검증한 Python·Java·Redis·Search 버전의 정본 |
+| `requirements.lock` | 검증한 Python 패키지 전체 버전의 정본 |
+| `test-runtime.sh` | 설치 모드와 런처 환경 선택의 회귀 테스트 |
 | `msearch_freshness.py` | 색인이 뒤처졌는지 보고 따라잡는다 |
 | `msearch_doctor.py` | 설치 진단 |
 | `memory-index.py` | 마크다운 → 청크 → 임베딩 → Redis |
