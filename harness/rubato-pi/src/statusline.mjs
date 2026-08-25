@@ -145,12 +145,35 @@ export function formatContext(remaining, window) {
 
 export function cacheHitPercent(usage) {
   if (!usage) return null;
-  const input = Number(usage.input) || 0;
-  const cacheRead = Number(usage.cacheRead) || 0;
-  const cacheWrite = Number(usage.cacheWrite) || 0;
+  const input = nonNegativeNumber(usage.input);
+  const cacheRead = nonNegativeNumber(usage.cacheRead);
+  const cacheWrite = nonNegativeNumber(usage.cacheWrite);
   const prompt = input + cacheRead + cacheWrite;
   if (prompt <= 0) return null;
   return Math.round((cacheRead / prompt) * 100);
+}
+
+/** 활성 브랜치 전체 assistant usage 를 한 번에 합친다. 호출별 % 평균이 아니다. */
+export function sessionCacheUsage(entries) {
+  if (!Array.isArray(entries)) return null;
+  let input = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  let found = false;
+  for (const entry of entries) {
+    if (entry?.type !== "message") continue;
+    const usage = entry.message?.role === "assistant" ? entry.message.usage : undefined;
+    if (!usage) continue;
+    found = true;
+    input += nonNegativeNumber(usage.input);
+    cacheRead += nonNegativeNumber(usage.cacheRead);
+    cacheWrite += nonNegativeNumber(usage.cacheWrite);
+  }
+  return found ? { input, cacheRead, cacheWrite } : null;
+}
+
+export function sessionCacheHitPercent(entries) {
+  return cacheHitPercent(sessionCacheUsage(entries));
 }
 
 export function repoBasename(cwd) {
@@ -184,7 +207,7 @@ export function latestAssistantUsage(entries) {
  * 평균이 저절로 리셋된다.
  *
  * think 는 사고한 호출들만 모아 평균낸다. 사고 없는 호출을 0 으로 섞으면 실제로 4초 생각한
- * 턴이 `think 1.0s` 로 찍혀 거짓말이 된다.
+ * 턴이 `think 1s` 로 찍혀 거짓말이 된다.
  */
 export function currentTurnTiming(entries, processStartedAt) {
   if (!Array.isArray(entries)) return null;
@@ -209,19 +232,40 @@ export function turnTiming(messages, processStartedAt) {
   const waits = [];
   const thinks = [];
   let ttftMs;
+  let outputTokens = 0;
+  let durationMs = 0;
+  let throughputComplete = true;
   for (const message of messages) {
+    if (message?.role !== "assistant") continue;
     const timing = message?.timing;
-    if (message?.role !== "assistant" || timing?.processStartedAt !== processStartedAt) continue;
+    const output = nonNegativeNumber(message.usage?.output);
+    if (timing?.processStartedAt !== processStartedAt) {
+      if (output > 0) throughputComplete = false;
+      continue;
+    }
     // 실패/중단 호출은 애초에 timing 이 없어 여기서 걸러진다.
-    if (!validLatencyMs(timing.ttftMs)) continue;
+    if (!validLatencyMs(timing.ttftMs)) {
+      if (output > 0) throughputComplete = false;
+      continue;
+    }
     if (ttftMs === undefined) ttftMs = timing.ttftMs;
     if (validLatencyMs(timing.waitMs)) waits.push(timing.waitMs);
     if (validLatencyMs(timing.thinkMs)) thinks.push(timing.thinkMs);
+    // 분모는 양수 modelDurationMs 만. 성공 호출의 persisted usage.output 합 / 그 합.
+    if (validLatencyMs(timing.modelDurationMs) && timing.modelDurationMs > 0) {
+      outputTokens += output;
+      durationMs += timing.modelDurationMs;
+    } else if (output > 0) {
+      throughputComplete = false;
+    }
   }
   if (ttftMs === undefined) return null;
   return {
     waitMs: mean(waits) ?? ttftMs,
     ...(thinks.length === 0 ? {} : { thinkMs: mean(thinks) }),
+    ...(throughputComplete && durationMs > 0 && outputTokens > 0
+      ? { tokensPerSecond: outputTokens / (durationMs / 1000) }
+      : {}),
     calls: waits.length || 1,
   };
 }
@@ -231,43 +275,68 @@ function mean(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function nonNegativeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : 0;
+}
+
 function validLatencyMs(ms) {
   return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 && ms <= Number.MAX_VALUE / 1000;
 }
 
-/** `340ms` 이하 1초, 그 위는 `1.2s`. 소음을 줄이려 소수점 하나만 남긴다. */
+/** `340ms` 이하 1초, 그 위는 `1.2s`. 소음을 줄이려 소수점 하나만 남긴다. 알림줄이 같이 쓴다. */
 export function formatLatencyMs(ms) {
   if (!validLatencyMs(ms)) return "";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** 상태줄용. 1초 미만은 ms, 이상은 반올림한 정수 초. */
+export function formatFooterLatencyMs(ms) {
+  if (!validLatencyMs(ms)) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${Math.round(ms / 1000)}s`;
+}
+
 /**
  * 상태줄에는 답변 길이에 독립적인 대기/사고 시간만 속도로 표시한다.
- * `delay 1.2s · think 4.0s`. 사고가 없던 턴은 `delay` 만 그린다 — `think 0ms` 는 거짓말이다.
+ * `delay 4s · think 10s`. 사고가 없던 턴은 `delay` 만 그린다 — `think 0ms` 는 거짓말이다.
  */
 export function formatLatency(timing) {
-  const delay = formatLatencyMs(timing?.waitMs ?? timing?.ttftMs);
+  const delay = formatFooterLatencyMs(timing?.waitMs ?? timing?.ttftMs);
   if (!delay) return "";
   // 0 은 사고를 안 한 것과 구분되지 않으므로 그리지 않는다.
-  const think = timing?.thinkMs ? formatLatencyMs(timing.thinkMs) : "";
+  const think = timing?.thinkMs ? formatFooterLatencyMs(timing.thinkMs) : "";
   return think ? `delay ${delay} · think ${think}` : `delay ${delay}`;
 }
 
-export function statuslineSegments({ model, remaining, window, branch, repo }) {
+export function formatTokensPerSecond(tps) {
+  if (typeof tps !== "number" || !Number.isFinite(tps) || tps < 0) return "";
+  return `${Math.round(tps)} tok/s`;
+}
+
+/** `17 tok/s · Cache 98% · delay 4s · think 10s`. 없는 조각은 뺀다. */
+export function formatFooterMetrics({ tokensPerSecond, cache, timing } = {}) {
+  const parts = [];
+  const tps = formatTokensPerSecond(tokensPerSecond);
+  if (tps) parts.push(tps);
+  if (cache != null) parts.push(`Cache ${cache}%`);
+  const latency = formatLatency(timing);
+  if (latency) parts.push(latency);
+  return parts.join(" · ");
+}
+
+export function statuslineSegments({ model, remaining, window, branch, repo, tokensPerSecond, cache, timing }) {
   const parts = [`✦ ${model}`, formatContext(remaining, window)];
+  const metrics = formatFooterMetrics({ tokensPerSecond, cache, timing });
+  if (metrics) parts.push(metrics);
   if (branch) parts.push(branch);
   if (repo) parts.push(repo);
   return parts;
 }
 
-export function formatCacheHit(cache) {
-  if (cache == null) return "";
-  return ` (${cache}%)`;
-}
-
 export function formatStatusline(input) {
-  const left = `${statuslineSegments(input).join(" · ")}${formatCacheHit(input.cache)}`;
+  const left = statuslineSegments(input).join(" · ");
   return input.width == null ? left : appendBrandMark(left, input.width);
 }
 

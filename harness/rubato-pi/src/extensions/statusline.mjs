@@ -1,15 +1,13 @@
 import {
   appendBrandMark,
-  cacheHitPercent,
   formatBackgroundLine,
-  formatCacheHit,
   formatContext,
-  formatLatency,
+  formatFooterMetrics,
   formatModelWithEffort,
   currentTurnTiming,
-  latestAssistantUsage,
   remainingPercent,
   repoBasename,
+  sessionCacheHitPercent,
   truncateToWidth,
 } from "../statusline.mjs";
 import { BRAND_NAME } from "../brand.mjs";
@@ -76,8 +74,13 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
           const remaining = remainingPercent(usage?.percent);
           const window = usage?.contextWindow ?? ctx.model?.contextWindow;
           const branchEntries = ctx.sessionManager?.getBranch?.() ?? [];
-          const cache = cacheHitPercent(latestAssistantUsage(branchEntries));
-          const latency = formatLatency(currentTurnTiming(branchEntries, processStartedAt));
+          const timing = currentTurnTiming(branchEntries, processStartedAt);
+          const cache = sessionCacheHitPercent(branchEntries);
+          const metrics = formatFooterMetrics({
+            tokensPerSecond: timing?.tokensPerSecond,
+            cache,
+            timing,
+          });
           const parts = [
             {
               text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
@@ -85,12 +88,11 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
             },
             { text: formatContext(remaining, window), color: remainingColor(remaining) },
           ];
+          if (metrics) parts.push({ text: metrics, color: "dim" });
           const branch = footerData.getGitBranch?.();
           if (branch) parts.push({ text: branch, color: "dim" });
           const repo = repoBasename(ctx.cwd);
           if (repo) parts.push({ text: repo, color: "text" });
-          if (cache != null) parts.push({ text: `Cache ${cache}%`, color: "dim" });
-          if (latency) parts.push({ text: latency, color: "dim" });
 
           const painted = parts
             .map((part) => (theme?.fg ? theme.fg(part.color, part.text) : part.text))

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { formatNoticeLatency, installTps } from "../../src/extensions/tps.mjs";
+import { formatNoticeLatency, installTps, turnTokensPerSecond } from "../../src/extensions/tps.mjs";
 import { PROCESS_STARTED_AT as SHARED_PROCESS_STARTED_AT, processStartedAt } from "../../src/process-start.mjs";
 import {
   agentExtensionShim,
@@ -73,6 +73,22 @@ test("the cache-hit and tps figures still come from the summed turn usage", () =
   // cacheRead 80 / prompt (20+80+0+0) = 80.0%
   assert.match(notice.text, /Cache hit 80\.0%/);
   assert.match(notice.text, /^TPS \d+\.\d tok\/s\./);
+});
+
+test("the notice and footer timing use the same persisted turn throughput", () => {
+  const [notice] = runTurn([
+    assistant(
+      { input: 20, output: 35, cacheRead: 80, cacheWrite: 0 },
+      { processStartedAt: PROCESS_STARTED_AT, ttftMs: 100, waitMs: 100, modelDurationMs: 2_000 },
+    ),
+  ]);
+  assert.match(notice.text, /^TPS 17\.5 tok\/s\./);
+});
+
+test("the notice falls back to whole-turn elapsed throughput when timing is incomplete", () => {
+  assert.equal(turnTokensPerSecond({ tokensPerSecond: 17.5 }, 5_100, 10), 17.5);
+  assert.equal(turnTokensPerSecond({ waitMs: 100 }, 5_100, 10), 510);
+  assert.equal(turnTokensPerSecond(null, 5_100, 10), 510);
 });
 
 test("no UI means no notice", () => {
