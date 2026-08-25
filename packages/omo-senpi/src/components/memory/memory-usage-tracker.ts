@@ -12,6 +12,13 @@ const DEBOUNCE_MS = 500
 /**
  * Extracts the repo-relative path from a file read, returning undefined when
  * the path does not resolve inside the memory repo or is under system/, .git, or .tmp.
+ *
+ * `system/` was excluded because those files were always projected into the prompt, so a
+ * tool read of one meant nothing. Since projection became a whitelist (`memory.project`,
+ * empty by default) that premise is false: an unprojected `system/` file read on demand
+ * now earns no usage credit, and dream can read that silence as "unused". Deliberately
+ * left as-is for now — what counts as a use is entangled with dream's selection, so it is
+ * a decision rather than a rename.
  */
 export function extractMemoryUsagePath(repoDir: string, rawPath: string): string | undefined {
   if (rawPath.length === 0 || rawPath.includes("\0")) return undefined

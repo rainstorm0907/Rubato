@@ -159,7 +159,7 @@ Rubato (keepitmello)                       component를 고른 엔진 + 이 harn
 
 파일 이름의 `.pi` 는 계보 표시다. fx 런타임용 판이 따로 있던 시절의 흔적이고, 지금은 pi 판만 남는다.
 
-시스템 프롬프트는 통째 교체다. `.build/lead.pi.md` 또는 `teammate.pi.md` + `dispatching`/`dispatched` 스킬이 본문이고, Senpi/OMO 기본 프롬프트는 버린다. 프로젝트 컨텍스트·memory·스킬 목록·cwd만 남긴다. 교체 방식이 `customPrompt`가 아니라 **엔진이 만든 프롬프트를 정규식으로 뜯어 재조립**하는 것이라, 상류가 블록을 추가하면 조용히 사라진다. `test/unit/prompt-drift.test.mjs`가 엔진 산출물과 우리 것을 대조한다.
+시스템 프롬프트는 통째 교체다. `.build/lead.pi.md` 또는 `teammate.pi.md` + `dispatching`/`dispatched` 스킬이 본문이고, Senpi/OMO 기본 프롬프트는 버린다. 프로젝트 컨텍스트·memory·스킬 목록·cwd만 남긴다. 다만 memory 블록에 실제로 실리는 것은 `memory.project` 화이트리스트에 적힌 `system/` 파일뿐이고, 기본값은 빈 목록이라 AGENT_ID 만 남는다 — 나머지는 msearch 로 찾아 읽는다. 교체 방식이 `customPrompt`가 아니라 **엔진이 만든 프롬프트를 정규식으로 뜯어 재조립**하는 것이라, 상류가 블록을 추가하면 조용히 사라진다. `test/unit/prompt-drift.test.mjs`가 엔진 산출물과 우리 것을 대조한다.
 
 팀은 OMO 런타임을 유지한다. `team_create` / `task` / `task_send` / 보드. 팀원 모델은 리드가 고르고, 띄우기 전에 역할·모델 배치안을 채팅으로 보여 승낙을 받는다. `~/.omo/omo.jsonc` 카테고리 라우팅은 읽지 않는다. `/login`은 중계기 경로다. OMO 스킬팩은 안 실리고, `~/.agents/skills`만 본다.
 
