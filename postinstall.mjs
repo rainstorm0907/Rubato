@@ -257,6 +257,22 @@ function reverseThrough(source, stack) {
  * 가장 많이 적용된 상태부터 본다 — 이미 최신이면 첫 번째 시도에서 끝난다.
  */
 export function locateInStack(current, stack) {
+  // 신규 파일의 reverse patch 는 내용이 반복돼 있어도 마지막 복제본 하나만 지워
+  // round-trip 을 통과할 수 있다. 그래서 빈 파일에서 정방향으로 만든 각 prefix와
+  // 현재 바이트를 직접 비교한다. 같은 신규 파일에 후속 patch가 쌓여도 안전하다.
+  if (stack[0]?.createsFile) {
+    let expected = "";
+    if (current === expected) return { pristine: "", applied: 0 };
+    for (let k = 0; k < stack.length; k++) {
+      try {
+        expected = applyFilePatch(expected, stack[k], stack[k].patchName);
+      } catch {
+        return null;
+      }
+      if (current === expected) return { pristine: "", applied: k + 1 };
+    }
+    return null;
+  }
   for (let k = stack.length; k >= 0; k--) {
     const head = stack.slice(0, k);
     const pristine = reverseThrough(current, head);

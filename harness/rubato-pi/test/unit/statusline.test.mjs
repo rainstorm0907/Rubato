@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   appendBrandMark,
   cacheHitPercent,
+  cacheStatus,
   formatContext,
   formatFooterLatencyMs,
   formatFooterMetrics,
@@ -15,6 +16,7 @@ import {
   currentTurnTiming,
   latestAssistantUsage,
   remainingPercent,
+  resolveCachePolicy,
   sessionCacheHitPercent,
   repoBasename,
   shortModelLabel,
@@ -133,6 +135,35 @@ test("session cache ignores negative usage and spans process boundaries", () => 
   ];
   // 두 프로세스의 유효 usage를 합치되 음수는 0으로 다룬다: 1000 / 1100 = 90.9%.
   assert.equal(sessionCacheHitPercent(entries), 91);
+});
+
+test("cache policy distinguishes exact, minimum, and opaque provider guarantees", () => {
+  assert.deepEqual(resolveCachePolicy({ provider: "anthropic", api: "openai-completions", id: "claude-opus-5" }), { kind: "sliding", ttlSeconds: 3600 });
+  assert.deepEqual(resolveCachePolicy({ provider: "anthropic", api: "claude-sdk-oauth" }), { kind: "sliding", ttlSeconds: 3600 });
+  assert.deepEqual(resolveCachePolicy({ provider: "openai", api: "openai-responses", id: "gpt-5.6-sol" }), { kind: "minimum", ttlSeconds: 1800 });
+  assert.deepEqual(resolveCachePolicy({ provider: "openai-codex", api: "openai-codex-responses" }), { kind: "opaque" });
+  assert.deepEqual(resolveCachePolicy({ provider: "google-antigravity", api: "openai-completions", id: "gemini-3.7-flash" }), { kind: "opaque" });
+  assert.deepEqual(resolveCachePolicy({ provider: "xai", api: "openai-completions", id: "xai/grok-4.6" }), { kind: "opaque" });
+});
+
+test("cache policy never derives provider TTL from a configurable safe-wait budget", () => {
+  const brokerClaude = { provider: "anthropic", api: "openai-completions", id: "claude-opus-5" };
+  assert.deepEqual(resolveCachePolicy(brokerClaude, 3300), { kind: "sliding", ttlSeconds: 3600 });
+  assert.deepEqual(resolveCachePolicy(brokerClaude, undefined), { kind: "sliding", ttlSeconds: 3600 });
+});
+
+test("cache status uses cache-bearing request start and never calls opaque retention expired", () => {
+  const entries = [
+    { type: "message", message: { role: "assistant", timestamp: 1_000, usage: { cacheRead: 10 }, timing: { sentAt: 1_000 } } },
+    { type: "message", message: { role: "user", timestamp: 2_000 } },
+    { type: "message", message: { role: "assistant", timestamp: 20_000, usage: { cacheRead: 20 }, timing: { sentAt: 10_000 } } },
+  ];
+  assert.deepEqual(cacheStatus(entries, { kind: "sliding", ttlSeconds: 300 }, 70_000), { text: "Cache 4m", ticking: true, expired: false });
+  assert.deepEqual(cacheStatus(entries, { kind: "sliding", ttlSeconds: 300 }, 310_000), { text: "Cache Expired", ticking: false, expired: true });
+  assert.deepEqual(cacheStatus(entries, { kind: "minimum", ttlSeconds: 1800 }, 70_000), { text: "Cache ≥ 29m", ticking: true, expired: false });
+  assert.deepEqual(cacheStatus(entries, { kind: "minimum", ttlSeconds: 1800 }, 1_900_000), { text: "Cache Unknown", ticking: false, expired: false });
+  assert.deepEqual(cacheStatus(entries, { kind: "opaque" }, 70_000), { text: "Cache Hit 1m ago", ticking: true, expired: false });
+  assert.equal(cacheStatus([], { kind: "opaque" }, 70_000), null);
 });
 
 test("turn timing skips stale and malformed persisted entries", () => {

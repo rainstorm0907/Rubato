@@ -176,6 +176,68 @@ export function sessionCacheHitPercent(entries) {
   return cacheHitPercent(sessionCacheUsage(entries));
 }
 
+/** 제공자별 보존 규약을 만료시각, 최소 보장 창, 불투명 캐시로 나눈다. */
+export function resolveCachePolicy(model) {
+  const provider = String(model?.provider ?? "").toLowerCase();
+  const api = String(model?.api ?? "").toLowerCase();
+  const id = String(model?.id ?? "").toLowerCase();
+  if (api === "claude-sdk-oauth") return { kind: "sliding", ttlSeconds: 3600 };
+  if (provider === "openai" && api === "openai-responses" && /(?:^|\/)gpt-5\.6(?:-|$)/.test(id)) {
+    return { kind: "minimum", ttlSeconds: 1800 };
+  }
+  // Rubato broker는 anthropic catalog에 cacheRetention:"long"을 붙여 1h를 요청한다.
+  // 표시 TTL을 foreground wait budget에서 역산하면 사용자 safety buffer가 섞여 거짓말한다.
+  if (provider === "anthropic") return { kind: "sliding", ttlSeconds: 3600 };
+  if (api === "anthropic-messages" || api === "bedrock-converse-stream") {
+    return { kind: "sliding", ttlSeconds: model?.cacheRetention === "long" ? 3600 : 300 };
+  }
+  if (
+    provider === "xai" || id.includes("grok") ||
+    provider === "openai-codex" || api === "openai-codex-responses" ||
+    provider === "google" || provider === "google-vertex" || provider === "google-antigravity"
+  ) return { kind: "opaque" };
+  return undefined;
+}
+
+function latestCacheObservation(entries) {
+  if (!Array.isArray(entries)) return undefined;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    const entry = entries[i];
+    if (entry?.type !== "message" || entry.message?.role !== "assistant") continue;
+    const usage = entry.message.usage;
+    if (!usage) continue;
+    const cacheRead = nonNegativeNumber(usage.cacheRead);
+    const cacheWrite = nonNegativeNumber(usage.cacheWrite);
+    const timestamp = Number(entry.message.timing?.sentAt ?? entry.message.timestamp);
+    if (!Number.isFinite(timestamp) || timestamp < 0) continue;
+    return { timestamp, hit: cacheRead > 0, wrote: cacheWrite > 0 };
+  }
+  return undefined;
+}
+
+export function cacheStatus(entries, policy, nowMs = Date.now()) {
+  if (!policy || !Number.isFinite(nowMs)) return null;
+  const observation = latestCacheObservation(entries);
+  if (!observation) return null;
+  if (!observation.hit && !observation.wrote) {
+    return { text: "Cache Miss", ticking: false, expired: false };
+  }
+  const ageSeconds = Math.max(0, nowMs - observation.timestamp) / 1000;
+  if (policy.kind === "opaque") {
+    const age = ageSeconds < 60 ? "just now" : `${Math.floor(ageSeconds / 60)}m ago`;
+    return { text: `Cache Hit ${age}`, ticking: true, expired: false };
+  }
+  const remainingSeconds = Math.ceil(policy.ttlSeconds - ageSeconds);
+  if (remainingSeconds <= 0) {
+    return policy.kind === "minimum"
+      ? { text: "Cache Unknown", ticking: false, expired: false }
+      : { text: "Cache Expired", ticking: false, expired: true };
+  }
+  const time = remainingSeconds < 60 ? `${remainingSeconds}s` : `${Math.ceil(remainingSeconds / 60)}m`;
+  const prefix = policy.kind === "minimum" ? "Cache ≥ " : "Cache ";
+  return { text: `${prefix}${time}`, ticking: true, expired: false };
+}
+
 export function repoBasename(cwd) {
   if (!cwd) return "";
   const normalized = String(cwd).replace(/[\\/]+$/, "");

@@ -81,7 +81,7 @@ describe("memory tool execution", () => {
     const subjects = await git(repo, ["log", "--format=%s", "HEAD"])
     expect(subjects).toContain("chore: initialize local memory")
     expect(subjects).toContain("First memory")
-    expect(await git(repo, ["show", "HEAD~1:system/persona.md"])).toContain("description:")
+    expect(await git(repo, ["show", "HEAD~1:skills/memory-discipline/SKILL.md"])).toContain("name: memory-discipline")
     const { existsSync } = await import("node:fs")
     expect(existsSync(join(identityPaths.repo, ".git", "hooks", "pre-commit"))).toBe(true)
     expect(existsSync(join(identityPaths.repo, ".git", "hooks", "post-commit"))).toBe(true)

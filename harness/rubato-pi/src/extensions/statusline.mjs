@@ -1,11 +1,13 @@
 import {
   appendBrandMark,
+  cacheStatus,
   formatBackgroundLine,
   formatContext,
   formatFooterMetrics,
   formatModelWithEffort,
   currentTurnTiming,
   remainingPercent,
+  resolveCachePolicy,
   repoBasename,
   sessionCacheHitPercent,
   truncateToWidth,
@@ -25,6 +27,8 @@ const HIDDEN_STATUS_KEYS = new Set(["memory"]);
 
 /** 시계를 초 단위로 보여주므로 1초. 도는 게 없으면 타이머 자체를 세우지 않는다. */
 const TICK_MS = 1_000;
+const MUTED_RED = "\x1b[38;2;196;116;110m";
+const RESET = "\x1b[0m";
 
 function remainingColor(remaining) {
   if (remaining == null) return "dim";
@@ -50,8 +54,9 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
       pi.events?.on?.(WAKE_SOURCE_STATE_EVENT, onWakeSource);
 
       let timer;
+      let cacheClockActive = false;
       const syncTimer = () => {
-        const wanted = tracker.active();
+        const wanted = tracker.active() || cacheClockActive;
         if (wanted && timer === undefined) {
           timer = setInterval(rerender, TICK_MS);
           timer.unref?.();
@@ -74,6 +79,9 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
           const remaining = remainingPercent(usage?.percent);
           const window = usage?.contextWindow ?? ctx.model?.contextWindow;
           const branchEntries = ctx.sessionManager?.getBranch?.() ?? [];
+          const cachePolicy = resolveCachePolicy(ctx.model);
+          const cacheLifetime = cacheStatus(branchEntries, cachePolicy);
+          cacheClockActive = cacheLifetime?.ticking === true;
           const timing = currentTurnTiming(branchEntries, processStartedAt);
           const cache = sessionCacheHitPercent(branchEntries);
           const metrics = formatFooterMetrics({
@@ -89,6 +97,14 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
             { text: formatContext(remaining, window), color: remainingColor(remaining) },
           ];
           if (metrics) parts.push({ text: metrics, color: "dim" });
+          if (cacheLifetime) {
+            parts.push({
+              text: cacheLifetime.expired
+                ? `${MUTED_RED}${cacheLifetime.text}${RESET}`
+                : cacheLifetime.text,
+              color: "dim",
+            });
+          }
           const branch = footerData.getGitBranch?.();
           if (branch) parts.push({ text: branch, color: "dim" });
           const repo = repoBasename(ctx.cwd);

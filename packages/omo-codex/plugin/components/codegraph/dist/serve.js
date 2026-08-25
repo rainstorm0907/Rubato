@@ -5919,7 +5919,16 @@ var OmoMemorySoulLayerSchema = object({
 var OmoMemoryWriteNoticeLayerSchema = object({
   enabled: boolean2().optional()
 }).strict();
-var OmoMemoryAgentOverridesSchema = object({
+var ProjectedMemoryPathSchema = string2().min(1).refine((value) => !value.startsWith("/"), { message: "must be repository-relative, not absolute" }).refine((value) => !value.split("/").includes(".."), { message: "must not traverse with .." }).refine((value) => value.startsWith("system/"), { message: "must live under system/" }).refine((value) => value.endsWith(".md"), { message: "must be a .md file" });
+function dropLegacyProjection(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return value;
+  if (!("projection" in value))
+    return value;
+  const { projection: _dropped, ...rest } = value;
+  return rest;
+}
+var OmoMemoryAgentOverridesSchema = preprocess(dropLegacyProjection, object({
   enabled: boolean2().optional(),
   agent: string2().min(1).optional(),
   reflection: OmoMemoryReflectionLayerSchema.optional(),
@@ -5931,9 +5940,10 @@ var OmoMemoryAgentOverridesSchema = object({
   write_notice: OmoMemoryWriteNoticeLayerSchema.optional(),
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
-  compile_warn_tokens: number2().int().positive().optional()
-}).strict();
-var OmoMemorySettingsSchema = object({
+  compile_warn_tokens: number2().int().positive().optional(),
+  project: array(ProjectedMemoryPathSchema).optional()
+}).strict());
+var OmoMemorySettingsSchema = preprocess(dropLegacyProjection, object({
   enabled: boolean2().default(true),
   agent: string2().min(1).default("auto"),
   tool_exposure: _enum(["direct", "search"]).default("direct"),
@@ -5961,9 +5971,10 @@ var OmoMemorySettingsSchema = object({
   sync: OmoMemorySyncSchema.default({ enabled: true }),
   search: OmoMemorySearchSchema.default({ enabled: true }),
   compile_warn_tokens: number2().int().positive().default(30000),
+  project: array(ProjectedMemoryPathSchema).default([]),
   agents: record(string2(), OmoMemoryAgentOverridesSchema).default({})
-}).strict();
-var OmoMemorySettingsLayerSchema = object({
+}).strict());
+var OmoMemorySettingsLayerSchema = preprocess(dropLegacyProjection, object({
   enabled: boolean2().optional(),
   agent: string2().min(1).optional(),
   tool_exposure: _enum(["direct", "search"]).optional(),
@@ -5977,8 +5988,9 @@ var OmoMemorySettingsLayerSchema = object({
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: number2().int().positive().optional(),
+  project: array(ProjectedMemoryPathSchema).optional(),
   agents: record(string2(), OmoMemoryAgentOverridesSchema).optional()
-}).strict();
+}).strict());
 
 // ../../../../omo-config-core/src/schema/model-catalog.ts
 function isRecord4(value) {

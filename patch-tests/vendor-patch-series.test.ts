@@ -106,6 +106,14 @@ describe("부분 적용 상태", () => {
     expect(locateInStack("one\n", stack)?.applied).toBe(2);
   });
 
+  test("신규 파일은 완성본을 다시 원본으로 오인해 덧붙이지 않는다", () => {
+    addSeries("20260824-0001-new.patch", newFilePatch("dist/new.js", "brand new"));
+    const stack = stackByFile(collectPatchLayers(spec, root)).get("dist/new.js")!;
+    expect(locateInStack("", stack)?.applied).toBe(0);
+    expect(locateInStack("brand new\n", stack)?.applied).toBe(1);
+    expect(locateInStack("brand new\nbrand new\n", stack)).toBeNull();
+  });
+
   test("손으로 고친 파일은 pristine 으로 오인되더라도 적용 단계에서 걸린다", () => {
     // 진짜 pristine 이 어떤 바이트였는지는 아무도 들고 있지 않다. 그래서 낯선
     // 내용은 일단 "아무것도 적용 안 된 상태"로 보이는데, 그 위에 baseline 을

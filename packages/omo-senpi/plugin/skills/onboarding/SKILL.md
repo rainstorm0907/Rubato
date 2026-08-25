@@ -179,13 +179,18 @@ batch at the end. Worth recording:
 - their stacks, main repos, and working patterns from lane 3,
 - their stated preferences and every accept or decline decision from this conversation.
 
-Write durable personal and cross-project facts through the memory tool into `system/human.md`.
-Write repository-specific stack, commands, constraints, and migration decisions through the memory
-tool into `system/project.md`. Do not edit those backing files directly.
+Write durable personal and cross-project facts through the memory tool into the primary human's
+card: `people/human/card.md`, or `system/human.md` when the repository already carries that older
+file. Write repository-specific stack, commands, constraints, and migration decisions through the
+memory tool into `system/project.md`. Do not edit those backing files directly.
+
+Note that `system/` files reach the prompt only when listed in the `memory.project` whitelist, which
+is empty by default. Everything you write here is still found on demand through memory search; do
+not assume a later session sees it merely because it was saved.
 
 Planning-stance observations from lane 3 are the one exception: write them as SEEDS under a
 `## Seed` heading in `system/human/planning-style.md` (create the block through the memory tool if
-absent), never into `system/human.md`. Seeds are inferences and MUST stay weak:
+absent), never into the primary human's card. Seeds are inferences and MUST stay weak:
 
 - Phrase every seed as a hypothesis ("appears to enumerate upfront and delegate the rest"), never
   a conclusion, and set `confidence: low` ALWAYS - never medium or high, however consistent the

@@ -20,6 +20,13 @@ function tool(id: number) {
   return component;
 }
 
+function failedTool(id: number) {
+  const component = new ToolExecutionComponent("bash", `e${id}`, { command: "bun test" }, {}, undefined, ui, process.cwd());
+  component.setArgsComplete();
+  component.updateResult({ content: [{ type: "text", text: "FAIL" }], details: {}, isError: true });
+  return component;
+}
+
 describe("턴 작업 요약", () => {
   test("스트리밍 head와 꼬리 segment가 같은 사고를 중복 소유하지 않는다", () => {
     const source = readFileSync(
@@ -42,6 +49,7 @@ describe("턴 작업 요약", () => {
     const assistant = new AssistantMessageComponent(message, true);
     const tools = new ToolGroupComponent(ui);
     for (let i = 0; i < 15; i++) tools.addTool(tool(i));
+    tools.addTool(failedTool(1));
     const summary = new TurnWorkSummaryComponent(ui);
     summary.trackAssistant(assistant, message);
     summary.trackToolGroup(tools);
@@ -49,12 +57,16 @@ describe("턴 작업 요약", () => {
     expect(assistant.render(100)).toEqual([]);
     expect(tools.render(100)).toEqual([]);
     const collapsed = summary.render(100);
-    expect(stripAnsi(collapsed.join(""))).toBe("Worked 1 step · thought 47s · 15 tools");
+    const collapsedText = stripAnsi(collapsed.join(""));
+    expect(collapsedText).toContain("• Worked 1 step · thought 47s · 16 tools:");
+    expect(collapsedText).toContain("✓ read (15)");
+    expect(collapsedText).toContain("✗ bash");
+    expect(collapsed.join("")).not.toContain("38;2;196;116;110");
     expect(stripAnsi(collapsed.join(""))).not.toStartWith("...");
 
     dispatchInternalAction(actionUrl(collapsed)!);
     expect(stripAnsi(assistant.render(100).join("\n"))).toContain("Thought: 47.0s");
-    expect(stripAnsi(tools.render(100).join("\n"))).toContain("15 tools");
+    expect(stripAnsi(tools.render(100).join("\n"))).toContain("16 tools");
 
     dispatchInternalAction(actionUrl(collapsed)!);
     expect(assistant.render(100)).toEqual([]);
@@ -85,5 +97,23 @@ describe("턴 작업 요약", () => {
     expect(visible).not.toContain("숨긴 사고");
     summary.dispose();
     assistant.dispose();
+  });
+
+  test("도구 종류가 많아도 접힌 불릿은 주어진 폭을 넘지 않는다", () => {
+    const tools = new ToolGroupComponent(ui);
+    for (let i = 0; i < 20; i++) {
+      const component = new ToolExecutionComponent(`tool-${i}`, `w${i}`, {}, {}, undefined, ui, process.cwd());
+      component.setArgsComplete();
+      component.updateResult({ content: [{ type: "text", text: "ok" }], details: {}, isError: false });
+      tools.addTool(component);
+    }
+    const summary = new TurnWorkSummaryComponent(ui);
+    summary.trackToolGroup(tools);
+    const line = stripAnsi(summary.render(60).join(""));
+    expect([...line].length).toBeLessThanOrEqual(60);
+    expect(line).toStartWith("• Worked 0 steps · 20 tools:");
+    expect(line).toContain("…+");
+    summary.dispose();
+    tools.dispose();
   });
 });
