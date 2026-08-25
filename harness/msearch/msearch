@@ -16,9 +16,22 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${
 # 파이썬은 세 단계로 고른다. 최근 배포판의 시스템 파이썬은 PEP 668 로 잠겨 있어
 # (`EXTERNALLY-MANAGED`) 전역 pip 설치가 막히므로, 옆에 venv 가 있으면 그것을 먼저 쓴다.
 # venv 가 없으면 예전처럼 python3 을 그대로 쓴다 — 이미 전역에 깔아 둔 머신은 안 바뀐다.
+#
+# 다만 "venv 가 있다" 를 파일이 있다로 판정하면 안 된다. 설치가 중간에 깨져
+# 인터프리터만 남고 패키지가 없는 venv 가 생기면, 전역 python3 에 의존성이 멀쩡히
+# 다 있어도 그 빈 venv 를 계속 골라 매번 죽는다. 그래서 실제로 쓸 수 있을 때만 고른다.
+#
+# 판정은 import 가 아니라 find_spec 으로 한다. 진짜로 import 하면 konlpy 가 무거워
+# 매 호출에 0.4 초가 붙는다 — 모듈 본문을 돌리지 않는 find_spec 은 0.01 초면서
+# 없음/부분 설치를 똑같이 걸러낸다.
+msearch_python_usable() {
+  [ -x "$1" ] || return 1
+  "$1" -c 'import importlib.util as u, sys; sys.exit(0 if all(u.find_spec(m) for m in ("redis", "dotenv", "openai", "konlpy")) else 1)' >/dev/null 2>&1
+}
+
 py="${MSEARCH_PYTHON:-}"
 if [ -z "$py" ]; then
-  if [ -x "$here/.venv/bin/python" ]; then py="$here/.venv/bin/python"; else py="python3"; fi
+  if msearch_python_usable "$here/.venv/bin/python"; then py="$here/.venv/bin/python"; else py="python3"; fi
 fi
 
 case "${1:-}" in

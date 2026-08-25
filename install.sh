@@ -291,6 +291,11 @@ else
   esac
 fi
 
+# 의존성 설치는 셸 설정 갱신이 아니다. `--only-shell` 은 rubato-update.sh 가 세션마다
+# 자동으로 부르는 경로이고, 그 계약은 rc 만 건드리고 의존성·빌드는 손대지 않는 것이다.
+# 여기를 가드 밖에 두면 세션이 열릴 때마다 venv 와 pip 이 돈다.
+if [ "$ONLY_SHELL" -eq 0 ]; then
+
 head_ "단계 4.3 · msearch 파이썬 의존성"
 # 4.2 의 심링크는 명령을 PATH 에 놓을 뿐이다. msearch 는 redis/dotenv/openai/konlpy
 # 위에서 돌기 때문에, 심링크만 걸어 두면 "명령은 있는데 첫 줄에서 죽는" 상태가 된다 —
@@ -320,6 +325,8 @@ fi
 # 검색 백엔드(Redis Stack, OPENAI_API_KEY)는 이 설치기가 세우지 않는다. 상태 판정은
 # doctor 한 곳에만 두고 여기서는 가리키기만 한다 — 판정이 두 곳에 있으면 갈린다.
 say "백엔드(Redis Stack · OPENAI_API_KEY)는 msearch --doctor 로 본다"
+
+fi   # ONLY_SHELL 스킵 끝
 
 head_ "단계 4.5 · cmux 세션 복원 (선택)"
 # cmux 는 터미널 안의 코딩 에이전트를 감지해 앱을 다시 띄울 때 세션을 이어붙인다.
