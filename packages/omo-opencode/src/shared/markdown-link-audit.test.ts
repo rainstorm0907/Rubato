@@ -9,11 +9,76 @@ import { fileURLToPath } from "node:url"
 const WORKSPACE_ROOT = resolve(import.meta.dir, "../../../..")
 const MARKDOWN_REFERENCE_DEFINITION_RE = /^ {0,3}\[([^\]\n]+)\]:\s+(\S+)/
 const MAINTAINER_LOCAL_PATH_RE = /file:\/\/\/(?:Users|home)\/|(?:^|[\s(`'"])(?:\/Users|\/home)\//
+const GIT_C_QUOTE_NAMED_ESCAPES: Record<string, number> = {
+  a: 0x07,
+  b: 0x08,
+  f: 0x0c,
+  n: 0x0a,
+  r: 0x0d,
+  t: 0x09,
+  v: 0x0b,
+  "\\": 0x5c,
+  "\"": 0x22,
+}
+
+function decodeGitOctalEscape(raw: string, start: number): { byte: number; nextIndex: number } {
+  let octal = ""
+  let index = start
+  while (index < raw.length && octal.length < 3 && raw[index]! >= "0" && raw[index]! <= "7") {
+    octal += raw[index]
+    index += 1
+  }
+  return { byte: Number.parseInt(octal, 8), nextIndex: index }
+}
+
+function unquoteGitLsFilesPath(raw: string): string {
+  if (!raw.startsWith("\"")) {
+    return raw
+  }
+  const bytes: number[] = []
+  let index = 1
+  while (index < raw.length) {
+    const char = raw[index]
+    if (char === "\"") {
+      return new TextDecoder("utf-8").decode(Uint8Array.from(bytes))
+    }
+    if (char !== "\\") {
+      bytes.push(char.charCodeAt(0) & 0xff)
+      index += 1
+      continue
+    }
+    const escaped = raw[index + 1]
+    if (!escaped) {
+      bytes.push(0x5c)
+      break
+    }
+    const named = GIT_C_QUOTE_NAMED_ESCAPES[escaped]
+    if (named !== undefined) {
+      bytes.push(named)
+      index += 2
+      continue
+    }
+    if (escaped >= "0" && escaped <= "7") {
+      const decoded = decodeGitOctalEscape(raw, index + 1)
+      bytes.push(decoded.byte)
+      index = decoded.nextIndex
+      continue
+    }
+    bytes.push(escaped.charCodeAt(0) & 0xff)
+    index += 2
+  }
+  return new TextDecoder("utf-8").decode(Uint8Array.from(bytes))
+}
+
+function parseGitLsFilesOutput(stdout: string): string[] {
+  const records = stdout.includes("\0") ? stdout.split("\0") : stdout.split("\n")
+  return records.filter(Boolean).map(unquoteGitLsFilesPath)
+}
 
 function collectMarkdownFiles(): string[] {
-  const output = Bun.spawnSync(["git", "ls-files", "*.md"], { cwd: WORKSPACE_ROOT, stdout: "pipe" })
+  const output = Bun.spawnSync(["git", "ls-files", "-z", "--", "*.md"], { cwd: WORKSPACE_ROOT, stdout: "pipe" })
   expect(output.exitCode).toBe(0)
-  return output.stdout.toString("utf-8").trim().split("\n").filter(Boolean).map((filePath) => resolve(WORKSPACE_ROOT, filePath))
+  return parseGitLsFilesOutput(output.stdout.toString("utf-8")).map((filePath) => resolve(WORKSPACE_ROOT, filePath))
 }
 
 function stripFencedCodeBlocks(markdown: string): string {
@@ -142,6 +207,19 @@ function collectMaintainerLocalPathLines(markdown: string): number[] {
 }
 
 describe("markdown local link audit", () => {
+  test("#given git ls-files -z output #when parsing records #then NUL-delimited names are kept intact", () => {
+    expect(parseGitLsFilesOutput("docs/a.md\0docs/b.md\0")).toEqual(["docs/a.md", "docs/b.md"])
+  })
+
+  test("#given git C-quoted korean markdown path #when unquoting #then the on-disk utf-8 name is recovered", () => {
+    const quoted = '"harness/skills/framing/docs/\\354\\227\\260\\352\\265\\254\\353\\205\\270\\355\\212\\270.md"'
+    expect(unquoteGitLsFilesPath(quoted)).toBe("harness/skills/framing/docs/연구노트.md")
+    expect(parseGitLsFilesOutput(`${quoted}\nREADME.md\n`)).toEqual([
+      "harness/skills/framing/docs/연구노트.md",
+      "README.md",
+    ])
+  })
+
   test("#given external markdown links #when resolving targets #then http and https links are ignored", () => {
     expect(resolveMarkdownTarget("docs/AGENTS.md", "http://example.com/readme.md")).toBeUndefined()
     expect(resolveMarkdownTarget("docs/AGENTS.md", "https://example.com/readme.md")).toBeUndefined()

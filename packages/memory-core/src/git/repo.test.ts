@@ -32,15 +32,26 @@ describe("GitMemoryRepo", () => {
     await repo.init({ seedFiles: [{ relativePath: "system/persona.md", content: "initial\n" }] })
     const committedAt = "2026-08-10T00:00:00.000Z"
     const exec = createNodeGitExec()
-    await exec.run(["commit", "--amend", "--no-edit"], {
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_DATE: committedAt,
+      GIT_COMMITTER_DATE: committedAt,
+    }
+    const tree = (await exec.run(["rev-parse", "HEAD^{tree}"], { cwd: dir, timeoutMs: 30_000 })).stdout.trim()
+    const parent = await exec.run(["rev-parse", "-q", "--verify", "HEAD^"], { cwd: dir, timeoutMs: 30_000 })
+    const message = (await exec.run(["log", "-1", "--format=%B"], { cwd: dir, timeoutMs: 30_000 })).stdout
+    const commitTreeArgv = parent.code === 0 && parent.stdout.trim()
+      ? ["commit-tree", tree, "-p", parent.stdout.trim(), "-F", "-"]
+      : ["commit-tree", tree, "-F", "-"]
+    const rewritten = await exec.run(commitTreeArgv, {
       cwd: dir,
       timeoutMs: 30_000,
-      env: {
-        ...process.env,
-        GIT_AUTHOR_DATE: committedAt,
-        GIT_COMMITTER_DATE: committedAt,
-      },
+      env: gitEnv,
+      stdin: message,
     })
+    if (rewritten.code !== 0) throw new Error(rewritten.stderr || rewritten.stdout)
+    const updated = await exec.run(["update-ref", "HEAD", rewritten.stdout.trim()], { cwd: dir, timeoutMs: 30_000 })
+    if (updated.code !== 0) throw new Error(updated.stderr || updated.stdout)
 
     // when
     const timestamp = await repo.headCommitTimestamp()

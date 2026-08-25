@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { adapterPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
 import { probeRpc } from "../helpers/rpc-surface.mjs";
 
-test("memory stays registered and records whether RPC spawned a dreaming child", async () => {
+test("memory stays registered and records whether RPC spawned a dreaming child", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),

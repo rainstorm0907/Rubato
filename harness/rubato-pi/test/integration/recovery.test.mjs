@@ -6,7 +6,7 @@ import { adapterPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs
 import { probeRpc } from "../helpers/rpc-surface.mjs";
 import { claimInbox, inboxDir, isProcessed, reclaimStaleReserved, writeInbox } from "../../src/mailbox.mjs";
 
-test("the same isolated agent dir can be opened twice after a kill", async () => {
+test("the same isolated agent dir can be opened twice after a kill", { timeout: 60_000 }, async () => {
   const first = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),

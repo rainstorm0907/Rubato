@@ -38,21 +38,18 @@ describe("omo-senpi extension entry", () => {
 
     await extension(pi)
 
-    // Rubato: only the components we chose register at all. A flag exists per
-    // registered component, so this asserts the kept set AND the dropped set at
-    // once — see docs/rubato/component-policy.md.
+    // Rubato ships four components. Each one registers a disable flag, so this
+    // list is the kept set and the dropped set at once — see docs/rubato/component-policy.md.
     const componentFlags = pi.flags
       .map((flag) => flag.name)
       .filter((name) => name.startsWith("omo-senpi-") && name.endsWith("-disabled"))
       .filter((name) => name !== "omo-senpi-disabled")
 
     expect(componentFlags).toEqual([
-      "omo-senpi-config-startup-disabled",
       "omo-senpi-ast-grep-disabled",
       "omo-senpi-lsp-disabled",
       "omo-senpi-task-disabled",
       "omo-senpi-memory-disabled",
-      "omo-senpi-config-watch-disabled",
     ])
     expect(pi.handlers.map((handler) => handler.event)).toEqual(
       expect.arrayContaining(["input", "tool_result", "session_start"]),

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,19 +39,28 @@ export function versionFromPath(bin, { nvmRoot = nvmVersionsRoot() } = {}) {
   };
 }
 
+function canonicalBin(bin) {
+  try {
+    return realpathSync(bin);
+  } catch {
+    return bin;
+  }
+}
+
 export function versionOf(bin) {
   if (!existsSync(bin)) return null;
-  const fromPath = versionFromPath(bin);
-  if (fromPath) return fromPath;
-  const result = spawnSync(bin, ["-v"], { encoding: "utf8" });
+  const resolved = canonicalBin(bin);
+  const fromPath = versionFromPath(bin) ?? versionFromPath(resolved);
+  if (fromPath) return { ...fromPath, bin: resolved };
+  const result = spawnSync(resolved, ["-v"], { encoding: "utf8" });
   if (result.status !== 0) return null;
-  return parseVersionText(result.stdout, bin);
+  return parseVersionText(result.stdout, resolved);
 }
 
 export function runningNode(proc = process) {
-  const parsed = parseVersionText(proc?.version, proc?.execPath);
-  if (!parsed || parsed.major < MIN_MAJOR) return null;
   if (!proc?.execPath || !existsSync(proc.execPath)) return null;
+  const parsed = parseVersionText(proc?.version, canonicalBin(proc.execPath));
+  if (!parsed || parsed.major < MIN_MAJOR) return null;
   return parsed;
 }
 
@@ -71,8 +80,9 @@ export function pickNode(candidates, { version = versionOf } = {}) {
   const seen = new Set();
   const found = [];
   for (const bin of candidates) {
-    if (seen.has(bin)) continue;
-    seen.add(bin);
+    const key = existsSync(bin) ? canonicalBin(bin) : bin;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const parsed = version(bin);
     if (parsed && parsed.major >= MIN_MAJOR) found.push(parsed);
   }

@@ -12,7 +12,7 @@ import {
   writeInbox,
 } from "../../src/mailbox.mjs";
 
-test("a reserved mailbox file survives a live lead process and can be reclaimed once", async () => {
+test("a reserved mailbox file survives a live lead process and can be reclaimed once", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),

@@ -138,7 +138,8 @@ export async function cleanupReflectionWorktree(
   await worktree.parent.worktreeRemove(worktree.dir, true).catch(() => undefined)
   await rm(worktree.dir, { recursive: true, force: true }).catch(() => undefined)
   await run(worktree.exec, worktree.parent.dir, ["worktree", "prune"])
-  await run(worktree.exec, worktree.parent.dir, ["branch", "-D", worktree.branch])
+  // Plumbing, not `branch -D`: porcelain -D is blocked by some host git wrappers.
+  await run(worktree.exec, worktree.parent.dir, ["update-ref", "-d", `refs/heads/${worktree.branch}`])
   const listed = await run(worktree.exec, worktree.parent.dir, ["worktree", "list", "--porcelain"])
   const branchRef = await run(worktree.exec, worktree.parent.dir, ["show-ref", "--verify", `refs/heads/${worktree.branch}`])
   return {

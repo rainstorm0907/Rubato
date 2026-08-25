@@ -17,6 +17,7 @@
 // senpi 엔진 본체는 다르다. 그것은 포크 루트가 워크스페이스로 이미 설치하므로
 // 루트의 node_modules 를 쓴다. 우리가 고치지 않는 남의 코드다.
 import { existsSync } from "node:fs";
+import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,12 +29,41 @@ export const rubatoPiRoot = join(here, "..");
 /** 포크 루트 (harness/rubato-pi -> harness -> repo) */
 export const forkRoot = join(rubatoPiRoot, "..", "..");
 
+function realUserHome() {
+  try {
+    return userInfo().homedir;
+  } catch {
+    return "";
+  }
+}
+
+function pluginDirUnder(home) {
+  return home ? join(home, ".rubato-pi", "engine", "plugin") : "";
+}
+
+function looksLikeEnginePluginDir(dir) {
+  return Boolean(dir) && existsSync(join(dir, "package.json")) && existsSync(join(dir, "extensions", "omo.js"));
+}
+
+/**
+ * HOME 이 테스트용 빈 디렉터리여도 실제 산출물을 찾는다.
+ * `userInfo().homedir` 는 process.env.HOME 을 무시한다.
+ */
+export function resolveEnginePluginDir(env = process.env) {
+  const pinned = env.RUBATO_ENGINE_DIR;
+  if (looksLikeEnginePluginDir(pinned)) return pinned;
+  const fromHome = pluginDirUnder(env.HOME ?? "");
+  if (looksLikeEnginePluginDir(fromHome)) return fromHome;
+  const fromReal = pluginDirUnder(realUserHome());
+  if (looksLikeEnginePluginDir(fromReal)) return fromReal;
+  return pinned || fromHome || fromReal;
+}
+
 /**
  * 우리가 빌드한 OMO 확장. component 선택이 반영된 판이다.
  * 레포 밖에 둔다 — 이유는 파일 첫머리 주석에 있다.
  */
-export const enginePluginDir = process.env.RUBATO_ENGINE_DIR ??
-  join(process.env.HOME ?? "", ".rubato-pi", "engine", "plugin");
+export const enginePluginDir = resolveEnginePluginDir();
 
 export const omoExtension = join(enginePluginDir, "extensions", "omo.js");
 export const omoTaskExtension = join(enginePluginDir, "extensions", "omo-task.js");

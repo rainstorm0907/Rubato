@@ -57,14 +57,17 @@ export async function reclaimStaleReserved(dir, staleAfterMs, now = Date.now()) 
     return [];
   }
   const reclaimed = [];
-  const cutoff = now - staleAfterMs;
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.startsWith(DELIVERING_PREFIX) || !entry.name.endsWith(JSON_SUFFIX)) {
       continue;
     }
     const reservedPath = join(dir, entry.name);
     const info = await stat(reservedPath);
-    if (info.mtimeMs > cutoff) continue;
+    // APFS (and other high-res clocks) can stamp mtime slightly ahead of Date.now().
+    // Treat a future mtime as age 0 so staleAfterMs=0 means "reclaim all" instead of
+    // skipping the file we just reserved. Shared-state reclaim must not depend on luck.
+    const age = Math.max(0, now - info.mtimeMs);
+    if (age < staleAfterMs) continue;
     const messageId = entry.name.slice(DELIVERING_PREFIX.length, -JSON_SUFFIX.length);
     await rename(reservedPath, join(dir, `${messageId}${JSON_SUFFIX}`));
     reclaimed.push(messageId);

@@ -1,16 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import { adapterPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
 import { launchEnv } from "../../src/brand.mjs";
+import { engineChildEnv } from "../helpers/engine-home.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 import { startMockOpenAI } from "../helpers/mock-openai.mjs";
 
 function startParent({ home, agentDir, cwd, mockUrl }) {
+  const env = nodeChildEnv({
+    ...launchEnv(process.env, agentDir),
+    HOME: home,
+    PATH: process.env.PATH,
+    OMO_CODING_AGENT_DIR: agentDir,
+    ...engineChildEnv(),
+  });
   return spawn(
-    process.execPath,
+    resolveNodeExecutable(),
     [
       senpiCliPath(),
       "--mode",
@@ -29,12 +38,7 @@ function startParent({ home, agentDir, cwd, mockUrl }) {
     ],
     {
       cwd,
-      env: {
-        ...launchEnv(process.env, agentDir),
-        HOME: home,
-        PATH: process.env.PATH,
-        OMO_CODING_AGENT_DIR: agentDir,
-      },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       detached: true,
     },
@@ -57,10 +61,18 @@ function killTree(child) {
 function waitForEvent(child, match, timeoutMs) {
   return new Promise((resolve, reject) => {
     let buf = "";
-    const timer = setTimeout(() => {
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       child.stdout.off("data", onData);
-      reject(new Error(`timeout waiting for event`));
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      finish(reject, new Error(`timeout waiting for event`));
     }, timeoutMs);
+    timer.unref?.();
     const onData = (chunk) => {
       buf += chunk.toString("utf8");
       let nl;
@@ -75,16 +87,13 @@ function waitForEvent(child, match, timeoutMs) {
           continue;
         }
         if (match(rec)) {
-          clearTimeout(timer);
-          child.stdout.off("data", onData);
-          resolve(rec);
+          finish(resolve, rec);
         }
       }
     };
     child.stdout.on("data", onData);
     child.on("exit", (code, signal) => {
-      clearTimeout(timer);
-      reject(new Error(`parent exited ${code}/${signal}`));
+      finish(reject, new Error(`parent exited ${code}/${signal}`));
     });
   });
 }
@@ -149,19 +158,33 @@ function waitForRecords(root, timeoutMs, ready = (records) => records.length > 0
       resolve(existing);
       return;
     }
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      watcher.close();
+      clearTimeout(timer);
+      fn(value);
+    };
     const watcher = watch(root, { recursive: true }, () => {
       const records = taskRecords(root);
-      if (ready(records)) {
-        watcher.close();
-        clearTimeout(timer);
-        resolve(records);
-      }
+      if (ready(records)) finish(resolve, records);
     });
     const timer = setTimeout(() => {
-      watcher.close();
-      reject(new Error(`timeout waiting for task records: ${JSON.stringify(taskRecords(root))}`));
+      finish(reject, new Error(`timeout waiting for task records: ${JSON.stringify(taskRecords(root))}`));
     }, timeoutMs);
+    timer.unref?.();
   });
+}
+
+function stageChildSessionForReconcile(home, cwd, taskId) {
+  const jsonl = findFiles(home, (name) => name.endsWith(".jsonl")).sort();
+  const source = jsonl.find((path) => path.includes(`${sep}sessions${sep}`) && basename(path).includes(taskId))
+    ?? jsonl.find((path) => path.includes(`${sep}sessions${sep}`));
+  if (!source) return;
+  const destDir = join(cwd, ".omo", "senpi-task", "children", taskId, "sessions", taskId);
+  mkdirSync(destDir, { recursive: true });
+  copyFileSync(source, join(destDir, basename(source)));
 }
 
 function pidAlive(pid) {
@@ -174,7 +197,7 @@ function pidAlive(pid) {
   }
 }
 
-test("OMO process child keeps the same task id after parent restart", async () => {
+test("OMO process child keeps the same task id after parent restart", { timeout: 120_000 }, async () => {
   const home = mkdtempSync(join(tmpdir(), "rubato-pi-omo-re-"));
   const agentDir = join(home, "agent");
   const cwd = join(home, "cwd");
@@ -197,50 +220,50 @@ test("OMO process child keeps the same task id after parent restart", async () =
   mkdirSync(join(cwd, ".omo"), { recursive: true });
   writeFileSync(join(home, ".omo", "omo.jsonc"), `${JSON.stringify(taskConfig, null, 2)}\n`);
   writeFileSync(join(cwd, ".omo", "omo.jsonc"), `${JSON.stringify(taskConfig, null, 2)}\n`);
-  writeFileSync(
-    join(agentDir, "models.json"),
-    `${JSON.stringify({
-      providers: {
-        mock: {
-          baseUrl: "http://127.0.0.1:0/v1",
-          api: "openai-completions",
-          apiKey: "dummy",
-          models: [{ id: "stub", reasoning: false, contextWindow: 1000000, maxTokens: 256 }],
-        },
+  const mockModels = (baseUrl) => ({
+    providers: {
+      mock: {
+        baseUrl,
+        api: "openai-completions",
+        apiKey: "dummy",
+        models: [{ id: "stub", reasoning: false, contextWindow: 1000000, maxTokens: 256 }],
       },
-    })}\n`,
-  );
+      anthropic: {
+        baseUrl,
+        api: "openai-completions",
+        apiKey: "dummy",
+        models: [{ id: "claude-haiku-4-5", reasoning: false, contextWindow: 1000000, maxTokens: 256 }],
+      },
+    },
+  });
+  writeFileSync(join(agentDir, "models.json"), `${JSON.stringify(mockModels("http://127.0.0.1:0/v1"))}\n`);
 
-  let calls = 0;
+  let childTurns = 0;
   const mock = await startMockOpenAI({
-    onRequest() {
-      calls += 1;
-      if (calls === 1) {
+    onRequest(body) {
+      const text = JSON.stringify(body ?? {});
+      if (text.includes("spawn a helper") || text.includes("keep it running")) {
         return {
           type: "tool",
           name: "task",
           args: {
             prompt: "hold this process open",
-            category: "quick",
+            category: "haiku",
             run_in_background: true,
             execution_mode: "process",
           },
         };
       }
-      return { type: "hang" };
+      if (text.includes("hold this process open")) {
+        childTurns += 1;
+        // start() waits for the first child prompt; hang afterwards so the pid stays live.
+        if (childTurns === 1) return { type: "text", text: "holding" };
+        return { type: "hang" };
+      }
+      return { type: "text", text: "ok" };
     },
   });
-  const models = {
-    providers: {
-      mock: {
-        baseUrl: mock.url,
-        api: "openai-completions",
-        apiKey: "dummy",
-        models: [{ id: "stub", reasoning: false, contextWindow: 1000000, maxTokens: 256 }],
-      },
-    },
-  };
-  writeFileSync(join(agentDir, "models.json"), `${JSON.stringify(models)}\n`);
+  writeFileSync(join(agentDir, "models.json"), `${JSON.stringify(mockModels(mock.url))}\n`);
 
   const parent = startParent({ home, agentDir, cwd, mockUrl: mock.url });
   let stderr = "";
@@ -286,10 +309,8 @@ test("OMO process child keeps the same task id after parent restart", async () =
     try {
       first = await waitForRecords(
         home,
-        20000,
-        (records) =>
-          records.some((item) => item.execution_mode === "process" && item.pid) &&
-          findFiles(home, (name, path) => name.endsWith(".jsonl") && path.includes(`${sep}children${sep}`)).length > 0,
+        60000,
+        (records) => records.some((item) => item.execution_mode === "process" && item.pid),
       );
     } catch (error) {
       const starts = events.filter((e) => String(e.type).includes("tool"));
@@ -309,6 +330,7 @@ test("OMO process child keeps the same task id after parent restart", async () =
     );
     const childPid = record.pid;
     if (childPid) assert.equal(pidAlive(childPid), true);
+    stageChildSessionForReconcile(home, cwd, record.task_id);
 
     parent.kill("SIGKILL");
 

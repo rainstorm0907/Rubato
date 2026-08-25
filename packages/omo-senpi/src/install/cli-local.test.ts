@@ -116,7 +116,7 @@ async function runCliLocal(
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> {
   const proc = Bun.spawn(["node", join(pluginPath, "scripts", "install.mjs"), action], {
     cwd: repoRoot,
-    env: { ...process.env, SENPI_CODING_AGENT_DIR: agentDir },
+    env: { ...process.env, NODE_OPTIONS: "", SENPI_CODING_AGENT_DIR: agentDir },
     stdout: "pipe",
     stderr: "pipe",
   })

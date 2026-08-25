@@ -137,7 +137,7 @@ describe("runtime shims", () => {
 
       expect(nodePath).not.toBeNull()
       const result = spawnSync([nodePath ?? "node", "--input-type=module", "--eval", script, modulePath], {
-        env: { ...process.env, OMO_RUNTIME_SHIM_MODULE: modulePath },
+        env: { ...process.env, NODE_OPTIONS: "", OMO_RUNTIME_SHIM_MODULE: modulePath },
         stdout: "pipe",
         stderr: "pipe",
       })

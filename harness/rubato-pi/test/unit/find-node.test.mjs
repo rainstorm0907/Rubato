@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,7 +35,14 @@ test("the launcher and a bare launchd-like environment pick the same node", () =
   }
   const fromLaunchd = resolveNode({ bare: true });
   assert.equal(fromLaunchd.status, 0, `bare environment found nothing: ${fromLaunchd.stderr}`);
-  assert.equal(fromLaunchd.bin, fromShell.bin, "PATH 에 따라 다른 node 가 잡힌다");
+  // Homebrew (and nvm) often expose a symlink next to the Cellar/realpath binary.
+  // Equality on the printed string is the wrong contract: both launchers must pick
+  // the same node, not the same spelling of its path.
+  assert.equal(
+    realpathSync(fromLaunchd.bin),
+    realpathSync(fromShell.bin),
+    `PATH 에 따라 다른 node 가 잡힌다: ${fromLaunchd.bin} vs ${fromShell.bin}`,
+  );
 });
 
 test("the node it picks can actually run the bridge", () => {

@@ -157,11 +157,12 @@ describe("GitPathStateStore", () => {
 
   it("rejects unmerged entries", async () => {
     const { dir, repo } = await fixture([{ relativePath: "conflict.md", content: "base\n" }])
-    await git(dir, ["checkout", "-b", "other"])
+    const base = await git(dir, ["rev-parse", "HEAD"])
     await writeFile(join(dir, "conflict.md"), "other\n")
     await git(dir, ["add", "--", "conflict.md"])
     await git(dir, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "other"])
-    await git(dir, ["checkout", "main"])
+    await git(dir, ["update-ref", "refs/heads/other", await git(dir, ["rev-parse", "HEAD"])])
+    await git(dir, ["update-ref", "HEAD", base])
     await writeFile(join(dir, "conflict.md"), "main\n")
     await git(dir, ["add", "--", "conflict.md"])
     await git(dir, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "main"])

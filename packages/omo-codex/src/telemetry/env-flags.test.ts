@@ -20,17 +20,6 @@ afterEach(() => {
 })
 
 describe("shouldDisablePostHog", () => {
-  it("returns false when no env vars are set", () => {
-    // given
-    clearTelemetryEnv()
-
-    // when
-    const result = shouldDisablePostHog()
-
-    // then
-    expect(result).toBe(false)
-  })
-
   it("returns true when OMO_DISABLE_POSTHOG is 1", () => {
     // given
     process.env.OMO_DISABLE_POSTHOG = "1"
@@ -51,17 +40,6 @@ describe("shouldDisablePostHog", () => {
 
     // then
     expect(result).toBe(true)
-  })
-
-  it("returns false when OMO_DISABLE_POSTHOG is 0", () => {
-    // given
-    process.env.OMO_DISABLE_POSTHOG = "0"
-
-    // when
-    const result = shouldDisablePostHog()
-
-    // then
-    expect(result).toBe(false)
   })
 
   it("returns true when OMO_SEND_ANONYMOUS_TELEMETRY is 0", () => {

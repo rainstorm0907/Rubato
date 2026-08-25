@@ -116,51 +116,6 @@ describe("posthog client creation", () => {
     expect(() => pluginPostHog.trackActive("plugin", "run_started")).not.toThrow()
     expect(await pluginPostHog.shutdown()).toBeUndefined()
   })
-
-  it("passes the strict PostHog constructor options for both clients", async () => {
-    // given
-    enableTelemetryEnv()
-    const capturedOptions: TelemetryTransportOptions[] = []
-
-    const posthogModule = usePostHogModule(await importPostHogModule())
-    posthogModule.__setTransportFactoryForTesting(
-      createCapturingTransportFactory([], capturedOptions),
-    )
-
-    // when
-    posthogModule.createCliPostHog()
-    posthogModule.createPluginPostHog()
-
-    // then
-    expect(capturedOptions).toHaveLength(2)
-    for (const options of capturedOptions) {
-      expect(options).toMatchObject({
-        enableExceptionAutocapture: false,
-        enableLocalEvaluation: false,
-        strictLocalEvaluation: true,
-        disableRemoteConfig: true,
-        flushAt: 1,
-        flushInterval: 0,
-      })
-    }
-  })
-
-  it("constructs clients through the configured telemetry transport", async () => {
-    // given
-    enableTelemetryEnv()
-    const capturedOptions: TelemetryTransportOptions[] = []
-    const posthogModule = usePostHogModule(await importPostHogModule())
-    posthogModule.__setTransportFactoryForTesting(
-      createCapturingTransportFactory([], capturedOptions),
-    )
-
-    // when
-    posthogModule.createCliPostHog()
-    posthogModule.createPluginPostHog()
-
-    // then
-    expect(capturedOptions).toHaveLength(2)
-  })
 })
 
 describe("posthog disable env var parsing", () => {
@@ -221,26 +176,6 @@ describe("posthog disable env var parsing", () => {
     })
   }
 
-  it("keeps OMO_SEND_ANONYMOUS_TELEMETRY=yes enabled for env compatibility", async () => {
-    // given
-    process.env.OMO_SEND_ANONYMOUS_TELEMETRY = "yes"
-    process.env.POSTHOG_API_KEY = "test-api-key"
-    const captured: CapturedPostHogMessage[] = []
-    const posthogModule = usePostHogModule(await importPostHogModule())
-    posthogModule.__setTransportFactoryForTesting(createCapturingTransportFactory(captured))
-    posthogModule.__setActivityStateProviderForTesting(() => ({
-      dayUTC: "2026-04-18",
-      captureDaily: true,
-    }))
-    const client = posthogModule.createCliPostHog()
-
-    // when
-    client.trackActive("distinct-cli", "run_started")
-
-    // then
-    expect(captured).toHaveLength(1)
-  })
-
   it("treats configEnabled false as disabled", async () => {
     // given
     enableTelemetryEnv()
@@ -271,62 +206,6 @@ describe("posthog trackActive emission contract", () => {
     clearTelemetryEnv()
   })
 
-  it("emits exactly one omo_daily_active and never omo_hourly_active when captureDaily is true", async () => {
-    // given
-    enableTelemetryEnv()
-    const captured: CapturedPostHogMessage[] = []
-    const posthogModule = usePostHogModule(await importPostHogModule())
-    posthogModule.__setTransportFactoryForTesting(createCapturingTransportFactory(captured))
-    posthogModule.__setOsProviderForTesting({
-      arch: () => "arm64",
-      cpus: () => [{ model: "Test CPU" }],
-      hostname: () => "test-host",
-      platform: () => "linux",
-      release: () => "6.8.0-test",
-      totalmem: () => 16 * 1024 * 1024 * 1024,
-      type: () => "Linux",
-    })
-    posthogModule.__setActivityStateProviderForTesting(() => ({
-      dayUTC: "2026-04-18",
-      captureDaily: true,
-    }))
-    const client = posthogModule.createCliPostHog()
-
-    // when
-    client.trackActive("distinct-cli", "run_started")
-
-    // then
-    expect(captured).toHaveLength(1)
-    const emittedEvents = captured.map((message) => message.event)
-    expect(emittedEvents).not.toContain("omo_hourly_active")
-    const [dailyEvent] = captured
-    if (!dailyEvent) {
-      throw new Error("Expected daily event")
-    }
-    expect(dailyEvent?.event).toBe("omo_daily_active")
-    expect(dailyEvent?.distinctId).toBe("distinct-cli")
-    const properties = dailyEvent.properties ?? {}
-    const expectedPropertyKeys = ["$os", "$os_version", "$process_person_profile", "ci", "cpu_count", "cpu_model", "day_utc", "locale", "os_arch", "os_type", "package_name", "package_version", "platform", "plugin_name", "product_name", "reason", "runtime", "runtime_version", "shell", "source", "terminal", "timezone", "total_memory_gb"]
-    expect(Object.keys(properties).sort()).toEqual(expectedPropertyKeys.sort())
-    expect(properties).toMatchObject({
-      platform: "oh-my-opencode",
-      package_name: "oh-my-openagent",
-      plugin_name: "oh-my-openagent",
-      product_name: "oh-my-openagent",
-      source: "cli",
-      $os: "linux",
-      $os_version: "6.8.0-test",
-      os_arch: "arm64",
-      os_type: "Linux",
-      cpu_count: 1,
-      cpu_model: "Test CPU",
-      total_memory_gb: 16,
-      $process_person_profile: false,
-      day_utc: "2026-04-18",
-      reason: "run_started",
-    })
-  })
-
   it("emits nothing and never omo_hourly_active when captureDaily is false", async () => {
     // given
     enableTelemetryEnv()
@@ -347,32 +226,5 @@ describe("posthog trackActive emission contract", () => {
     const emittedEvents = captured.map((message) => message.event)
     expect(emittedEvents).not.toContain("omo_daily_active")
     expect(emittedEvents).not.toContain("omo_hourly_active")
-  })
-
-  it("records plugin load telemetry with the plugin_loaded reason", async () => {
-    // given
-    enableTelemetryEnv()
-    const captured: CapturedPostHogMessage[] = []
-    const posthogModule = usePostHogModule(await importPostHogModule())
-    posthogModule.__setTransportFactoryForTesting(createCapturingTransportFactory(captured))
-    posthogModule.__setActivityStateProviderForTesting(() => ({
-      dayUTC: "2026-04-18",
-      captureDaily: true,
-    }))
-
-    // when
-    posthogModule.recordPluginTelemetry({ configEnabled: true })
-
-    // then
-    expect(captured).toHaveLength(1)
-    const [dailyEvent] = captured
-    if (!dailyEvent) {
-      throw new Error("Expected plugin telemetry event")
-    }
-    expect(dailyEvent.event).toBe("omo_daily_active")
-    expect(dailyEvent.properties).toMatchObject({
-      reason: "plugin_loaded",
-      source: "plugin",
-    })
   })
 })

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { senpiNested } from "../../src/engine-paths.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 import { injectEditorMouse } from "../../src/editor-mouse.mjs";
 import {
   injectPasteExpand,
@@ -88,11 +89,8 @@ if (!runtime) {
   });
 
   test("transformed editor expands a repeated large paste through an explicit child import without inherited NODE_OPTIONS", () => {
-    const env = { ...process.env, NODE_OPTIONS: "", RUBATO_PASTE_EXPAND_RUNTIME: "1" };
-    delete env.NODE_TEST_NAME;
-    delete env.NODE_TEST_CONTEXT;
-    const result = spawnSync(process.execPath, ["--import", registerHref, "--test", "--test-reporter=spec", thisFile], {
-      env,
+    const result = spawnSync(resolveNodeExecutable(), ["--import", registerHref, "--test", "--test-reporter=spec", thisFile], {
+      env: nodeChildEnv({ RUBATO_PASTE_EXPAND_RUNTIME: "1" }),
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });

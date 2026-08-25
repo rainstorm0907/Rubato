@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { senpiDir, senpiNested } from "../../src/engine-paths.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 
 const assistantPath = join(senpiDir, "dist/modes/interactive/components/assistant-message.js");
 const registerHref = new URL("../../src/no-changelog-register.mjs", import.meta.url).href;
@@ -20,13 +21,8 @@ if (!runtime) test("thinking streams inside the expanded block on the real compo
   // 테스트 파일 안에서 --test 를 다시 부르면 node 가 재귀라고 보고 건너뛴다.
   // 그냥 파일을 실행하면 test() 가 독립으로 돌며 TAP 을 찍는다.
   // 부모가 물려준 리포터가 상속되지 않게 spec 으로 고정하고 집계를 직접 센다.
-  const childEnv = { ...process.env, NODE_OPTIONS: "", RUBATO_THINKING_STREAM_RUNTIME: "1" };
-  // 부모 러너가 넘기는 리포터 지정을 지우지 않으면 자식이 바이너리로 찍어 집계를 못 읽는다.
-  for (const key of Object.keys(childEnv)) {
-    if (key.startsWith("NODE_TEST")) delete childEnv[key];
-  }
-  const result = spawnSync(process.execPath, ["--import", registerHref, "--test-reporter=spec", thisFile], {
-    env: childEnv,
+  const result = spawnSync(resolveNodeExecutable(), ["--import", registerHref, "--test-reporter=spec", thisFile], {
+    env: nodeChildEnv({ RUBATO_THINKING_STREAM_RUNTIME: "1" }),
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     cwd: fileURLToPath(new URL("../..", import.meta.url)),

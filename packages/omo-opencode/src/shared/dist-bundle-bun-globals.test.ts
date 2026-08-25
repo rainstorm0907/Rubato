@@ -93,6 +93,7 @@ describe("dist bundle Bun globals", () => {
     const proc = Bun.spawn({
       cmd: [node, "--input-type=module", "-e", "await import('./dist/index.js'); console.log('node-esm-load-ok')"],
       cwd: process.cwd(),
+      env: { ...process.env, NODE_OPTIONS: "" },
       stdout: "pipe",
       stderr: "pipe",
     })

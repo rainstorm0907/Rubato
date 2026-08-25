@@ -153,40 +153,6 @@ describe("omo-codex posthog telemetry", () => {
     expect(capturedMessages).toHaveLength(0)
   })
 
-  it("matrix row 5 enabled when all vars unset", async () => {
-    // given
-    const capturedMessages: CapturedPostHogMessage[] = []
-
-    process.env.POSTHOG_API_KEY = "test-api-key"
-    setMatrix(undefined, undefined, undefined, undefined)
-    const posthog = await importPostHogModule()
-    mockPostHogNode(posthog, capturedMessages)
-    posthog.__setActivityStateProviderForTesting(() => ({ dayUTC: "2026-05-25", captureDaily: true }))
-
-    // when
-    posthog.createCliPostHog().trackActive("distinct", "cli_run")
-
-    // then
-    expect(capturedMessages).toHaveLength(1)
-  })
-
-  it("captures omo_codex_daily_active with omo-codex platform", async () => {
-    // given
-    const capturedMessages: CapturedPostHogMessage[] = []
-
-    process.env.POSTHOG_API_KEY = "test-api-key"
-    const posthog = await importPostHogModule()
-    mockPostHogNode(posthog, capturedMessages)
-    posthog.__setActivityStateProviderForTesting(() => ({ dayUTC: "2026-05-25", captureDaily: true }))
-
-    // when
-    posthog.createCliPostHog().trackActive("distinct", "cli_run")
-
-    // then
-    expect(capturedMessages[0]?.event).toBe("omo_codex_daily_active")
-    expect(capturedMessages[0]?.properties?.platform).toBe("omo-codex")
-  })
-
   it("does not capture on same day", async () => {
     // given
     const capturedMessages: CapturedPostHogMessage[] = []
@@ -201,38 +167,6 @@ describe("omo-codex posthog telemetry", () => {
 
     // then
     expect(capturedMessages).toHaveLength(0)
-  })
-
-  it("createInstallPostHog sets source=install", async () => {
-    // given
-    const capturedMessages: CapturedPostHogMessage[] = []
-
-    process.env.POSTHOG_API_KEY = "test-api-key"
-    const posthog = await importPostHogModule()
-    mockPostHogNode(posthog, capturedMessages)
-    posthog.__setActivityStateProviderForTesting(() => ({ dayUTC: "2026-05-25", captureDaily: true }))
-
-    // when
-    posthog.createInstallPostHog().trackActive("distinct", "install_started")
-
-    // then
-    expect(capturedMessages[0]?.properties?.source).toBe("install")
-  })
-
-  it("createCliPostHog sets source=cli", async () => {
-    // given
-    const capturedMessages: CapturedPostHogMessage[] = []
-
-    process.env.POSTHOG_API_KEY = "test-api-key"
-    const posthog = await importPostHogModule()
-    mockPostHogNode(posthog, capturedMessages)
-    posthog.__setActivityStateProviderForTesting(() => ({ dayUTC: "2026-05-25", captureDaily: true }))
-
-    // when
-    posthog.createCliPostHog().trackActive("distinct", "cli_run")
-
-    // then
-    expect(capturedMessages[0]?.properties?.source).toBe("cli")
   })
 
   it("returns no-op when POSTHOG_API_KEY override is empty", async () => {

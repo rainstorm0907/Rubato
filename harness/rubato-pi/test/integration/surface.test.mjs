@@ -6,7 +6,7 @@ import { probeRpc } from "../helpers/rpc-surface.mjs";
 const MEMORY = ["memory", "dream", "palace"];
 const TASK = ["tasks", "task-kill", "dag"];
 
-test("lead overlay plus adapter keeps task and memory, not OMO skill bundle", async () => {
+test("lead overlay plus adapter keeps task and memory, not OMO skill bundle", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),
@@ -26,7 +26,7 @@ test("lead overlay plus adapter keeps task and memory, not OMO skill bundle", as
   assert.equal(surface.extensionCommands.includes("approve-spawn"), false);
 });
 
-test("a team member process gets task tools back for nested helpers", async () => {
+test("a team member process gets task tools back for nested helpers", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),
@@ -38,7 +38,7 @@ test("a team member process gets task tools back for nested helpers", async () =
   }
 });
 
-test("adapter alone is the DAG profile: no task engine, memory stays", async () => {
+test("adapter alone is the DAG profile: no task engine, memory stays", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),

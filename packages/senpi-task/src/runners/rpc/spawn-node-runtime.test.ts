@@ -42,6 +42,7 @@ test("#given Senpi hides rpc-entry from Node exports #when building a fallback s
     const child = spawnSync("node", ["--input-type=module", "--eval", script], {
       cwd: sourceDir,
       encoding: "utf8",
+      env: { ...process.env, NODE_OPTIONS: "" },
     })
 
     expect(`${child.status}\n${child.stderr}`).toBe("0\n")

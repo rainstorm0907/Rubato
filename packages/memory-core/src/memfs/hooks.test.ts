@@ -356,9 +356,11 @@ describe("post-commit mirror push", () => {
     await rm(logPath(dir))
 
     // when
-    await run(["git", "checkout", "--quiet", "-b", "memory/reflection"], dir)
+    await run(["git", "branch", "memory/reflection"], dir)
+    await run(["git", "symbolic-ref", "HEAD", "refs/heads/memory/reflection"], dir)
     await commit(dir, { "reference/notes.md": "---\ndescription: Notes\n---\n\nnotes\n" }, "branch write", SYNC)
-    await run(["git", "checkout", "--quiet", "--detach"], dir)
+    const detachedAt = (await run(["git", "rev-parse", "HEAD"], dir)).stdout.trim()
+    await run(["git", "update-ref", "--no-deref", "HEAD", detachedAt], dir)
     await commit(dir, { "reference/more.md": "---\ndescription: More\n---\n\nmore\n" }, "detached write", SYNC)
 
     // then

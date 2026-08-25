@@ -8,9 +8,10 @@ import {
   params,
 } from "./memory-apply-patch.test-support"
 
-// Each case drives a real git repository through commit and patch application; the 5s default is not
-// a budget those subprocesses fit on a loaded Windows runner.
-setDefaultTimeout(process.platform === "win32" ? 30_000 : 5_000)
+// Each case drives a real git repository through commit and patch application. Isolated they finish
+// in under a second, but a loaded suite plus host PATH git wrappers can starve the 5s default and
+// leave HEAD unset after bun kills the dangling process.
+setDefaultTimeout(process.platform === "win32" ? 30_000 : 20_000)
 const { fixture, cleanup } = createPatchFixtureHarness()
 
 afterEach(cleanup)

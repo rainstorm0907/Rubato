@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { adapterPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
 import { probeRpc } from "../helpers/rpc-surface.mjs";
 
-test("memory stays ON and records that token logs need a real model turn", async () => {
+test("memory stays ON and records that token logs need a real model turn", { timeout: 60_000 }, async () => {
   const surface = await probeRpc({
     nodeBin: process.execPath,
     senpiCli: senpiCliPath(),

@@ -41,6 +41,7 @@ console.log(String(mod.isInteractiveBashEnabled()));`,
         ], {
           env: {
             ...process.env,
+            NODE_OPTIONS: "",
             MODULE_PATH: join(outdir, "interactive-bash-availability.js"),
           },
           encoding: "utf8",

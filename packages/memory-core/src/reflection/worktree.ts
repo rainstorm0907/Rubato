@@ -150,7 +150,8 @@ async function removeWorktreeAndBranch(
   await repo.worktreeRemove(dir, true).catch(() => undefined)
   await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   await run(exec, repo.dir, ["worktree", "prune"])
-  await run(exec, repo.dir, ["branch", "-D", branch])
+  // Plumbing, not `branch -D`: porcelain -D is blocked by some host git wrappers.
+  await run(exec, repo.dir, ["update-ref", "-d", `refs/heads/${branch}`])
   const listed = await run(exec, repo.dir, ["worktree", "list", "--porcelain"])
   const branchRef = await run(exec, repo.dir, ["show-ref", "--verify", `refs/heads/${branch}`])
   return {

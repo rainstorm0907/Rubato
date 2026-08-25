@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { adapterPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
 import { launchEnv } from "../../src/brand.mjs";
+import { engineChildEnv } from "../helpers/engine-home.mjs";
 
 function startRpc(home, label) {
   const agentDir = join(home, label);
@@ -31,6 +32,7 @@ function startRpc(home, label) {
         ...launchEnv(process.env, agentDir),
         HOME: home,
         PATH: process.env.PATH,
+        ...engineChildEnv(),
       },
       stdio: ["pipe", "pipe", "pipe"],
     },
@@ -41,10 +43,18 @@ function startRpc(home, label) {
 function onceResponse(child, command, timeoutMs) {
   return new Promise((resolve, reject) => {
     let buf = "";
-    const timer = setTimeout(() => {
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       child.stdout.off("data", onData);
-      reject(new Error(`timeout waiting for ${command}`));
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      finish(reject, new Error(`timeout waiting for ${command}`));
     }, timeoutMs);
+    timer.unref?.();
     const onData = (chunk) => {
       buf += chunk.toString("utf8");
       let nl;
@@ -59,21 +69,18 @@ function onceResponse(child, command, timeoutMs) {
           continue;
         }
         if (rec.type === "response" && rec.command === command) {
-          clearTimeout(timer);
-          child.stdout.off("data", onData);
-          resolve(rec);
+          finish(resolve, rec);
         }
       }
     };
     child.stdout.on("data", onData);
     child.on("exit", (code, signal) => {
-      clearTimeout(timer);
-      reject(new Error(`rpc exited ${code}/${signal}`));
+      finish(reject, new Error(`rpc exited ${code}/${signal}`));
     });
   });
 }
 
-test("a process child stays reachable after the sibling parent is killed", async () => {
+test("a process child stays reachable after the sibling parent is killed", { timeout: 60_000 }, async () => {
   const home = mkdtempSync(join(tmpdir(), "rubato-pi-reattach-"));
   const child = startRpc(home, "child");
   const parent = startRpc(home, "parent");

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { senpiDir, senpiNested } from "../../src/engine-paths.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 import {
   injectEditorMouse,
   injectEditorMouseRouting,
@@ -127,8 +128,8 @@ if (!runtime) {
   });
 
   test("transformed editor and TUI run through an explicit child import without inherited NODE_OPTIONS", () => {
-    const result = spawnSync(process.execPath, ["--import", registerHref, "--test", thisFile], {
-      env: { ...process.env, NODE_OPTIONS: "", RUBATO_EDITOR_MOUSE_RUNTIME: "1" },
+    const result = spawnSync(resolveNodeExecutable(), ["--import", registerHref, "--test", thisFile], {
+      env: nodeChildEnv({ RUBATO_EDITOR_MOUSE_RUNTIME: "1" }),
       encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr + result.stdout);

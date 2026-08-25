@@ -3,7 +3,7 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { GitMemoryRepo, createNodeGitExec } from "../git"
+import { GitMemoryRepo, createNodeGitExec, type GitExec } from "../git"
 import { validateCompletion } from "./completion-validation"
 import {
   cleanupReflectionWorktree,
@@ -211,6 +211,27 @@ describe("reflection worktree integration", () => {
     expect(await cleanupReflectionWorktree(worktree)).toEqual({ worktreeRemoved: true, branchRemoved: true })
     expect(await cleanupReflectionWorktree(worktree)).toEqual({ worktreeRemoved: true, branchRemoved: true })
     expect(existsSync(worktree.dir)).toBe(false)
+    expect((await git(parentDir, ["show-ref", "--verify", `refs/heads/${worktree.branch}`])).code).not.toBe(0)
+  })
+
+  it("#given porcelain branch -D is blocked #when cleanup runs #then the reflection ref is still deleted", async () => {
+    const root = realpathSync.native(await mkdtemp(join(tmpdir(), "reflection-integration-")))
+    roots.push(root)
+    const parentDir = join(root, "memory")
+    const repo = new GitMemoryRepo({ dir: parentDir, agentId: "agent-one" })
+    await repo.init({ seedFiles: [{ relativePath: "memory.md", content: "base\n" }] })
+    const inner = createNodeGitExec()
+    const blockedPorcelainDelete: GitExec = {
+      run(argv, options) {
+        if (argv[0] === "branch" && argv.includes("-D")) {
+          return Promise.resolve({ code: 42, stdout: "", stderr: "blocked porcelain branch -D" })
+        }
+        return inner.run(argv, options)
+      },
+    }
+    const worktree = await createReflectionWorktree(repo, "blocked-d", join(root, "worktrees"), blockedPorcelainDelete)
+
+    expect(await cleanupReflectionWorktree(worktree)).toEqual({ worktreeRemoved: true, branchRemoved: true })
     expect((await git(parentDir, ["show-ref", "--verify", `refs/heads/${worktree.branch}`])).code).not.toBe(0)
   })
 })

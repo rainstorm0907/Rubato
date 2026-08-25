@@ -65,7 +65,7 @@ describe("omo-senpi local-path runtime dependencies", () => {
     const result = spawnSync(
       "node",
       ["--input-type=module", "-e", `await import(${JSON.stringify(importedExtensionUrl)})`],
-      { cwd: join(root, "host"), encoding: "utf8", timeout: 10_000 },
+      { cwd: join(root, "host"), encoding: "utf8", timeout: 10_000, env: { ...process.env, NODE_OPTIONS: "" } },
     )
 
     expect(result.error).toBeUndefined()

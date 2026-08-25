@@ -21,8 +21,9 @@
   "docs": [
     ".agents/skills/codex-qa/SKILL.md: omo get-local-version",
     ".github/workflows/publish.yml: /bin/omo",
-    "AGENTS.md: omo doctor",
-    "CLAUDE.md: omo doctor",
+    "docs/upstream/AGENTS.upstream.md: omo doctor",
+    "harness/docs/rubato-pi-baseline.md: /bin/omo",
+    "harness/rubato-pi/test/unit/brand.test.mjs: /bin/omo",
     "packages/omo-codex/README.md: omo get-local-version",
     "packages/omo-native/AGENTS.md: omo doctor",
     "packages/omo-native/bin/lib/agent-dir.js: omo doctor",

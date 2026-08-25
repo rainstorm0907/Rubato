@@ -7,6 +7,7 @@ import { rmEfaultTolerant } from "../teardown.test-support"
 import { GitMemoryRepo } from "@oh-my-opencode/memory-core"
 import { OmoMemorySettingsSchema, type OmoConfig } from "@oh-my-opencode/omo-config-core"
 
+import { memoryChildExtensionArgs } from "./child-extensions"
 import { REFLECTION_COMPLETION_ENTRY_TYPE, REFLECTION_LAUNCHED_ENTRY_TYPE } from "./completion"
 import { resetModelPreflightCacheForTests } from "./model-preflight"
 import { createRunnerHarness, type RunnerHarness } from "./runner.test-support"
@@ -153,11 +154,14 @@ describe("SenpiSubprocessRunner integration", () => {
     // ("Native PTY session handle is missing write()") and the child can never git-commit; the
     // pipe fallback is the supported non-interactive path (SENPI_PTY_FORCE_PIPE in pi-pty).
     expect(spawn?.env.SENPI_PTY_FORCE_PIPE).toBe("1")
+    // Isolation flags stay; the shipped broker overlay is an explicit -e after
+    // --no-extensions (discovery off, named provider extension still loaded).
     const childArgs = [
       "-p",
       "--system-prompt", spawn?.paths.persona,
       "--tools", "bash,edit",
       "--no-extensions",
+      ...memoryChildExtensionArgs(spawn?.env ?? {}),
       "--no-skills",
       "--no-prompt-templates",
       "--no-context-files",
@@ -167,6 +171,8 @@ describe("SenpiSubprocessRunner integration", () => {
       `@${spawn?.paths.prompt}`,
     ]
     expect(spawn?.args.slice(-childArgs.length)).toEqual(childArgs)
+    expect(spawn?.args).toContain("--no-extensions")
+    expect(spawn?.args).toContain("--no-skills")
     expect(existsSync(join(spawn?.paths.sessionDir ?? "", "launch.json"))).toBe(false)
     expect(JSON.parse(await readFile(join(spawn?.paths.sessionDir ?? "", "outcome.json"), "utf8"))).toMatchObject({
       version: 1,

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { senpiDir, senpiNested } from "../../src/engine-paths.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 import {
   actionLineMarker,
   injectCollapsibleAssistant,
@@ -96,8 +97,8 @@ if (!runtime) test("expanded-line marker is zero-width OSC8 metadata with no vis
 });
 
 if (!runtime) test("loader-transformed real components collapse from expanded body clicks and preserve drag selection", () => {
-  const result = spawnSync(process.execPath, ["--import", registerHref, "--test", thisFile], {
-    env: { ...process.env, NODE_OPTIONS: "", RUBATO_COLLAPSIBLE_MOUSE_RUNTIME: "1" },
+  const result = spawnSync(resolveNodeExecutable(), ["--import", registerHref, "--test", thisFile], {
+    env: nodeChildEnv({ RUBATO_COLLAPSIBLE_MOUSE_RUNTIME: "1" }),
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr + result.stdout);
@@ -105,23 +106,29 @@ if (!runtime) test("loader-transformed real components collapse from expanded bo
 
 if (runtime) test("expanded thinking body is clickable while a drag copies without collapsing", async () => {
   assert.equal(process.env.NODE_OPTIONS, "");
+  const { initTheme } = await import(pathToFileURL(join(senpiDir, "dist/modes/interactive/theme/theme.js")).href);
+  try { initTheme("dark"); } catch { /* already initialized */ }
   const { AssistantMessageComponent } = await import(`${pathToFileURL(assistantPath).href}?collapse=${Date.now()}`);
   const { dispatchInternalAction } = await import(pathToFileURL(join(senpiDir, "dist/modes/interactive/internal-actions.js")).href);
   const { TuiAltScreen } = await import(`${pathToFileURL(altScreenPath).href}?collapse=${Date.now()}`);
   const { getOsc8LinkAtColumn } = await import(pathToFileURL(join(senpiNested("@earendil-works/pi-tui/dist"), "utils.js")).href);
+  const started = Date.now();
   const message = {
     role: "assistant",
-    content: [{ type: "thinking", thinking: "first body line\nsecond body line" }],
-    timestamp: Date.now(),
+    content: [{ type: "thinking", thinking: "first body line\nsecond body line", startedAt: started, endedAt: started + 1200 }],
+    timestamp: started,
+    stopReason: "stop",
   };
   const component = new AssistantMessageComponent(message, true);
   const collapsed = component.render(40);
-  const actionUrl = getOsc8LinkAtColumn(collapsed[0], 1);
-  assert.match(actionUrl, /^senpi-action:\d+$/);
+  const actionUrl = collapsed
+    .flatMap((line) => [...line.matchAll(/\x1b\]8;;(senpi-action:\d+)/g)].map((m) => m[1]))
+    .find(Boolean);
+  assert.match(actionUrl ?? "", /^senpi-action:\d+$/);
   dispatchInternalAction(actionUrl);
   const expanded = component.render(40);
   assert.ok(expanded.length >= 2);
-  assert.match(expanded[1], /^\x1b\]8;;senpi-action:\d+/);
+  assert.match(expanded.join("\n"), /\x1b\]8;;senpi-action:\d+/);
 
   let copied = 0;
   const terminal = {

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { senpiDir } from "../../src/engine-paths.mjs";
+import { nodeChildEnv, resolveNodeExecutable } from "../helpers/node-executable.mjs";
 import {
   BUSY_ENTER_STATUS,
   BUSY_ENTER_STEER_STATUS,
@@ -175,8 +176,8 @@ if (!runtime) {
   });
 
   test("transformed interactive-mode runs through an explicit child import without inherited NODE_OPTIONS", () => {
-    const result = spawnSync(process.execPath, ["--import", registerHref, "--test", thisFile], {
-      env: { ...process.env, NODE_OPTIONS: "", RUBATO_BUSY_ENTER_RUNTIME: "1" },
+    const result = spawnSync(resolveNodeExecutable(), ["--import", registerHref, "--test", thisFile], {
+      env: nodeChildEnv({ RUBATO_BUSY_ENTER_RUNTIME: "1" }),
       encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr + result.stdout);

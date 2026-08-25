@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import {
   nvmVersionsRoot,
   parseVersionText,
@@ -29,14 +29,14 @@ test("versionOf uses the nvm path instead of spawning when the file exists", () 
   if (!bin.startsWith(`${root}/`) || !existsSync(bin)) return;
   const got = versionOf(bin);
   assert.equal(got.text, process.version);
-  assert.equal(got.bin, bin);
+  assert.equal(got.bin, realpathSync(bin));
 });
 
 test("runningNode accepts the current process when it is already 24+", () => {
   const got = runningNode();
   assert.ok(got);
   assert.ok(got.major >= 24);
-  assert.equal(got.bin, process.execPath);
+  assert.equal(got.bin, realpathSync(process.execPath));
   assert.equal(runningNode({ version: "v22.19.0", execPath: process.execPath }), null);
   assert.equal(runningNode({ version: "v24.18.0", execPath: "/no/such/node" }), null);
 });

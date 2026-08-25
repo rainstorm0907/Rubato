@@ -2,15 +2,25 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { engineChildEnv } from "./engine-home.mjs";
 
 export function readJsonlResponses(child, wanted, timeoutMs) {
   return new Promise((resolve, reject) => {
     let buf = "";
     const got = new Map();
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.stdout.off("data", onData);
+      fn(value);
+    };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`timeout after ${timeoutMs}ms; have ${[...got.keys()].join(",") || "nothing"}`));
+      finish(reject, new Error(`timeout after ${timeoutMs}ms; have ${[...got.keys()].join(",") || "nothing"}`));
     }, timeoutMs);
+    timer.unref?.();
     const onData = (chunk) => {
       buf += chunk.toString("utf8");
       let nl;
@@ -27,22 +37,18 @@ export function readJsonlResponses(child, wanted, timeoutMs) {
         if (rec.type === "response" && rec.command && !got.has(rec.command)) {
           got.set(rec.command, rec);
           if (wanted.every((name) => got.has(name))) {
-            clearTimeout(timer);
-            child.stdout.off("data", onData);
-            resolve(got);
+            finish(resolve, got);
           }
         }
       }
     };
     child.stdout.on("data", onData);
     child.on("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
+      finish(reject, err);
     });
     child.on("exit", (code, signal) => {
       if (wanted.every((name) => got.has(name))) return;
-      clearTimeout(timer);
-      reject(new Error(`senpi exited ${code}/${signal} before responses`));
+      finish(reject, new Error(`senpi exited ${code}/${signal} before responses`));
     });
   });
 }
@@ -63,7 +69,7 @@ export async function probeRpc({ nodeBin, senpiCli, extensionArgs, extraArgs = [
       DO_NOT_TRACK: "1",
       OMO_DISABLE_POSTHOG: "1",
       OMO_SENPI_DISABLE_POSTHOG: "1",
-      ...env,
+      ...engineChildEnv(env),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });

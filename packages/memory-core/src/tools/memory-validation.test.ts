@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { promisify } from "node:util"
 import { GitMemoryRepo, type GitCommitAuthor } from "../git"
+import { HERMETIC_GIT, createHermeticGitExec, hermeticGitEnv } from "./memory-apply-patch.test-support"
 import { parseMemoryFile, renderMemoryFile } from "../memfs/frontmatter"
 import { runMemoryTool, type MemoryToolLock, type MemoryToolParams } from "./memory"
 import { MemoryToolError } from "./tool-errors"
@@ -30,7 +31,11 @@ async function fixture(): Promise<{
 }> {
   const root = realpathSync.native(await mkdtemp(join(tmpdir(), "omo-memory-tool-")))
   roots.push(root)
-  const repo = new GitMemoryRepo({ dir: join(root, "repo"), agentId: AUTHOR.agentId })
+  const repo = new GitMemoryRepo({
+    dir: join(root, "repo"),
+    agentId: AUTHOR.agentId,
+    exec: createHermeticGitExec(),
+  })
   await repo.init({ authorName: AUTHOR.authorName })
   const domains: string[] = []
   const lock: MemoryToolLock = async (domain, operation) => {
@@ -64,11 +69,13 @@ async function seed(
 }
 
 async function git(repo: GitMemoryRepo, args: string[]): Promise<string> {
-  const result = await exec("git", args, { cwd: repo.dir })
+  const result = await exec(HERMETIC_GIT, args, { cwd: repo.dir, env: hermeticGitEnv() })
   return String(result.stdout).trim()
 }
 
-setDefaultTimeout(process.platform === "win32" ? 30000 : 5000)
+// Isolated cases already spend 0.3–2.3s on real git. The 5s default times out under suite load and
+// bun then kills the child, leaving repo.head() null for the next test.
+setDefaultTimeout(process.platform === "win32" ? 30000 : 20000)
 
 describe("runMemoryTool", () => {
   it("#given read_only frontmatter #when update_description runs #then it rejects without changing HEAD", async () => {

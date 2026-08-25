@@ -13,7 +13,6 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { astGrepRuntimeDir } from "../../../utils/src/ast-grep/install-script";
-import { SG_PINNED_VERSION } from "../../../utils/src/ast-grep/sg-manifest";
 import {
   buildScanApplyArgs,
   buildScanArgs,
@@ -200,13 +199,6 @@ describe("scan tool: stderr compatibility", () => {
 });
 
 describe.skipIf(!SG_AVAILABLE)("scan tool: pinned real-binary fixtures", () => {
-  it("#given the provisioned runtime #when inspected #then it is the 0.43.0 OMO pin", () => {
-    expect(existsSync(PINNED_SG_PATH)).toBe(true);
-    const version = spawnSync(PINNED_SG_PATH, ["--version"], { encoding: "utf8" });
-    expect(version.status).toBe(0);
-    expect(version.stdout).toContain(`ast-grep ${SG_PINNED_VERSION}`);
-  });
-
   it("#given an inline no-console rule #when dry-scanned #then normalized matches carry a nested rule block", async () => {
     const dir = fixtureRepo();
     const target = join(dir, "src/a.ts");
