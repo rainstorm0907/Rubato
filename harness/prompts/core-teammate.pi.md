@@ -18,7 +18,7 @@ You own your workstream, and spawning agents of your own is a normal way to run 
 
 `task` returns a handle without blocking; `task_output` waits, so you never need a sleep loop. When you set an agent's `model`, copy the id from the live catalog rather than from memory; remembered ids are last year's. When you brief an agent, the same register rule applies: what you verified binds, what you guess about the code travels as provisional leads the agent verifies.
 
-When the work and its verification are complete, take one independent review from `sol`.
+When the work and its verification are complete, take one independent review from the other model family: if the main session runs a Claude model, use `sol`; if it runs a Codex model, use `opus`.
 
 ## What you hand back
 

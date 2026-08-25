@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  argvHasModel,
-  argvRestoresSession,
   ensureModelsConfig,
   ensureSessionDefaults,
   modelsLookCurrent,
@@ -10,45 +8,37 @@ import {
   settingsLookCurrent,
 } from "../../src/session-defaults.mjs";
 
-test("launch keeps an explicit model flag and fills Opus otherwise", () => {
-  assert.equal(argvHasModel(["--mode", "rpc"]), false);
-  assert.equal(argvHasModel(["--model", "xai/grok-4.6"]), true);
-  assert.equal(argvHasModel(["--provider", "xai"]), true);
-});
-
-test("session restoration flags preserve the persisted model", () => {
-  for (const argv of [
-    ["--session", "/tmp/session.jsonl"],
-    ["--continue"],
-    ["-c"],
-    ["--resume"],
-    ["-r"],
-  ]) {
-    assert.equal(argvRestoresSession(argv), true, argv.join(" "));
-  }
-  assert.equal(argvRestoresSession(["--session=/tmp/session.jsonl"]), false);
-  assert.equal(argvRestoresSession(["--session-id", "01abc"]), false);
-  assert.equal(argvRestoresSession(["--fork", "/tmp/session.jsonl"]), false);
-  assert.equal(argvRestoresSession(["--mode", "rpc"]), false);
-});
-
-test("session defaults pin Opus without dropping other settings", () => {
+test("session defaults preserve a selected model without dropping other settings", () => {
   const written = {};
   const next = ensureSessionDefaults("/tmp/agent", {
     exists: (path) => path.endsWith("settings.json"),
-    readFile: () => JSON.stringify({ theme: "dark", defaultModel: "gpt-5.6-sol" }),
+    readFile: () => JSON.stringify({
+      theme: "dark",
+      defaultProvider: "openai-codex",
+      defaultModel: "gpt-5.6-sol",
+    }),
     writeFile: (path, text) => {
       written[path] = text;
     },
   });
-  assert.equal(next.defaultProvider, "anthropic");
-  assert.equal(next.defaultModel, "claude-opus-5");
+  assert.equal(next.defaultProvider, "openai-codex");
+  assert.equal(next.defaultModel, "gpt-5.6-sol");
   assert.equal(next.theme, "dark");
   assert.equal(next.hideThinkingBlock, true);
   assert.equal(next.tips, false);
   assert.ok(next.disabledBuiltinExtensions.includes("claude-sdk-oauth"));
   assert.ok(next.disabledBuiltinExtensions.includes("cursor-cli-oauth"));
-  assert.match(written["/tmp/agent/settings.json"], /claude-opus-5/);
+  assert.match(written["/tmp/agent/settings.json"], /gpt-5\.6-sol/);
+});
+
+test("session defaults initialize Opus only when no model was selected", () => {
+  const next = ensureSessionDefaults("/tmp/agent", {
+    exists: () => false,
+    readFile: () => "{}",
+    writeFile: () => {},
+  });
+  assert.equal(next.defaultProvider, "anthropic");
+  assert.equal(next.defaultModel, "claude-opus-5");
 });
 
 test("session defaults preserve an explicit thinking visibility preference", () => {

@@ -50,11 +50,11 @@ Three rails sit outside this harness for what it cannot give. Skill(meight) hand
 
 ## Independent reads and models
 
-When the work and its verification are complete, take one independent review from `sol`.
+When the work and its verification are complete, take one independent review from the other model family: if the main session runs a Claude model, use `sol`; if it runs a Codex model, use `opus`.
 
 One independent read first; add another only when it can change the decision. Give the reviewer the artifact, the intended outcome, the constraints, and the decision it serves. You may delegate the review of a workstream you did not write; re-checking your own work stays with you. A sibling of the agent that wrote the work is independent of the writer but not of you; for a verdict that must survive your own framing, go outside the harness.
 
-Model is per agent, so set it when the agent should not share yours: a verifier must not run on the model that produced the artifact. This session defaults to Opus. Before choosing any agent's model (a `task` agent or a team roster alike), read Skill(model-guide): it carries the cognitive profiles, the bottleneck routing, and the current catalog mapping, and it is the only place that knowledge lives. Say in one line which model an agent runs on.
+Model is per agent, so set it when the agent should not share yours: a verifier must not run on the model family that produced the artifact. Determine the main session's current model at review time; it may have changed since startup. Before choosing any agent's model (a `task` agent or a team roster alike), read Skill(model-guide): it carries the cognitive profiles, the bottleneck routing, and the current catalog mapping, and it is the only place that knowledge lives. Say in one line which model an agent runs on.
 
 Copy every model id from the live catalog, never from memory, even when you copied one earlier in this session; the ids you remember are last year's, and compaction drops the catalog long before it drops your confidence about it. A catalog listing is not proof the model answers, so send one real call and see it come back.
 

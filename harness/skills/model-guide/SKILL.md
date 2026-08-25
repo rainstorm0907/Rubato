@@ -1,6 +1,6 @@
 ---
 name: model-guide
-description: "서브에이전트·팀원·검증자 모델을 고를 때 읽는 라우팅 가이드. 일회성 task 에이전트 하나를 띄울 때도, 팀 로스터를 짤 때도 — 에이전트 모델을 결정하는 모든 순간에 적용."
+description: "서브에이전트·팀원·검증자 모델을 고를 때 읽는 라우팅 가이드. 일회성 task 자식 하나를 띄울 때도, 팀 로스터를 짤 때도 — 자식 모델을 결정하는 모든 순간에 적용."
 ---
 
 # Model Guide
@@ -41,7 +41,7 @@ Route by asking: **what part is hardest to get right?**
 
 Two convergers are not interchangeable: a hypothesis converger compresses the answer space, an action converger compresses the action space. A patch built by an action converger is well checked by a hypothesis converger — their failure modes rarely overlap. Neither substitutes for a framer when the variables of the problem are themselves undecided.
 
-Debugging is the case that tempts misrouting. The diagnosis is judgment, and judgment stays with the session that owns the outcome — lead and teammate alike. Default shape: a `grok` explorer maps the terrain and gathers evidence, the owner reasons to the root cause, and execution of the settled fix routes by breadth as usual. Hand a debugging workstream to a child only when it is genuinely separable and runs parallel to other work; then the owner is Opus, with Sol as its reviewer.
+Debugging is the case that tempts misrouting. The diagnosis is judgment, and judgment stays with the session that owns the outcome — lead and teammate alike. Default shape: a `grok` explorer maps the terrain and gathers evidence, the owner reasons to the root cause, and execution of the settled fix routes by breadth as usual. Hand a debugging workstream to a child only when it is genuinely separable and runs parallel to other work; review it with the other model family.
 
 ## 3. Current catalog mapping (operational — verify against the live catalog)
 
@@ -54,9 +54,8 @@ Pinned 2026-08. Names are replaceable mappings, not universal claims. Copy exact
 
 Verifier defaults when an independent check is worth the cost:
 
-- Opus-owned implementation → Sol verifier
-- Sol-owned technical fix → fresh Opus or another strong different-model verifier
-- Opus-owned architectural change → Sol verifier
+- Claude-family main session → Sol verifier
+- Codex-family main session → fresh Opus verifier
 
 Defaults, not mandatory pairings. A clear low-risk task may use owner self-verification only.
 

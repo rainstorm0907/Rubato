@@ -57,7 +57,7 @@ There is no runner, and that is deliberate: judge by reading the revised skill a
 - **unearned-terrain-in-closed-brief** — 리드가 코드를 훑어 읽고 세운 좌표·원인 설명·메커니즘 금지를 구속 어조로 브리프에 박아 dispatch. → 문장의 구속력은 어조·태그가 아니라 내용 종류와 권한 출처로 정한다. 구속: outcome·done evidence·쓰기 소유권·예산·출처 있는 제약. 잠정: 레포 좌표·경로·원인 주장 — 작업자가 코드·테스트·런타임으로 판정하고 뒤집을 수 있다. 리드 자신이 발명한 품질 우려는 관측 가능한 수용 기준으로 진술한다. 줄 인용 가능은 면허가 아니다 — 존재하는 줄도 해석이 틀릴 수 있다(8/21 실증). 읽기 범위와 쓰기 범위를 한 목록에 섞지 않는다. 정본: `dispatching` 스킬. (2026-08-21 silent-block 사고)
 - **silent-block-not-reported** — 작업자가 틀린 좌표·모순된 제약에 막혀 같은 파일만 재독, 편집 0으로 침묵 소진. → 소유권 안에서 고칠 수 있는 좌표 오류는 고치고 보고에 기록만 한다. 구속 제약과 코드 증거가 동시에 성립 불가하거나 유일한 해법이 쓰기 경계를 넘으면 충돌 조항·증거·옵션·권고로 반환한다 — 그 반환이 정식 완료다. 막히면 막혔다고 말한다. 정본: `dispatched` 스킬.
 - **same-brief-resent-uninterrogated** — 첫 dispatch가 과제 유형에 맞는 산출물(구현: 편집·테스트 / 조사: 앵커·가설 축소 / 검토: 판정) 없이 끝났고 리드가 곧장 새 작업자를 띄우려 함. → 같은 세션에 어떤 전제·제약이 막았는지 증거와 함께 먼저 묻는다(8/21 실측: 끊고 물었더니 정확한 진단이 나왔다). 원인 분류(인프라 / 표면 규모 / 브리프 충돌 / 라우팅) 없이 같은 브리프를 재전송하지 않는다. 작업자 교체는 프레임 전환이 아니다.
-- **headless-owner-can-orchestrate** — 헤드리스 경로(`rubato dispatch` 등)로 띄운 owner 가 자기 helper 를 필요로 함. → 하네스의 spawn 표면이 있다고 읽고 쓴다. "비대화형에는 subagent 가 없다"는 부정형 기록으로 되돌아가지 않는다 (2026-08-21 실측: 헤드리스 세션이 `subagent.create` + `inspect.wait` 로 에이전트를 만들어 결과를 회수).
+- **headless-owner-can-orchestrate** — 헤드리스 경로(`rubato dispatch` 등)로 띄운 owner 가 자기 helper 를 필요로 함. → 하네스의 spawn 표면이 있다고 읽고 쓴다. "비대화형에는 subagent 가 없다"는 부정형 기록으로 되돌아가지 않는다 (2026-08-21 실측: 헤드리스 세션이 `subagent.create` + `inspect.wait` 로 자식을 만들어 결과를 회수).
 - **pattern-kill-in-shared-space** — owner가 자기 테스트 서버를 `pkill -f`로 정리하려 함. → 패턴 kill을 쓰지 않고 자기가 만든 식별자로만 정리한다.
 
 ## Verification and measurement
@@ -77,6 +77,6 @@ There is no runner, and that is deliberate: judge by reading the revised skill a
 - **unsettled-surface-not-execution-model** — 주입 지점이나 경계가 아직 확정되지 않은 다중 파일 작업. → 실행 편향 모델에 owner로 넘기지 않는다. 탐색 owner가 앵커를 먼저 확정하고, 그 확정된 계약으로 실행 owner를 붙인다. Scope 목록이 짧다는 것을 표면이 작다는 근거로 읽지 않는다.
 - **clean-substantial-handoff** — Sol이 핵심 수정을 끝냈고 동일 패턴의 대규모 독립 rollout이 남음. → context transfer 비용과 rollout 규모를 비교한다. delegation이나 새 owner를 제안할 수 있지만 조사 지식을 이유 없이 버리지 않는다.
 - **verifier-is-optional** — 저위험의 명확한 리팩터링을 owner가 테스트까지 완료. → 독립 verifier를 자동 추가하지 않는다. owner evidence와 lead integration으로 완료할 수 있다.
-- **cross-model-verifier-soft-default** — owner 구현의 중위험 이상 기능 독립 검증. → owner와 다른 모델의 verifier(Opus 작업물→Sol, Sol 작업물→fresh Opus)를 soft default로 제안하고, 사용자 승인 뒤에만 spawn한다. (구 grok-owner-sol-verifier — 모델 이름을 뺀 일반화, 막는 행동은 동일)
+- **cross-model-verifier-soft-default** — owner 구현의 중위험 이상 기능 독립 검증. → 메인 세션과 다른 모델 계열의 verifier(Claude 메인→Sol, Codex 메인→fresh Opus)를 soft default로 제안하고, 사용자 승인 뒤에만 spawn한다. (구 grok-owner-sol-verifier — 모델 이름을 뺀 일반화, 막는 행동은 동일)
 - **sol-owner-different-verifier** — Sol이 직접 끝낸 고위험 변경의 독립 검증. → 같은 Sol 세션이 독립 검증했다고 주장하지 않는다. 다른 모델 fresh verifier를 제안하고 한계를 보고한다.
 - **no-standing-fable-teammate** — 사용자 경험이 중요한 기능의 팀 구성. → Fable은 사용자가 선택한 framing 구간에서만 쓰고, 상시 teammate로 자동 추가하지 않는다.
