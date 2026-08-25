@@ -12,6 +12,7 @@ import { buildSenpiArgs, brokerOverlayPath, leadOverlayPath } from "../../src/la
 import {
   brokerUrl,
   bridgeSourceMtimeMs,
+  catalogModelName,
   catalogId,
   ensureBroker,
   FALLBACK_CATALOG,
@@ -48,6 +49,8 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   const grouped = groupCatalog(FALLBACK_CATALOG);
   assert.deepEqual(Object.keys(grouped).sort(), ["anthropic", "openai-codex", "xai"]);
   assert.ok(grouped.anthropic.some((model) => model.id === "claude-opus-5"));
+  assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").name, "Opus 5");
+  assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol-fast").name, "GPT-5.6 Sol Fast");
   assert.ok(grouped.anthropic.every((model) => model.cacheRetention === "long"));
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
@@ -64,6 +67,12 @@ test("catalog ids keep provider prefixes the broker understands", () => {
     assert.equal(fast.upstreamModelId, `gpt-5.6-${variant}`);
     assert.equal(fast.serviceTier, "priority");
   }
+});
+
+test("catalog display names have one fallback source", () => {
+  assert.equal(catalogModelName({ id: "anthropic/claude-opus-5" }), "Opus 5");
+  assert.equal(catalogModelName({ id: "future/new-model", name: "New Model" }), "New Model");
+  assert.equal(catalogModelName({ id: "future/new-model" }), "new-model");
 });
 
 test("5.6 context limits apply to both live broker routes", () => {

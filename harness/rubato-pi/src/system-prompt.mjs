@@ -59,6 +59,27 @@ export function loadRolePrompt(role, { env = process.env, readFile = readFileSyn
   return readFile(path, "utf8");
 }
 
+export function modelIdentityLine(model, serviceTier) {
+  const id = model?.id;
+  if (typeof id !== "string" || id.length === 0) return "";
+  const provider = model?.provider;
+  const catalogId = typeof provider === "string" && provider.length > 0 ? `${provider}/${id}` : id;
+  const displayName = typeof model.name === "string" && model.name.length > 0 ? model.name : id;
+  const brandedName = provider === "anthropic" && !/^claude\b/i.test(displayName)
+    ? `Claude ${displayName}`
+    : displayName;
+  const name = serviceTier === "priority" && !/\bfast\b/i.test(brandedName) ? `${brandedName} Fast` : brandedName;
+  return `You are ${name} (${catalogId}).`;
+}
+
+export function promptForAgentStart(event, ctx, role, hooks = {}) {
+  return replaceSystemPrompt(event.systemPrompt ?? "", role, {
+    ...hooks,
+    model: ctx.model,
+    serviceTier: ctx.serviceTier,
+  });
+}
+
 export function extractHarnessExtras(existing) {
   const extras = [];
   const take = (pattern) => {
@@ -75,7 +96,7 @@ export function extractHarnessExtras(existing) {
 
 export function replaceSystemPrompt(existing, role, hooks = {}) {
   const load = hooks.loadRolePrompt ?? ((nextRole) => loadRolePrompt(nextRole, hooks));
-  const parts = [load(role).trim(), TOOL_GUIDELINES];
+  const parts = [load(role).trim(), modelIdentityLine(hooks.model, hooks.serviceTier), TOOL_GUIDELINES];
   const extras = extractHarnessExtras(existing ?? "");
   parts.push(...extras);
   // Senpi only appends its own skill listing when it builds the prompt itself,
