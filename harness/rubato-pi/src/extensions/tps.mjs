@@ -29,6 +29,10 @@ export function formatTpsNotice({ tokensPerSecond, cacheHitRate, elapsedSeconds,
   return latency ? `${head}, ${latency}` : head;
 }
 
+export function turnTokensPerSecond(timing, output, elapsedSeconds) {
+  return timing?.tokensPerSecond ?? output / elapsedSeconds;
+}
+
 export function installTps(pi, { processStartedAt = PROCESS_STARTED_AT } = {}) {
   let activeAssistantStartMs = null;
   let assistantElapsedMs = 0;
@@ -86,9 +90,12 @@ export function installTps(pi, { processStartedAt = PROCESS_STARTED_AT } = {}) {
     // event.messages 가 곧 이번 턴의 assistant 메시지들이고 timing 도 거기 붙어 있으므로
     // 세션 브랜치를 다시 뒤질 필요가 없다.
     const timing = turnTiming(event.messages, processStartedAt);
+    // Footer와 notice는 persisted timing이 있으면 같은 턴 처리량을 쓴다. timing이 없는
+    // 예전/외부 메시지만 기존 message_start→message_end 단조 시계로 폴백한다.
+    const tokensPerSecond = turnTokensPerSecond(timing, output, elapsedSeconds);
     ctx.ui.notify(
       formatTpsNotice({
-        tokensPerSecond: output / elapsedSeconds,
+        tokensPerSecond,
         cacheHitRate: promptTokens > 0 ? (cacheRead / promptTokens) * 100 : 0,
         elapsedSeconds,
         timing,

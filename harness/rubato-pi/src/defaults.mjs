@@ -1,5 +1,4 @@
 export const DEFAULT_PROVIDER = "anthropic";
-export const DEFAULT_MODEL = "anthropic/claude-opus-5";
 export const DEFAULT_MODEL_ID = "claude-opus-5";
 export const CACHE_RETENTION = "long";
 
@@ -7,6 +6,7 @@ export const MODEL_CATEGORIES = Object.freeze({
   grok: "xai/grok-4.6",
   opus: "anthropic/claude-opus-5",
   sonnet: "anthropic/claude-sonnet-5",
+  fable: "anthropic/claude-fable-5",
   haiku: "anthropic/claude-haiku-4-5",
   sol: "openai-codex/gpt-5.6-sol",
   terra: "openai-codex/gpt-5.6-terra",

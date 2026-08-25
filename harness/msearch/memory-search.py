@@ -64,6 +64,10 @@ STRONG_ANCHOR_THRESHOLD = 0.7
 RECENT_DAYS_STRONG = 7
 RECENT_DAYS_WEAK = 30
 MIN_RESULT_RANK_SCORE = 8.0
+MIN_PARTIAL_LEXICAL_RANK_SCORE = 10.0
+MIN_RESULT_TOKEN_OVERLAP = 0.34
+MAX_SEMANTIC_DISTANCE = 0.665
+MIN_SEMANTIC_DOCUMENT_GAP = 0.025
 RESULT_NEAR_TIE_DELTA = 1.0
 RAW_MATCH_LIMIT = 3
 RAW_CONTEXT_LINES = 1
@@ -463,6 +467,43 @@ def parse_hash_result(result: list[object], include_score: str = "score") -> lis
     return memories
 
 
+def _ft_field(container: object, name: str) -> object:
+    """Read one field from an FT reply map whose keys may be bytes or str."""
+    if not isinstance(container, dict):
+        return None
+    if name in container:
+        return container[name]
+    return container.get(name.encode())
+
+
+def normalize_ft_search(result: object, with_scores: bool = False) -> object:
+    """Return an FT.SEARCH reply in the flat-array shape the parsers expect.
+
+    redis-py 8 hands back a map (`total_results` / `results` / `extra_attributes`)
+    instead of the flat `[total, key, fields, ...]` array the older client
+    produced, so every parser here raised `KeyError: 1` on a fresh install. The
+    package list is unpinned, which means a new machine always lands on the new
+    client. Rebuilding the old shape keeps one parser path for both clients
+    rather than teaching each parser two layouts. Older replies pass through
+    untouched.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    flat: list[object] = [_ft_field(result, "total_results") or 0]
+    for item in _ft_field(result, "results") or []:
+        flat.append(_ft_field(item, "id"))
+        if with_scores:
+            flat.append(_ft_field(item, "score"))
+        attributes = _ft_field(item, "extra_attributes") or {}
+        pairs: list[object] = []
+        for key, value in attributes.items():
+            pairs.append(key)
+            pairs.append(value)
+        flat.append(pairs)
+    return flat
+
+
 def parse_bm25_result(result: list[object]) -> list[dict[str, object]]:
     memories: list[dict[str, object]] = []
     if not result or len(result) <= 1:
@@ -555,7 +596,7 @@ def search_bm25(r: redis.Redis, text_query: str, anchors: list[Anchor], limit: i
             "LIMIT", "0", str(limit),
             "DIALECT", "2",
         )
-        parsed = parse_bm25_result(result)
+        parsed = parse_bm25_result(normalize_ft_search(result, with_scores=True))
         if fuzzy_token:
             for memory in parsed:
                 memory["_fuzzy_tokens"] = [fuzzy_token]
@@ -565,6 +606,38 @@ def search_bm25(r: redis.Redis, text_query: str, anchors: list[Anchor], limit: i
 
 def high_confidence_vector_results(memories: list[dict[str, object]]) -> list[dict[str, object]]:
     return [memory for memory in memories if float(memory.get("score", 1.0)) <= MAX_VECTOR_DISTANCE]
+
+
+def apply_semantic_evidence(
+    candidates: list[dict[str, object]], vector_results: list[dict[str, object]]
+) -> None:
+    """Attach calibrated document-level vector evidence to existing candidates.
+
+    Chunk-level runner-up gaps are misleading when adjacent chunks from the same
+    document are all good matches. Compare the nearest distinct documents, then
+    annotate matching candidates without changing their established hybrid ranking.
+    """
+    best_by_document: dict[str, float] = {}
+    for memory in vector_results:
+        rel_path = str(memory.get("rel_path", ""))
+        if not rel_path:
+            continue
+        try:
+            distance = float(memory.get("score", 1.0))
+        except (TypeError, ValueError):
+            continue
+        best_by_document[rel_path] = min(distance, best_by_document.get(rel_path, 1.0))
+    ordered = sorted(best_by_document.items(), key=lambda item: item[1])
+    if not ordered:
+        return
+    top_path, top_distance = ordered[0]
+    runner_distance = ordered[1][1] if len(ordered) > 1 else 1.0
+    gap = runner_distance - top_distance
+    for memory in candidates:
+        if str(memory.get("rel_path", "")) != top_path:
+            continue
+        memory["_semantic_distance"] = top_distance
+        memory["_semantic_document_gap"] = gap
 
 
 def query_embedding(client, text: str) -> bytes:
@@ -582,7 +655,7 @@ def search_vector(r: redis.Redis, query_bytes: bytes, limit: int) -> list[dict[s
         "LIMIT", "0", str(limit),
         "DIALECT", "2",
     )
-    return parse_hash_result(result)
+    return parse_hash_result(normalize_ft_search(result))
 
 
 def search_hybrid(
@@ -594,15 +667,25 @@ def search_hybrid(
 ) -> list[dict[str, object]]:
     tokens = bm25_tokens(text_query, anchors)
     text_filter = scoped_text_query(tokens)
-    result = r.execute_command(
-        "FT.HYBRID", INDEX_NAME,
-        "SEARCH", text_filter,
-        "VSIM", "@vector", query_bytes,
-        "KNN", "2", "K", str(limit),
-        "COMBINE", "RRF", "4", "WINDOW", "20", "CONSTANT", "30",
-        "LIMIT", "0", str(limit),
-        "LOAD", "14", "@title", "@section", "@content", "@source", "@subtype", "@canonical", "@date", "@rel_path", "@mtime", "@__score", "@meta", "@affect_score", "@affect_flags", "@affect_version",
-    )
+    # FT.HYBRID only exists on newer servers. Redis Stack 7.4 rejects it as an
+    # unknown command, and the caller wraps hybrid and vector search in one try
+    # block, so that rejection used to take vector search down with it --
+    # semantic recall silently disappeared on those servers. Report "no hybrid
+    # results" instead so the vector pass still runs.
+    try:
+        result = r.execute_command(
+            "FT.HYBRID", INDEX_NAME,
+            "SEARCH", text_filter,
+            "VSIM", "@vector", query_bytes,
+            "KNN", "2", "K", str(limit),
+            "COMBINE", "RRF", "4", "WINDOW", "20", "CONSTANT", "30",
+            "LIMIT", "0", str(limit),
+            "LOAD", "14", "@title", "@section", "@content", "@source", "@subtype", "@canonical", "@date", "@rel_path", "@mtime", "@__score", "@meta", "@affect_score", "@affect_flags", "@affect_version",
+        )
+    except redis.ResponseError as exc:
+        if "unknown command" in str(exc).lower():
+            return []
+        raise
     return parse_hybrid_result(result)
 
 
@@ -1164,8 +1247,10 @@ def search_memories(query: str, transcript_path: str = "", limit: int = RETURN_K
         client = OpenAI()
         query_bytes = query_embedding(client, vector_query)
         memories = search_hybrid(r, expanded_query, query_bytes, anchors, TOP_K)
+        vector_results = search_vector(r, query_bytes, TOP_K)
         if not memories:
-            memories = high_confidence_vector_results(search_vector(r, query_bytes, TOP_K))
+            memories = high_confidence_vector_results(vector_results)
+        apply_semantic_evidence(candidates + memories, vector_results)
     except Exception:
         memories = []
 
@@ -1214,7 +1299,17 @@ def format_context(memories: list[dict[str, object]], include_paths: bool = Fals
 
 
 def json_context(memories: list[dict[str, object]]) -> str:
-    return json.dumps(memories, ensure_ascii=False, indent=2)
+    serialized: list[dict[str, object]] = []
+    for memory in memories:
+        item = dict(memory)
+        # `score` used to expose the Redis hash/vector field. BM25 candidates do
+        # not populate that field, so both exact and unrelated hits commonly
+        # reported 0.0. At the CLI boundary score is the final, higher-is-better
+        # ranking signal; preserve the backend-specific value for diagnostics.
+        item["retrieval_score"] = item.get("score", 0.0)
+        item["score"] = item.get("rank_score", 0.0)
+        serialized.append(item)
+    return json.dumps(serialized, ensure_ascii=False, indent=2)
 
 
 def output_gate_enabled() -> bool:
@@ -1266,26 +1361,31 @@ def result_worthy(memory: dict[str, object]) -> bool:
         return False
 
     reasons = [str(reason) for reason in memory.get("rank_reasons", [])]
-    if any(
-        reason in reasons
-        for reason in (
-            "raw_rg",
-            "exact_phrase",
-            "core_phrase",
-            "heading_core_phrase",
-            "strong_anchor",
-            "entity_canonical_match",
-            "date_phrase",
-            "month_phrase",
-            "fuzzy_token",
-        )
-    ):
+    # Exact text and registered entity/origin paths are independently strong
+    # evidence. Generic Korean fuzzy matches and "strong" anchors are not: an
+    # unrelated technical query almost always shares one broad verb or noun.
+    if any(reason in reasons for reason in ("raw_rg", "exact_phrase", "entity_canonical_match", "term_origin")):
         return True
-    return token_overlap_ratio(reasons) >= 0.34
+    return rank_score >= MIN_PARTIAL_LEXICAL_RANK_SCORE and token_overlap_ratio(reasons) >= MIN_RESULT_TOKEN_OVERLAP
+
+
+def strong_semantic_match(memory: dict[str, object]) -> bool:
+    try:
+        distance = float(memory.get("_semantic_distance", 1.0))
+        gap = float(memory.get("_semantic_document_gap", 0.0))
+    except (TypeError, ValueError):
+        return False
+    return distance <= MAX_SEMANTIC_DISTANCE and gap >= MIN_SEMANTIC_DOCUMENT_GAP
 
 
 def trusted_results(memories: list[dict[str, object]]) -> list[dict[str, object]]:
-    return [memory for memory in memories if result_worthy(memory)]
+    trusted = [memory for memory in memories if result_worthy(memory)]
+    if memories and strong_semantic_match(memories[0]) and memories[0] not in trusted:
+        # Strong vector evidence can establish relevance on its own, but only for
+        # the result the complete ranker also put first. This keeps an accidental
+        # lower-ranked nearest neighbour from becoming the answer.
+        trusted.insert(0, memories[0])
+    return trusted
 
 
 def lexical_result_decisive(memories: list[dict[str, object]]) -> bool:
@@ -1492,8 +1592,8 @@ def run_cli(args: argparse.Namespace) -> int:
     ensure_index_fresh(quiet=args.json or args.dual_run)
     memories = search_results(query, limit=args.limit, scope=resolve_scope(args))
     if not memories:
-        print("[]" if args.json else "NOT FOUND")
-        return 1
+        print("[]" if args.json else "NO RELEVANT MEMORY")
+        return 0
     gated, metrics, notice = prepare_for_serialization(memories, query=query, lane=args.lane)
     if args.dual_run:
         print(

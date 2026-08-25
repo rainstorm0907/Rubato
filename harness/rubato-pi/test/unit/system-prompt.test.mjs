@@ -6,6 +6,8 @@ import { join } from "node:path";
 import {
   customPromptPath,
   loadRolePrompt,
+  modelIdentityLine,
+  promptForAgentStart,
   replaceSystemPrompt,
   promptNameForRole,
   TOOL_GUIDELINES,
@@ -25,6 +27,30 @@ test("lead prompt is lead.pi.md, teammates share teammate.pi.md", () => {
   assert.equal(promptNameForRole("lead"), "lead.pi.md");
   assert.equal(promptNameForRole("owner"), "teammate.pi.md");
   assert.equal(promptNameForRole("verifier"), "teammate.pi.md");
+});
+
+test("current model identity is stated in the system prompt", () => {
+  assert.equal(
+    modelIdentityLine({ provider: "openai-codex", id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }),
+    "You are GPT-5.6 Sol (openai-codex/gpt-5.6-sol).",
+  );
+  assert.equal(
+    modelIdentityLine({ provider: "anthropic", id: "claude-opus-5", name: "Opus 5" }),
+    "You are Claude Opus 5 (anthropic/claude-opus-5).",
+  );
+  assert.equal(
+    modelIdentityLine({ provider: "xai", id: "grok-4.6", name: "Grok 4.6" }),
+    "You are Grok 4.6 (xai/grok-4.6).",
+  );
+  assert.equal(modelIdentityLine(undefined), "");
+  const next = promptForAgentStart(
+    { systemPrompt: "" },
+    { model: { provider: "openai-codex", id: "gpt-5.6-sol", name: "GPT-5.6 Sol" }, serviceTier: "priority" },
+    "lead",
+    loaders(),
+  );
+  assert.match(next, /You are GPT-5\.6 Sol Fast \(openai-codex\/gpt-5\.6-sol\)\./);
+  assert.doesNotMatch(next, /You are undefined/);
 });
 
 test("RUBATO_SYSTEM_PROMPT_FILE replaces role prompt assembly", () => {

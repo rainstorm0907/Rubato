@@ -11,17 +11,6 @@ export function modelsPath(agentDir) {
   return join(agentDir, "models.json");
 }
 
-export function argvHasModel(argv) {
-  return argv.some((token) => token === "--model" || token === "--provider" || token.startsWith("--model="));
-}
-
-export function argvRestoresSession(argv) {
-  return argv.some((token) =>
-    token === "--continue" || token === "-c" || token === "--resume" || token === "-r" ||
-    token === "--session",
-  );
-}
-
 const DISABLED_OAUTH_EXTENSIONS = ["claude-sdk-oauth", "cursor-cli-oauth"];
 
 function readJson(path, { exists, readFile }) {
@@ -36,8 +25,8 @@ function readJson(path, { exists, readFile }) {
 
 export function settingsLookCurrent(current) {
   if (!current || typeof current !== "object") return false;
-  if (current.defaultProvider !== DEFAULT_PROVIDER) return false;
-  if (current.defaultModel !== DEFAULT_MODEL_ID) return false;
+  if (typeof current.defaultProvider !== "string" || current.defaultProvider.length === 0) return false;
+  if (typeof current.defaultModel !== "string" || current.defaultModel.length === 0) return false;
   if (current.tips !== false) return false;
   if (typeof current.hideThinkingBlock !== "boolean") return false;
   if (!Array.isArray(current.disabledBuiltinExtensions)) return false;
@@ -80,8 +69,8 @@ export function ensureSessionDefaults(
   ]);
   const next = {
     ...current,
-    defaultProvider: DEFAULT_PROVIDER,
-    defaultModel: DEFAULT_MODEL_ID,
+    defaultProvider: current.defaultProvider ?? DEFAULT_PROVIDER,
+    defaultModel: current.defaultModel ?? DEFAULT_MODEL_ID,
     // true 는 "안 보여준다" 가 아니라 "접어 둔다" 는 뜻이다. 렌더러는
     // hideThinkingBlock && !thinkingExpanded 로 판정하므로, true 여야 라벨을
     // 눌러 펴고 그 안에서 사고가 흐른다. false 로 두면 접기 자체가 사라져

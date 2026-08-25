@@ -368,7 +368,22 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 여는 빈 블록)는 사고 시작으로 세지 않는다 — 그러면 업스트림 대기가 think로 옮겨가 delay가 0에 가까워진다.
 `ttftMs`는 이름도 의미도 그대로 남겨 기존 로그와 `scripts/analyze-measurements.mjs`가 계속 돈다.
 
-상태줄은 **현재 턴에 속한 모델 호출들의 평균**을 `delay 1.2s · think 4.0s`로 붙인다
+상태줄은 모델·잔량 다음에 속도 조각을 `17 tok/s · Cache 98% · delay 4s · think 10s` 순으로 붙이고,
+브랜치·레포는 그 뒤에 둔다. 폭이 줄어들면 정체성(브랜치/레포)부터 잘리고 숫자 묶음은 남는다.
+없는 조각은 빼고 `think 0`은 그리지 않는다. 숫자는 정수로 반올림한다(17.5 → 18 tok/s, 98.9% → 99%,
+4.6s → 5s). 1초 미만 delay/think만 `420ms`처럼 정수 밀리초로 남긴다.
+
+`Cache`는 **활성 브랜치 전체** assistant usage의 가중치다. 호출별 퍼센트를 평균 내지 않고
+`cacheRead` 합 / (`input`+`cacheRead`+`cacheWrite`) 합을 한 번 나눈다. 세션을 이어서 연 뒤에도
+브랜치에 남은 usage는 포함한다. `tok/s`와 delay/think는 **현재 사용자 턴**만 본다. TPS 분모는
+성공한 호출의 양수 `modelDurationMs` 합이고 분자는 그 호출들의 persisted `usage.output` 합이다.
+즉 순수 생성 구간만 잰 속도가 아니라 wait·think까지 포함한 턴 처리량이며, 턴 종료 알림도 persisted
+timing이 있으면 같은 계산을 쓴다. timing이 없는 옛 메시지만 알림의 단조 벽시계 계산으로 폴백한다.
+한 턴에 timing이 있는 호출과 없는 호출이 섞이면 footer는 부분 표본 `tok/s`를 숨기고, 알림은 전체 턴
+벽시계 처리량으로 폴백한다.
+이전 프로세스에 저장된 timing은 `processStartedAt`이 맞지 않으면 라이브 속도로 쓰지 않는다.
+
+상태줄은 **현재 턴에 속한 모델 호출들의 평균**을 `delay 4s · think 10s`로 붙인다
 (`currentTurnTiming` + `formatLatency`, `src/statusline.mjs`). 한 사용자 턴은 도구 루프 때문에 호출
 여러 번으로 갈라지므로 마지막 호출만 보여주면 숫자가 호출마다 튄다. 턴 경계는 브랜치 엔트리에서
 직접 뽑는다 — 마지막 user 메시지 뒤의 assistant 들이 곧 현재 턴이다. 그래서 measurement 기록기가
@@ -376,13 +391,12 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 호출들의 러닝 평균이 보인다. `think`는 **실제로 사고한 호출들만** 모아 평균낸다 — 사고 없는 호출을
 0으로 섞으면 98초를 생각한 턴이 절반으로 찍혀 거짓말이 된다. 사고가 하나도 없던 턴은 `delay`만 그리고
 `think 0ms`는 쓰지 않는다. 이전 프로세스에서 세션 파일에 저장된 값, 실패·중단된 호출, 델타 없이 끝난
-호출은 표시하지 않는다. `modelDurationMs`는 답변 길이에 따라 늘어나는 raw duration이라 속도처럼
-보이지 않도록 상태줄에서는 숨기되, 오프라인 분석용 데이터에는 그대로 남긴다.
+호출은 표시하지 않는다. `modelDurationMs`는 TPS 분모로만 쓰고, raw duration 자체는 상태줄에 그리지 않는다.
 
 실측 예시(2026-08-24, anthropic/claude-opus-5, 실제 브리지 호출 — 증명 + 도구 호출 한 턴):
 
 ```
-✦ Opus 5 xhigh · 100%(1M) · rubato/base · Rubato · Cache 2% · delay 3.2s · think 98.2s ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
+✦ Opus 5 xhigh · 100%(1M) · Cache 2% · delay 3s · think 98s · rubato/base · Rubato ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
 ```
 
 뒤에 있는 호출별 실제 숫자는 이렇다. 도구 결과를 받은 두 번째 호출은 사고를 하지 않았고, 그래서

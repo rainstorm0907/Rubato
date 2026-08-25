@@ -19,6 +19,16 @@ FORCE=0
 [ -d "$SRC" ] || { echo "install-extensions: 번들이 없다 - $SRC" >&2; exit 1; }
 mkdir -p "$DEST"
 
+# 번들에서 폐기한 확장은 다른 기기에도 남기지 않는다. 일반 사용자 확장은
+# 보존하지만, 이 파일은 Rubato가 설치했던 옛 번들이므로 업데이트 때 지운다.
+removed=0
+for name in promise-nudge.ts; do
+  if [ -e "$DEST/$name" ]; then
+    rm -f "$DEST/$name"
+    removed=$((removed + 1))
+  fi
+done
+
 added=0; kept=0; replaced=0
 for file in "$SRC"/*.ts "$SRC"/*.js; do
   [ -f "$file" ] || continue
@@ -36,6 +46,6 @@ for file in "$SRC"/*.ts "$SRC"/*.js; do
   fi
 done
 
-echo "install-extensions: 새로 $added, 유지 $kept, 덮어씀 $replaced -> $DEST"
+echo "install-extensions: 새로 $added, 유지 $kept, 덮어씀 $replaced, 폐기 $removed -> $DEST"
 [ "$kept" -gt 0 ] && [ "$FORCE" -eq 0 ] && echo "  (이미 있는 것은 두었다. 덮어쓰려면 --force)"
 exit 0

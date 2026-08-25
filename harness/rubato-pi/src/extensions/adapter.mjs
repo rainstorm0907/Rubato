@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { omoExtension } from "../engine-paths.mjs";
 import { resolveRole } from "../role-contract.mjs";
-import { replaceSystemPrompt } from "../system-prompt.mjs";
+import { promptForAgentStart } from "../system-prompt.mjs";
 import { isTeamMemberProcess, parseMemberIdentity } from "../member-identity.mjs";
 import { registerMemberBoardTools, restoreMemberTaskEngine } from "../member-tools.mjs";
 import { rubatoPiTaskComponent } from "../omo-runtime.mjs";
@@ -53,8 +53,8 @@ export default async function rubatoPiAdapter(pi) {
     pi.sendMessage(contractSkillsMessage(role), { triggerTurn: false, deliverAs: "nextTurn" });
   });
 
-  pi.on("before_agent_start", async (event) => ({
-    systemPrompt: replaceSystemPrompt(event.systemPrompt ?? "", role),
+  pi.on("before_agent_start", async (event, ctx) => ({
+    systemPrompt: promptForAgentStart(event, ctx, role),
   }));
 
   pi.on("tool_call", async (event) => {

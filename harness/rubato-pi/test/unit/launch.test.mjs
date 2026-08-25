@@ -7,7 +7,7 @@ test("launcher pins exact omo-ai and senpi versions", () => {
   assert.deepEqual(readPinnedVersions(), { omoAi: PIN.omoAi, senpi: PIN.senpi });
 });
 
-test("senpi argv replaces the system prompt and loads lead overlay first", () => {
+test("senpi argv replaces the system prompt and lets profile settings choose the default model", () => {
   const args = buildSenpiArgs(["--mode", "rpc"]);
   const promptAt = args.indexOf("--system-prompt");
   const leadAt = args.indexOf(leadOverlayPath());
@@ -23,8 +23,7 @@ test("senpi argv replaces the system prompt and loads lead overlay first", () =>
   assert.doesNotMatch(args[promptAt + 1], /Run `fx models`/);
   assert.doesNotMatch(args[promptAt + 1], /# Dispatching/);
   assert.doesNotMatch(args[promptAt + 1], /# Dispatched/);
-  const modelAt = args.indexOf("--model");
-  assert.equal(args[modelAt + 1], "anthropic/claude-opus-5");
+  assert.equal(args.includes("--model"), false);
   assert.ok(args.includes("-e"));
   assert.ok(leadAt > 0 && args[leadAt - 1] === "-e");
   assert.ok(brokerAt > leadAt && args[brokerAt - 1] === "-e");
