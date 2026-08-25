@@ -106,7 +106,7 @@ test("already-current session files are left untouched", () => {
     defaultModel: "claude-opus-5",
     hideThinkingBlock: true,
     tips: false,
-    retry: { maxRetries: 5 },
+    retry: { maxRetries: 5, modelFallback: false },
     disabledBuiltinExtensions: ["claude-sdk-oauth", "cursor-cli-oauth"],
     theme: "dark",
   };
@@ -159,6 +159,34 @@ test("stale models that still disable a broker provider are not treated as curre
     }),
     false,
   );
+});
+
+// 거절을 만났을 때 모델을 갈아타지 않고 턴을 멈추게 하는 스위치다.
+// 엔진 기본값이 true 라 명시로 꺼야 한다.
+test("model fallback 은 기본으로 꺼진 채로 쓴다", () => {
+  const written = {};
+  const next = ensureSessionDefaults("/tmp/agent", {
+    exists: () => false,
+    readFile: () => "{}",
+    writeFile: (path, text) => {
+      written[path] = text;
+    },
+  });
+  assert.equal(next.retry.modelFallback, false);
+  assert.equal(JSON.parse(written["/tmp/agent/settings.json"]).retry.modelFallback, false);
+});
+
+// 사용자가 직접 켜 둔 값은 우리 기본값이 덮지 않는다.
+test("사용자가 적어 둔 modelFallback 은 그대로 둔다", () => {
+  const next = ensureSessionDefaults("/tmp/agent", {
+    exists: () => true,
+    readFile: (path) =>
+      path.endsWith("settings.json")
+        ? JSON.stringify({ retry: { modelFallback: true } })
+        : JSON.stringify({ providers: {}, disabledProviders: [] }),
+    writeFile: () => {},
+  });
+  assert.equal(next.retry.modelFallback, true);
 });
 
 // 브로커가 내려주는 카탈로그를 넘기면 그 프로바이더도 회수 대상이다.
