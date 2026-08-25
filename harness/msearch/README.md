@@ -42,22 +42,77 @@ msearch --doctor               설치 상태 진단
 
 ## 필요한 것
 
-| 항목 | 이유 |
+| 항목 | 누가 챙기나 |
 |------|------|
-| Redis Stack | 벡터 + 전문 검색. **일반 redis 는 안 된다** — RediSearch 모듈이 필요하다 |
-| `OPENAI_API_KEY` | 임베딩 생성 (`text-embedding-3-small`) |
-| python 패키지 | `redis`, `python-dotenv`, `openai`, `konlpy` |
+| python 패키지 (`redis`, `python-dotenv`, `openai`, `konlpy`) | `install.sh --apply` 가 `harness/msearch/.venv` 에 넣는다 |
+| Redis Stack | **손으로 깐다** (아래) |
+| `OPENAI_API_KEY` | **손으로 넣는다** (아래) |
 
-Redis Stack 띄우기:
+세 개가 다 서야 검색이 돈다. 어디까지 됐는지는 `msearch --doctor` 한 곳에서만 판정한다.
+
+### python
+
+`install.sh --apply` 가 알아서 한다. 전역에 이미 네 패키지가 있으면 건드리지 않고,
+없을 때만 `harness/msearch/.venv` 를 세운다. `msearch` 는 그 venv 가 있으면 쓰고
+없으면 `python3` 로 떨어지므로, 예전부터 전역에 깔아 둔 머신은 아무것도 안 바뀐다.
+다른 파이썬을 쓰려면 `MSEARCH_PYTHON` 으로 지정한다.
+
+시스템 파이썬에 `pip install` 이 `externally-managed-environment` 로 거부당하는 것은
+PEP 668 이다. `--break-system-packages` 로 뚫는 대신 venv 를 쓰는 이유가 그것이다.
+
+### Redis Stack
+
+**RediSearch(`FT.*`) 모듈이 있어야 한다.** 여기서 두 번 걸린다:
+
+- **`brew install redis` 는 안 된다.** homebrew-core 의 redis 8.x 는 모듈 없이 빌드돼
+  있어서 `MODULE LIST` 에 `vectorset` 하나만 나오고 `FT.CREATE` 가 없다. 버전이 8 이라
+  "Redis 8 부터 검색이 본체에 들어갔다"는 말과 겹쳐 맞아 보이는데, 그 빌드가 아니다.
+- **brew 로 깔면 cask 라 `brew trust` 를 한 번 물어본다.** tap 은 Redis 쪽 공식
+  (`github.com/redis-stack/homebrew-redis-stack`)이지만 homebrew-core 가 아니라서다.
 
 ```bash
 docker run -d -p 6380:6379 --name msearch-redis redis/redis-stack-server:latest
 ```
 
-또는 `brew tap redis-stack/redis-stack && brew install redis-stack`.
+또는:
 
-API 키는 환경변수로 두거나 `<state>/.env` 에 `OPENAI_API_KEY=sk-...` 한 줄로 둔다.
+```bash
+brew tap redis-stack/redis-stack
+brew trust --cask redis-stack/redis-stack/redis-stack-server
+brew install --cask redis-stack-server
+```
+
+확인은 포트가 아니라 모듈로 한다. 포트가 열려 있어도 모듈이 없으면 색인이 못 선다:
+
+```bash
+redis-cli -p 6380 COMMAND INFO FT.CREATE   # 비어 있으면 잘못 깐 것이다
+```
+
+**계속 켜두기.** cask 는 `brew services` 가 관리하지 않으므로 로그인 때 뜨게 하려면
+직접 건다. macOS 예시 (`~/Library/LaunchAgents/dev.msearch.redis.plist`):
+
+```xml
+<key>ProgramArguments</key>
+<array>
+  <string>/opt/homebrew/bin/redis-stack-server</string>
+  <string>--port</string><string>6380</string>
+  <string>--daemonize</string><string>no</string>
+</array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+```
+
+`launchctl bootstrap gui/$(id -u) <plist>` 로 걸고 `launchctl bootout gui/$(id -u)/dev.msearch.redis` 로 끈다.
+
+### OPENAI_API_KEY
+
+환경변수로 두거나 `<state>/.env` 에 `OPENAI_API_KEY=sk-...` 한 줄로 둔다.
 state 경로는 `--doctor` 가 알려준다.
+
+ChatGPT 구독의 OAuth 토큰(`~/.codex/auth.json`)으로는 안 된다 — 그 파일의
+`OPENAI_API_KEY` 는 `auth_mode` 가 `chatgpt` 이면 `null` 이다. platform.openai.com 의
+API 키가 따로 필요하다. 비용은 `text-embedding-3-small` 기준 100만 토큰에 $0.02 라
+기억 수십 개 규모에서는 사실상 0 이다.
 
 ## 설정
 

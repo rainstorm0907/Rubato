@@ -13,7 +13,13 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
-py="${MSEARCH_PYTHON:-python3}"
+# 파이썬은 세 단계로 고른다. 최근 배포판의 시스템 파이썬은 PEP 668 로 잠겨 있어
+# (`EXTERNALLY-MANAGED`) 전역 pip 설치가 막히므로, 옆에 venv 가 있으면 그것을 먼저 쓴다.
+# venv 가 없으면 예전처럼 python3 을 그대로 쓴다 — 이미 전역에 깔아 둔 머신은 안 바뀐다.
+py="${MSEARCH_PYTHON:-}"
+if [ -z "$py" ]; then
+  if [ -x "$here/.venv/bin/python" ]; then py="$here/.venv/bin/python"; else py="python3"; fi
+fi
 
 case "${1:-}" in
   --doctor)

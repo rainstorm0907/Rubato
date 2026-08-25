@@ -291,6 +291,36 @@ else
   esac
 fi
 
+head_ "단계 4.3 · msearch 파이썬 의존성"
+# 4.2 의 심링크는 명령을 PATH 에 놓을 뿐이다. msearch 는 redis/dotenv/openai/konlpy
+# 위에서 돌기 때문에, 심링크만 걸어 두면 "명령은 있는데 첫 줄에서 죽는" 상태가 된다 —
+# 절반만 설치된 그 상태가 실제로 한 머신에서 오래 갔다.
+# 최근 배포판의 시스템 파이썬은 PEP 668 로 전역 설치를 막으므로(EXTERNALLY-MANAGED)
+# 전역 pip 를 강행하지 않고 msearch 옆에 venv 를 세운다. 이미 전역에 깔린 머신은
+# 그대로 둔다 — 그쪽이 기존 동작이고, msearch 는 venv 가 없으면 python3 로 떨어진다.
+MSEARCH_VENV="$HARNESS/msearch/.venv"
+MSEARCH_DEPS="redis python-dotenv openai konlpy"
+msearch_deps_ok() { "$1" -c 'import redis, dotenv, openai, konlpy' >/dev/null 2>&1; }
+
+if msearch_deps_ok python3; then
+  ok "msearch 파이썬 의존성 이미 있다 (python3)"
+elif [ -x "$MSEARCH_VENV/bin/python" ] && msearch_deps_ok "$MSEARCH_VENV/bin/python"; then
+  ok "msearch venv 이미 맞다 ($MSEARCH_VENV)"
+elif [ "$APPLY" -eq 0 ]; then
+  plan "$MSEARCH_VENV 에 venv 를 세우고 $MSEARCH_DEPS 를 넣는다"
+elif python3 -m venv "$MSEARCH_VENV" >/dev/null 2>&1 &&
+     "$MSEARCH_VENV/bin/pip" install -q --upgrade pip >/dev/null 2>&1 &&
+     "$MSEARCH_VENV/bin/pip" install -q $MSEARCH_DEPS >/dev/null 2>&1; then
+  ok "msearch venv 를 세웠다 ($MSEARCH_VENV)"
+else
+  warn "msearch venv 를 못 세웠다"
+  add_manual "msearch 파이썬 의존성: python3 -m venv $MSEARCH_VENV && $MSEARCH_VENV/bin/pip install $MSEARCH_DEPS"
+fi
+
+# 검색 백엔드(Redis Stack, OPENAI_API_KEY)는 이 설치기가 세우지 않는다. 상태 판정은
+# doctor 한 곳에만 두고 여기서는 가리키기만 한다 — 판정이 두 곳에 있으면 갈린다.
+say "백엔드(Redis Stack · OPENAI_API_KEY)는 msearch --doctor 로 본다"
+
 head_ "단계 4.5 · cmux 세션 복원 (선택)"
 # cmux 는 터미널 안의 코딩 에이전트를 감지해 앱을 다시 띄울 때 세션을 이어붙인다.
 # rubato 는 `node .../rubato-pi.mjs` 로 떠고 세션도 ~/.rubato-pi 에 쌓여서
