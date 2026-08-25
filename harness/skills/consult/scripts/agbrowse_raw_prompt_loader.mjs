@@ -99,12 +99,29 @@ export async function load(url, context, nextLoad) {
     }
 
     if (url.endsWith(CHATGPT_MODEL_MODULE_SUFFIX)) {
-        if (!source.includes(COMPOSER_PILL_CLICK_MARKER)
-            || !source.includes(POWER_PICKER_ROOT_MARKER)
-            || !source.includes(MODEL_SURFACE_PREFLIGHT_MARKER)) {
+        // Every anchor below is load-bearing. An unchecked `.replace()` whose
+        // needle stopped matching returns the source silently unpatched, which
+        // is exactly how the '추론 강도' mismatch degraded into
+        // `model-not-enforced` instead of a visible error. Fail closed on all
+        // of them, including the locale wideners, so an agbrowse upgrade that
+        // moves any one of these lines stops the run instead of quietly
+        // dropping tier enforcement.
+        const requiredAnchors = [
+            COMPOSER_PILL_CLICK_MARKER,
+            POWER_PICKER_ROOT_MARKER,
+            MODEL_SURFACE_PREFLIGHT_MARKER,
+            `root.locator('[role="menuitem"][aria-label="Power"]')`,
+            `page.locator('[role="menuitem"][aria-label="Power"]')`,
+            `hasModel ||= menuTextHasExactLine(text, 'Model');`,
+            `hasEffort ||= menuTextHasExactLine(text, 'Effort');`,
+            `if (menuTextHasExactLine(text, heading)) return trigger;`,
+        ];
+        const missing = requiredAnchors.filter((anchor) => !source.includes(anchor));
+        if (missing.length > 0) {
             throw new Error(
                 'Consult model-picker compatibility patch does not match this agbrowse release; ' +
-                'verify the installed agbrowse release before sending.',
+                'verify the installed agbrowse release before sending. Missing anchors: ' +
+                missing.join(' | '),
             );
         }
         const patched = source

@@ -275,15 +275,19 @@ const powerRoot = `const CHATGPT_POWER_PICKER_ROOT_SELECTOR =
 const preflight = `async function assertChatSurfaceForModelMutation(page) {
     const { detectChatGptComposerSurface } = await import('./product-surfaces.mjs');`;
 // The Power-shell submenu probe lines must be present in the stub, otherwise the
-// locale-widening replacements below have nothing to match and the assertions
-// would pass vacuously on an unpatched loader.
+// locale-widening replacements below have nothing to match and the Korean
+// assertions fail unconditionally rather than testing anything.
 const submenuProbe = `        hasModel ||= menuTextHasExactLine(text, 'Model');
         hasEffort ||= menuTextHasExactLine(text, 'Effort');
         if (menuTextHasExactLine(text, heading)) return trigger;`;
+// The loader also widens both Power-root locator call sites to accept the
+// Korean aria-label, and fails closed when either anchor is missing.
+const powerLocators = "    const a = root.locator('[role=\"menuitem\"][aria-label=\"Power\"]').first();\n"
+    + "    const b = page.locator('[role=\"menuitem\"][aria-label=\"Power\"]').last();";
 const result = await load(
     'file:///tmp/agbrowse/web-ai/chatgpt-model.mjs',
     {},
-    async () => ({ format: 'module', source: `${powerRoot}\n${preflight}\n${marker}\n${submenuProbe}` }),
+    async () => ({ format: 'module', source: `${powerRoot}\n${preflight}\n${marker}\n${submenuProbe}\n${powerLocators}` }),
 );
 process.stdout.write(String(result.source));
 '''
@@ -297,15 +301,47 @@ process.stdout.write(String(result.source));
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("composer-model-pill-pointer", result.stdout)
         self.assertIn("page.mouse.click", result.stdout)
-        self.assertIn('[role="menuitem"][aria-label="Power"]', result.stdout)
-        self.assertIn('[role="menuitem"][aria-label="성능"]', result.stdout)
+        # Assert the widened pair, not the bare English label: the stub already
+        # supplies '[aria-label="Power"]', so checking it alone proves nothing.
+        # Both locator call sites must carry the Korean alternative.
+        self.assertIn(
+            'root.locator(\'[role="menuitem"][aria-label="Power"], '
+            '[role="menuitem"][aria-label="성능"]\')',
+            result.stdout,
+        )
+        self.assertIn(
+            'page.locator(\'[role="menuitem"][aria-label="Power"], '
+            '[role="menuitem"][aria-label="성능"]\')',
+            result.stdout,
+        )
+        # The retired Work-picker testid must never be reintroduced as the Power
+        # root. The stub omits it, so this guards the loader's own output only.
         self.assertNotIn("composer-intelligence-picker-content", result.stdout)
         self.assertIn("modal-conversation-history-rate-limit", result.stdout)
-        self.assertIn("menuTextHasExactLine(text, '모델')", result.stdout)
         # The live Korean Power shell labels the effort submenu trigger '추론 수준'.
         # '추론 강도' never appeared in the DOM and silently disabled effort
         # enforcement, so the current label is what must be pinned here.
-        self.assertIn("menuTextHasExactLine(text, '추론 수준')", result.stdout)
+        #
+        # agbrowse requires BOTH headings via two independent code paths -- the
+        # hasModel/hasEffort probe and the submenu-trigger lookup. Asserting the
+        # bare literal would let either rewrite be deleted while the other kept
+        # the string present, so pin each transformed line separately.
+        self.assertIn(
+            "hasModel ||= menuTextHasExactLine(text, 'Model') "
+            "|| menuTextHasExactLine(text, '모델');",
+            result.stdout,
+        )
+        self.assertIn(
+            "hasEffort ||= menuTextHasExactLine(text, 'Effort') "
+            "|| menuTextHasExactLine(text, '추론 수준')",
+            result.stdout,
+        )
+        self.assertIn("heading === 'Model' && menuTextHasExactLine(text, '모델')", result.stdout)
+        self.assertIn("heading === 'Effort' && (menuTextHasExactLine(text, '추론 수준')", result.stdout)
+        # No original anchor may survive: a surviving anchor means that
+        # replacement silently no-opped.
+        self.assertNotIn("hasEffort ||= menuTextHasExactLine(text, 'Effort');", result.stdout)
+        self.assertNotIn("if (menuTextHasExactLine(text, heading)) return trigger;", result.stdout)
 
     def test_initial_call_derives_distinct_title_and_adds_open_korean_preference(self) -> None:
         packet = self.root / "title.md"
