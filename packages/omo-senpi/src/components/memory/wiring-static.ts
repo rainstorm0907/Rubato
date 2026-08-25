@@ -74,6 +74,18 @@ export function registerMemoryStatic(input: {
     noticeWiring.register(pi)
   }
   const toolExposure = options.toolExposure ?? "direct"
+  // One definition of "what is projected for this identity", shared by the prompt (which
+  // injects those files) and the usage ledger (which must not credit reading them). Two
+  // copies of this precedence would drift, and the ledger drifting means dream demotes the
+  // wrong files.
+  const resolveProjectFor = (identity: string): readonly string[] => {
+    try {
+      const settings = loadCommandSettings().settings
+      return settings.agents[identity]?.project ?? settings.project
+    } catch {
+      return []
+    }
+  }
   const promptHandler = createPromptHandler({
     resolveContext,
     cache: promptCache,
@@ -88,14 +100,7 @@ export function registerMemoryStatic(input: {
         return undefined
       }
     },
-    resolveProject: (identity) => {
-      try {
-        const settings = loadCommandSettings().settings
-        return settings.agents[identity]?.project ?? settings.project
-      } catch {
-        return []
-      }
-    },
+    resolveProject: resolveProjectFor,
     resolveNudgeTurns: (repo, sessionId, identity) => nudgeWiring.nudgeTurns(repo, sessionId, identity),
     resolveSoulNotice: async (repo, sessionId, identity) => {
       const context = resolveContext(sessionId)
@@ -168,6 +173,10 @@ export function registerMemoryStatic(input: {
       return sessionId === undefined ? undefined : resolveContext(sessionId)
     },
     resolveCwd: options.cwd,
+    // A projected file is already in the prompt, so reading it proves nothing. An
+    // unprojected one had to be opened deliberately, and that read is exactly the
+    // evidence dream uses to decide what stays in system/.
+    resolveProjected: (identity) => new Set(resolveProjectFor(identity)),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   })
   memoryUsageTrackersRef.current = memoryUsageTrackers

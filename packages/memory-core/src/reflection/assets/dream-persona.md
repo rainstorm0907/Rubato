@@ -90,7 +90,7 @@ For `update`/`extend`, preserve the existing frontmatter (name, description, ver
 
 Check `$DREAM_POLICY_PATH` first. If `people.enabled` is false, skip this phase entirely and continue to Phase 5. If true, every entry you write respects `people.max_entries` and `people.max_entry_chars`.
 
-People knowledge lives in cards (`people/<slug>/` card files, plus `system/human.md` for the primary human) and observation ledgers (`people/<slug>/observations.md`). You work in two distinct modes and must never blur them:
+People knowledge lives in cards (`people/<slug>/` card files) and observation ledgers (`people/<slug>/observations.md`). The primary human's card is `people/human/card.md`; repositories created before that card existed keep it at `system/human.md` instead, and where both are present the older one wins. You work in two distinct modes and must never blur them:
 
 **Deduction, the detective**: conclusions that follow from recorded observations. Every deduction cites its premises: name the observation lines it rests on. A deduction with no citable premise doesn't get written.
 
@@ -100,7 +100,7 @@ People knowledge lives in cards (`people/<slug>/` card files, plus `system/human
 
 **Card refresh**: fold stable, repeatedly confirmed markers from the observation ledger into the person's card, surgically, entry by entry. Rebuild a card from scratch ONLY when the user explicitly requested it; a card carries accumulated identity and doesn't get regenerated on a maintenance pass.
 
-**Prose human.md**: if `system/human.md` is free-form prose rather than card-format, convert it to card format on first encounter, preserving every piece of information in the prose. This conversion happens once; after that the card is edited surgically like any other.
+**Prose primary card**: if the primary human's card (`system/human.md` in an older repository, otherwise `people/human/card.md`) is free-form prose rather than card-format, convert it to card format on first encounter, preserving every piece of information in the prose. This conversion happens once; after that the card is edited surgically like any other. Do not migrate an existing `system/human.md` to the new path on your own — both are read, and moving it is the human's call.
 
 ## Phase 5: Review
 

@@ -10,26 +10,37 @@ import {
 const DEBOUNCE_MS = 500
 
 /**
- * Extracts the repo-relative path from a file read, returning undefined when
- * the path does not resolve inside the memory repo or is under system/, .git, or .tmp.
+ * Extracts the repo-relative path from a file read, returning undefined when the path does
+ * not resolve inside the memory repo, is machine state (`.git`, `.tmp`), or is a file the
+ * prompt already carries.
  *
- * `system/` was excluded because those files were always projected into the prompt, so a
- * tool read of one meant nothing. Since projection became a whitelist (`memory.project`,
- * empty by default) that premise is false: an unprojected `system/` file read on demand
- * now earns no usage credit, and dream can read that silence as "unused". Deliberately
- * left as-is for now — what counts as a use is entangled with dream's selection, so it is
- * a decision rather than a rename.
+ * `projected` is the set of repo-relative paths currently riding in the system prompt
+ * (`memory.project`). Reading one of those costs nothing extra and says nothing about
+ * demand, so it earns no usage credit — that was the original reason to exclude all of
+ * `system/`, back when every `system/` file was projected unconditionally.
+ *
+ * Since projection became an opt-in whitelist that blanket exclusion inverted its own
+ * intent: an UNPROJECTED `system/` file can only be reached by deliberately opening it,
+ * which is the strongest possible evidence of use, and it was the one read guaranteed to
+ * go unrecorded. Dream reads that silence literally — "a `system/` file that never
+ * appears in the ledger is a strong demote candidate" — so the file most in demand was
+ * the one most likely to be demoted out of `system/`.
  */
-export function extractMemoryUsagePath(repoDir: string, rawPath: string): string | undefined {
+export function extractMemoryUsagePath(
+  repoDir: string,
+  rawPath: string,
+  projected: ReadonlySet<string> = new Set(),
+): string | undefined {
   if (rawPath.length === 0 || rawPath.includes("\0")) return undefined
   const absolute = resolve(rawPath)
   const rel = relative(repoDir, absolute)
   if (rel.startsWith("..")) return undefined
   const segments = rel.split(sep)
-  // Exclude system/ (always projected), .git, .tmp
-  if (segments[0] === "system" || segments[0] === ".git" || segments[0] === ".tmp") return undefined
+  if (segments[0] === ".git" || segments[0] === ".tmp") return undefined
   if (segments[0] === ".") return undefined
-  return segments.join("/")
+  const relativePath = segments.join("/")
+  if (projected.has(relativePath)) return undefined
+  return relativePath
 }
 
 /** Debounces memory-file reads and persists each pending batch under the ledger lock. */
@@ -42,21 +53,26 @@ export class MemoryUsageTracker {
   private timer: ReturnType<typeof setTimeout> | undefined
   private flushPromise: Promise<void> | undefined
 
+  /** Resolved per read: the whitelist can change between turns without a restart. */
+  private readonly projected: () => ReadonlySet<string>
+
   constructor(options: {
     readonly paths: MemoryUsageLedgerPath
     readonly repoDir: string
     readonly now?: () => Date
     readonly logger?: ComponentLogger
+    readonly projected?: () => ReadonlySet<string>
   }) {
     this.paths = options.paths
     this.repoDir = options.repoDir
     this.now = options.now ?? (() => new Date())
     this.logger = options.logger
+    this.projected = options.projected ?? (() => new Set())
   }
 
   /** Records a memory-file read. Paths outside the repo or under excluded dirs are ignored. */
   recordRead(rawPath: string): void {
-    const relativePath = extractMemoryUsagePath(this.repoDir, rawPath)
+    const relativePath = extractMemoryUsagePath(this.repoDir, rawPath, this.projected())
     if (relativePath === undefined) return
     this.pending.set(relativePath, (this.pending.get(relativePath) ?? 0) + 1)
     this.scheduleFlush()

@@ -25,12 +25,16 @@ describe("registerMemoryUsage", () => {
     expect(ledger["reference/project/foo.md"]).toEqual({ count: 1, lastUsedAt: "2026-01-15T10:00:00.000Z" })
   })
 
-  test("#given a read tool targeting system/persona.md #when dispatched then flushed #then ledger is empty (system excluded)", async () => {
+  // Exclusion follows projection, not the `system/` prefix. A projected file is already in
+  // the prompt so reading it proves nothing; an unprojected one had to be opened on purpose,
+  // and dream demotes `system/` files that never appear in this ledger.
+  test("#given a read of a PROJECTED system file #when dispatched then flushed #then it earns no credit", async () => {
     const { context, repoDir } = await fixture()
     const pi = new FakeExtensionAPI()
     const trackers = registerMemoryUsage(pi, {
       resolveContext: () => context,
       resolveCwd: () => repoDir,
+      resolveProjected: () => new Set(["system/persona.md"]),
       now: () => new Date("2026-01-15T10:00:00Z"),
     })
     await pi.dispatch(
@@ -42,6 +46,48 @@ describe("registerMemoryUsage", () => {
     await tracker?.flush()
     const ledger = await readMemoryUsageLedger(memoryUsagePaths(context.identityPaths).ledgerPath)
     expect(Object.keys(ledger)).toEqual([])
+  })
+
+  test("#given a read of an UNPROJECTED system file #when dispatched then flushed #then it earns credit", async () => {
+    // The regression this guards: with an empty whitelist every system/ read was dropped,
+    // so the file most in demand looked permanently unused to dream.
+    const { context, repoDir } = await fixture()
+    const pi = new FakeExtensionAPI()
+    const trackers = registerMemoryUsage(pi, {
+      resolveContext: () => context,
+      resolveCwd: () => repoDir,
+      resolveProjected: () => new Set(),
+      now: () => new Date("2026-01-15T10:00:00Z"),
+    })
+    await pi.dispatch(
+      "tool_call",
+      toolCall("read", { path: join(repoDir, "system", "persona.md") }),
+      eventContext("session-1"),
+    )
+    const tracker = trackers.get(context.identity)
+    await tracker?.flush()
+    const ledger = await readMemoryUsageLedger(memoryUsagePaths(context.identityPaths).ledgerPath)
+    expect(ledger["system/persona.md"]?.count).toBe(1)
+  })
+
+  test("#given no resolveProjected wiring #when a system file is read #then it still earns credit", async () => {
+    // Absent means "nothing projected", matching the whitelist's own default.
+    const { context, repoDir } = await fixture()
+    const pi = new FakeExtensionAPI()
+    const trackers = registerMemoryUsage(pi, {
+      resolveContext: () => context,
+      resolveCwd: () => repoDir,
+      now: () => new Date("2026-01-15T10:00:00Z"),
+    })
+    await pi.dispatch(
+      "tool_call",
+      toolCall("read", { path: join(repoDir, "system", "human.md") }),
+      eventContext("session-1"),
+    )
+    const tracker = trackers.get(context.identity)
+    await tracker?.flush()
+    const ledger = await readMemoryUsageLedger(memoryUsagePaths(context.identityPaths).ledgerPath)
+    expect(ledger["system/human.md"]?.count).toBe(1)
   })
 
   test("#given a read tool targeting .tmp/scratch.md #when dispatched then flushed #then ledger is empty (.tmp excluded)", async () => {

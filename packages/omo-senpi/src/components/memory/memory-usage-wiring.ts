@@ -16,6 +16,12 @@ export interface MemoryUsageOptions {
   readonly resolveCwd?: () => string
   readonly logger?: ComponentLogger
   readonly now?: () => Date
+  /**
+   * Repo-relative paths currently projected into the prompt for this identity. Reading one
+   * costs nothing extra, so it earns no usage credit. Absent means "nothing projected",
+   * which is the whitelist's own default.
+   */
+  readonly resolveProjected?: (identity: string) => ReadonlySet<string>
 }
 
 /** Registers the Senpi tool-call watcher and returns its identity-scoped trackers. */
@@ -32,6 +38,7 @@ export function registerMemoryUsage(
     const tracker = new MemoryUsageTracker({
       paths: memoryUsagePaths(context.identityPaths),
       repoDir: context.identityPaths.repo,
+      projected: () => options.resolveProjected?.(context.identity) ?? new Set(),
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     })
@@ -48,7 +55,8 @@ export function registerMemoryUsage(
 
     for (const rawPath of extractPaths(event.input)) {
       const resolved = resolve(resolveCwd(), rawPath)
-      if (extractMemoryUsagePath(context.identityPaths.repo, resolved) === undefined) continue
+      const projected = options.resolveProjected?.(context.identity) ?? new Set<string>()
+      if (extractMemoryUsagePath(context.identityPaths.repo, resolved, projected) === undefined) continue
       trackerFor(context).recordRead(resolved)
     }
   })
