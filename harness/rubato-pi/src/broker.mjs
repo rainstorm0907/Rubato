@@ -47,14 +47,27 @@ export function splitCatalogId(id) {
   return { provider: id.slice(0, slash), id: id.slice(slash + 1) };
 }
 
+// pi-ai 가 모르는 prefix 는 getBuiltinModel 이 통째로 undefined 를 준다. 그러면
+// 모달리티가 ["text"] 로 떨어지고 read 도구가 이미지를 조용히 버린다.
+// google-antigravity 는 우리가 지어낸 prefix 라 (pi-ai 는 google/google-vertex 만
+// 안다) 붙는 순간 그 구멍에 그대로 빠졌다. 실제 백엔드는 이미지를 받는다:
+// "The Antigravity agent supports multimodal inputs. Currently, only text and
+// image inputs are supported." — ai.google.dev/gemini-api/docs/antigravity-agent
+//
+// 새 프로바이더를 붙일 때 pi-ai 가 그 prefix 를 모르면 여기에 같이 적어라.
+const PROVIDER_INPUT_FALLBACK = Object.freeze({
+  "google-antigravity": Object.freeze(["text", "image"]),
+});
+
 export function catalogLimits(provider, id) {
   const builtin = getBuiltinModel(provider, id);
+  const fallbackInput = PROVIDER_INPUT_FALLBACK[provider];
   return {
     contextWindow: CONTEXT_WINDOW_OVERRIDES[id] ?? builtin?.contextWindow ?? 200_000,
     maxTokens: builtin?.maxTokens || 16_384,
     // 이미지 첨부는 이 배열로 판정된다. builtin 이 아는 모달리티를 그대로 쓴다.
     // 여기서 ["text"] 로 깎으면 read 도구가 이미지를 조용히 버린다.
-    input: builtin?.input?.length ? [...builtin.input] : ["text"],
+    input: builtin?.input?.length ? [...builtin.input] : [...(fallbackInput ?? ["text"])],
   };
 }
 

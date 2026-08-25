@@ -70,6 +70,72 @@ test("fx history becomes Gemini contents including thinking signatures", () => {
   ]);
 });
 
+// 이미지는 두 길로 들어온다: 붙여넣기는 user 메시지, read 도구는 tool-result.
+// 예전에는 textOf 가 .text 없는 파트를 버려서 바이트가 상류에 아예 안 닿았다.
+const SENTINEL = "iVBORw0KGgoAAAANSUhEUg==";
+
+test("a pasted image survives as inline base64 instead of being dropped", () => {
+  const converted = fxPromptToGeminiContents([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "what is this" },
+        { type: "image", data: SENTINEL, mimeType: "image/png" },
+      ],
+    },
+  ]);
+  assert.deepEqual(converted.contents, [
+    {
+      role: "user",
+      parts: [
+        { text: "what is this" },
+        { inlineData: { mimeType: "image/png", data: SENTINEL } },
+      ],
+    },
+  ]);
+});
+
+test("a data URL image loses only its prefix", () => {
+  const converted = fxPromptToGeminiContents([
+    { role: "user", content: [{ type: "image", data: `data:image/webp;base64,${SENTINEL}`, mimeType: "image/webp" }] },
+  ]);
+  assert.deepEqual(converted.contents[0].parts, [{ inlineData: { mimeType: "image/webp", data: SENTINEL } }]);
+});
+
+test("a read-tool image rides along as inlineData and stays out of the text output", () => {
+  const converted = fxPromptToGeminiContents([
+    {
+      role: "tool",
+      content: [{
+        type: "tool-result",
+        toolName: "read",
+        toolCallId: "call-1",
+        output: [
+          { type: "text", text: "Read image file [image/png]" },
+          { type: "image", data: SENTINEL, mimeType: "image/png" },
+        ],
+      }],
+    },
+  ]);
+  const [response, image] = converted.contents;
+  assert.equal(response.parts[0].functionResponse?.name, "read");
+  // base64 가 functionResponse 본문으로 새면 컨텍스트를 통째로 먹는다.
+  assert.ok(!JSON.stringify(response.parts[0].functionResponse?.response).includes(SENTINEL));
+  assert.deepEqual(image.parts, [{ inlineData: { mimeType: "image/png", data: SENTINEL } }]);
+});
+
+test("the sentinel image reaches the upstream request body", () => {
+  const body = buildAntigravityRequest({
+    projectId: "proj",
+    wireModel: "gemini-3.1-pro-low",
+    prompt: [{ role: "user", content: [{ type: "image", data: SENTINEL, mimeType: "image/png" }] }],
+    session: { sessionId: "111", agentId: "agent", trajectoryId: "traj", stepIndex: 1 },
+    now: 10,
+  });
+  // 브리지가 실제로 올려보내는 JSON 안에 바이트가 있어야 모델이 본다.
+  assert.ok(JSON.stringify(body).includes(SENTINEL), "image bytes never reached the upstream body");
+});
+
 test("the request body carries the Antigravity agent envelope", () => {
   const session = {
     sessionId: "111",

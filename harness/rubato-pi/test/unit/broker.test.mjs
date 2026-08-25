@@ -84,6 +84,18 @@ test("an unknown model falls back to text instead of claiming vision", () => {
   assert.deepEqual(grouped.rubato[0].input, ["text"]);
 });
 
+// 앞 테스트는 FALLBACK_CATALOG 만 돌아서 Antigravity 를 구조적으로 비켜갔다.
+// 그래서 모달리티가 깎인 채 초록으로 나갔다 — 라이브 카탈로그에만 있는 id 로 막는다.
+test("antigravity gemini keeps vision even though pi-ai does not know the prefix", () => {
+  const grouped = groupCatalog([
+    { id: "google-antigravity/gemini-3.1-pro", name: "Gemini 3.1 Pro" },
+    { id: "google-antigravity/gemini-3.7-flash", name: "Gemini 3.7 Flash" },
+  ]);
+  for (const model of grouped["google-antigravity"]) {
+    assert.ok(model.input.includes("image"), `${model.id} lost the image modality`);
+  }
+});
+
 test("ensureBroker starts the existing relay only when it is down", () => {
   const started = [];
   let up = false;

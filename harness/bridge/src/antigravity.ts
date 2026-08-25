@@ -12,6 +12,11 @@ type GeminiPart = {
   text?: string;
   thought?: boolean;
   thoughtSignature?: string;
+  // Gemini 는 이미지를 inlineData 로만 받는다 (base64 인라인).
+  // "The Antigravity agent supports multimodal inputs. Currently, only text
+  // and image inputs are supported. Images must be supplied as inline
+  // base64-encoded strings." — ai.google.dev/gemini-api/docs/antigravity-agent
+  inlineData?: { mimeType: string; data: string };
   functionCall?: { name: string; args?: JsonObject; id?: string };
   functionResponse?: { name: string; response: JsonObject; id?: string };
 };
@@ -124,13 +129,60 @@ function textOf(content: unknown): string {
   }).join("");
 }
 
+// 이미지 파트는 data 가 base64 문자열일 수도, Uint8Array 일 수도 있다.
+// data URL 로 오면 앞의 "data:<mime>;base64," 를 떼어낸다 — Gemini 는 순수
+// base64 본문만 받고, 접두사를 그대로 넣으면 조용히 깨진다.
+function inlineDataOf(part: JsonObject): { mimeType: string; data: string } | undefined {
+  if (part.type !== "image") return undefined;
+  const mimeType = asString(part.mimeType) ?? asString(part.mediaType) ?? "image/png";
+  const raw = part.data ?? part.image;
+  let data: string | undefined;
+  if (typeof raw === "string") {
+    data = raw;
+  } else if (raw instanceof Uint8Array) {
+    data = Buffer.from(raw).toString("base64");
+  } else if (isObject(raw) && typeof (raw as { data?: unknown }).data === "string") {
+    data = (raw as { data: string }).data;
+  }
+  if (!data) return undefined;
+  const comma = data.startsWith("data:") ? data.indexOf(",") : -1;
+  if (comma >= 0) data = data.slice(comma + 1);
+  return data ? { mimeType, data } : undefined;
+}
+
+// 한 메시지의 텍스트와 이미지를 순서대로 Gemini 파트로 텀다.
+function partsOf(content: unknown): GeminiPart[] {
+  if (typeof content === "string") return content ? [{ text: content }] : [];
+  if (!Array.isArray(content)) return [];
+  const parts: GeminiPart[] = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      if (part) parts.push({ text: part });
+      continue;
+    }
+    if (!isObject(part)) continue;
+    const inlineData = inlineDataOf(part);
+    if (inlineData) {
+      parts.push({ inlineData });
+      continue;
+    }
+    if (typeof part.text === "string" && part.text) parts.push({ text: part.text });
+  }
+  return parts;
+}
+
 function outputText(output: unknown): string {
   if (typeof output === "string") return output;
   if (isObject(output) && typeof output.value === "string") return output.value;
+  // 이미지는 옆에서 inlineData 로 따로 간다. 여기서까지 직렬화하면 base64
+  // 한 덩어리가 본문에 그대로 쓰여 컨텍스트를 날린다.
+  const stripped = Array.isArray(output)
+    ? output.filter((item) => !(isObject(item) && item.type === "image"))
+    : output;
   try {
-    return JSON.stringify(output ?? "");
+    return JSON.stringify(stripped ?? "");
   } catch {
-    return String(output ?? "");
+    return String(stripped ?? "");
   }
 }
 
@@ -147,8 +199,8 @@ export function fxPromptToGeminiContents(prompt: unknown): { system?: string; co
       continue;
     }
     if (role === "user") {
-      const text = textOf(content);
-      if (text) contents.push({ role: "user", parts: [{ text }] });
+      const parts = partsOf(content);
+      if (parts.length) contents.push({ role: "user", parts });
       continue;
     }
     if (role === "assistant") {
@@ -182,6 +234,15 @@ export function fxPromptToGeminiContents(prompt: unknown): { system?: string; co
     if (role === "tool") {
       for (const part of Array.isArray(content) ? content : []) {
         if (!isObject(part) || part.type !== "tool-result") continue;
+        // read 로 열은 이미지는 tool-result 안에 온다. functionResponse 는 문자열만
+        // 담으므로 이미지는 딴 inlineData 파트로 따로 붙인다 — 그냥 두면
+        // outputText 가 바이트를 JSON 으로 직려 쓰레기를 보낸다.
+        const images = (Array.isArray(part.output) ? part.output : [])
+          .flatMap((item) => {
+            if (!isObject(item)) return [];
+            const inlineData = inlineDataOf(item);
+            return inlineData ? [{ inlineData }] : [];
+          });
         contents.push({
           role: "user",
           parts: [{
@@ -192,6 +253,7 @@ export function fxPromptToGeminiContents(prompt: unknown): { system?: string; co
             },
           }],
         });
+        if (images.length) contents.push({ role: "user", parts: images });
       }
     }
   }
