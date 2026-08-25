@@ -56,6 +56,20 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
 > 왜 alias 로는 안 되나: 에이전트가 도구로 부르는 bash 는 **비대화형**이라 `~/.zshrc` 를 안 읽는다. 프롬프트는 `msearch` 로 기억을 찾으라고 지시하는데 그 명령이 없는 상태가 오래 갔다.
 
+**명령이 잡히는 것과 검색이 도는 것은 다른 문제다.** `msearch` 는 Redis Stack 과
+OpenAI 키 위에서 돈다. 설치기는 python 의존성까지만 챙기고 그 둘은 안 세운다:
+
+```bash
+msearch --doctor
+```
+
+전부 초록이 아니면 [`harness/msearch/README.md`](../../harness/msearch/README.md) 의
+`필요한 것` 을 먼저 처리한다. 여기를 건너뛰면 7번의 최종 확인에서 막힌다.
+
+> `decisions/` 와 `reference/` 는 **`msearch` 로만 읽힌다** — `memory` 툴은 쓰기만 하고
+> 읽지 않는다(`harness/prompts/base.pi.md`). 백엔드가 안 서 있으면 아래를 다 해놓아도
+> 모델에게는 그 기억이 없는 것과 같다. 저장소만 옮기고 여기서 멈추는 것이 제일 나쁘다.
+
 ---
 
 ## 2. 저장소 정리 — 대부분은 버릴 것이다

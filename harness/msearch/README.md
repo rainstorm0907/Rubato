@@ -42,22 +42,82 @@ msearch --doctor               설치 상태 진단
 
 ## 필요한 것
 
-| 항목 | 이유 |
+| 항목 | 누가 챙기나 |
 |------|------|
-| Redis Stack | 벡터 + 전문 검색. **일반 redis 는 안 된다** — RediSearch 모듈이 필요하다 |
-| `OPENAI_API_KEY` | 임베딩 생성 (`text-embedding-3-small`) |
-| python 패키지 | `redis`, `python-dotenv`, `openai`, `konlpy` |
+| Python 3.13.2 + 패키지 잠금 | `install.sh --apply` 가 `harness/msearch/.venv` 에 재현한다 |
+| JDK 17 | **손으로 깐다** (`brew install openjdk@17`) |
+| Redis 8.4.0 + Search 8.4.2 | **손으로 깐다** (아래) |
+| `OPENAI_API_KEY` | **손으로 넣는다** (아래) |
 
-Redis Stack 띄우기:
+네 개가 다 서야 검색이 돈다. 어디까지 됐는지는 `msearch --doctor` 한 곳에서만 판정한다.
+
+### python
+
+정상 기준은 [`runtime.lock`](runtime.lock)에 두고, 설치기는 그 Python 버전과
+[`requirements.lock`](requirements.lock)의 전체 패키지 버전이 일치하는 환경만 쓴다.
+`install.sh --apply`는 머신의 전역 패키지를 재사용하지 않고 `harness/msearch/.venv`를
+잠금대로 임시 경로에서 완성한 뒤 바꾼다. 설치가 끊겨 불완전한 venv가 남아도 런처는 선택하지 않는다.
+다른 파이썬을 명시하려면 `MSEARCH_PYTHON`을 쓰되 `msearch --doctor`에서 잠금 일치를 확인한다.
+정확한 Python patch 버전은 `uv`가 받아서 venv를 만들므로 머신의 기본 Python 버전에 기대지 않는다.
+
+시스템 파이썬에 `pip install` 이 `externally-managed-environment` 로 거부당하는 것은
+PEP 668 이다. `--break-system-packages` 로 뚫는 대신 venv 를 쓰는 이유가 그것이다.
+
+### Redis
+
+정상 기준은 `runtime.lock`의 **Redis 8.4.0 + Search 8.4.2**다. 이 조합에서 색인, BM25, vector,
+`FT.HYBRID`를 검증했다. `redis-server --version`만 보지 말고 `INFO modules`의
+`search_version`까지 확인해야 한다.
+
+macOS에서는 Redis 공식 tap의 8.4.0 cask를 고정 커밋에서 설치한다:
 
 ```bash
-docker run -d -p 6380:6379 --name msearch-redis redis/redis-stack-server:latest
+brew tap redis/redis
+tap="$(brew --repo redis/redis)"
+git -C "$tap" checkout eb1de700eae6b3a2c398f2c287ed9650c6710cea
+brew trust --cask redis/redis/redis
+HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask redis/redis/redis
+git -C "$tap" switch -
 ```
 
-또는 `brew tap redis-stack/redis-stack && brew install redis-stack`.
+그 cask는 arm64와 x86_64용 8.4.0 바이너리 및 Search 모듈을 함께 담는다. 설치 뒤에는
+tap을 원래 브랜치로 돌려도 설치된 8.4.0은 유지된다. 자동 업그레이드는 검증 전까지 하지 않는다.
 
-API 키는 환경변수로 두거나 `<state>/.env` 에 `OPENAI_API_KEY=sk-...` 한 줄로 둔다.
+6380으로 띄우고 확인한다:
+
+```bash
+redis-server /opt/homebrew/etc/redis.conf --port 6380
+redis-cli -p 6380 INFO server | grep redis_version       # 8.4.0
+redis-cli -p 6380 INFO modules | grep search_version     # 8.4.2
+redis-cli -p 6380 COMMAND INFO FT.CREATE FT.HYBRID       # 둘 다 있어야 함
+```
+
+**계속 켜두기.** cask는 `brew services`가 관리하지 않으므로 로그인 때 뜨게 하려면
+직접 건다. macOS 예시 (`~/Library/LaunchAgents/dev.msearch.redis.plist`):
+
+```xml
+<key>ProgramArguments</key>
+<array>
+  <string>/opt/homebrew/bin/redis-server</string>
+  <string>/opt/homebrew/etc/redis.conf</string>
+  <string>--port</string><string>6380</string>
+  <string>--daemonize</string><string>no</string>
+</array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+```
+
+`launchctl bootstrap gui/$(id -u) <plist>` 로 걸고 `launchctl bootout gui/$(id -u)/dev.msearch.redis` 로 끈다.
+
+### OPENAI_API_KEY
+
+환경변수로 두거나 `<state>/.env` 에 `OPENAI_API_KEY=sk-...` 한 줄로 둔다.
 state 경로는 `--doctor` 가 알려준다.
+
+ChatGPT 구독의 OAuth 토큰(`~/.codex/auth.json`)으로는 안 된다 — 그 파일의
+`OPENAI_API_KEY` 는 `auth_mode` 가 `chatgpt` 이면 `null` 이다. platform.openai.com 의
+API 키가 따로 필요하다. 비용은 `text-embedding-3-small` 기준 100만 토큰에 $0.02 라
+기억 수십 개 규모에서는 사실상 0 이다.
 
 ## 설정
 
@@ -88,6 +148,10 @@ MSEARCH_ROOT=~/notes MSEARCH_CHANNEL=notes msearch --index
 |------|------|
 | `msearch` | 진입점. 백엔드가 죽어 있으면 검색 대신 진단으로 보낸다 |
 | `msearch_config.py` | 모든 경로·이름 해석. 다른 파일은 여기서만 읽는다 |
+| `msearch_env.py` | Python·패키지가 두 잠금 파일과 일치하는지 판정한다 |
+| `runtime.lock` | 검증한 Python·Java·Redis·Search 버전의 정본 |
+| `requirements.lock` | 검증한 Python 패키지 전체 버전의 정본 |
+| `test-runtime.sh` | 설치 모드와 런처 환경 선택의 회귀 테스트 |
 | `msearch_freshness.py` | 색인이 뒤처졌는지 보고 따라잡는다 |
 | `msearch_doctor.py` | 설치 진단 |
 | `memory-index.py` | 마크다운 → 청크 → 임베딩 → Redis |
