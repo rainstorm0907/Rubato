@@ -152,6 +152,22 @@ export const OmoMemoryWriteNoticeLayerSchema = z.object({
 // Per-agent overrides (layer-shaped)
 // ---------------------------------------------------------------------------
 
+/**
+ * A projected memory path: `system/<name>.md`, no traversal, no absolute path.
+ *
+ * The compiler drops anything that does not match, which made a typo
+ * indistinguishable from an intentionally empty whitelist — `["soul.md"]` parsed
+ * cleanly and then silently projected nothing. Rejecting at config load turns that
+ * into a message instead of a mystery.
+ */
+const ProjectedMemoryPathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => !value.startsWith("/"), { message: "must be repository-relative, not absolute" })
+  .refine((value) => !value.split("/").includes(".."), { message: "must not traverse with .." })
+  .refine((value) => value.startsWith("system/"), { message: "must live under system/" })
+  .refine((value) => value.endsWith(".md"), { message: "must be a .md file" })
+
 function dropLegacyProjection(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value
   if (!("projection" in value)) return value
@@ -174,7 +190,7 @@ export const OmoMemoryAgentOverridesSchema = z.preprocess(
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
-  project: z.array(z.string().min(1)).optional(),
+  project: z.array(ProjectedMemoryPathSchema).optional(),
 }).strict(),
 )
 
@@ -218,7 +234,7 @@ export const OmoMemorySettingsSchema = z.preprocess(
   // projects nothing: the repository, the memory tools, and every slash command stay intact, and
   // memory is reached on demand. Listing a path (for example system/soul.md) is a config change,
   // not a code change. Non-system paths are never projected.
-  project: z.array(z.string().min(1)).default([]),
+  project: z.array(ProjectedMemoryPathSchema).default([]),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).default({}),
 }).strict(),
 )
@@ -239,7 +255,7 @@ export const OmoMemorySettingsLayerSchema = z.preprocess(
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
-  project: z.array(z.string().min(1)).optional(),
+  project: z.array(ProjectedMemoryPathSchema).optional(),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).optional(),
 }).strict(),
 )
