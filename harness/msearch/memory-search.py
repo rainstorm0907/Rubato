@@ -467,6 +467,43 @@ def parse_hash_result(result: list[object], include_score: str = "score") -> lis
     return memories
 
 
+def _ft_field(container: object, name: str) -> object:
+    """Read one field from an FT reply map whose keys may be bytes or str."""
+    if not isinstance(container, dict):
+        return None
+    if name in container:
+        return container[name]
+    return container.get(name.encode())
+
+
+def normalize_ft_search(result: object, with_scores: bool = False) -> object:
+    """Return an FT.SEARCH reply in the flat-array shape the parsers expect.
+
+    redis-py 8 hands back a map (`total_results` / `results` / `extra_attributes`)
+    instead of the flat `[total, key, fields, ...]` array the older client
+    produced, so every parser here raised `KeyError: 1` on a fresh install. The
+    package list is unpinned, which means a new machine always lands on the new
+    client. Rebuilding the old shape keeps one parser path for both clients
+    rather than teaching each parser two layouts. Older replies pass through
+    untouched.
+    """
+    if not isinstance(result, dict):
+        return result
+
+    flat: list[object] = [_ft_field(result, "total_results") or 0]
+    for item in _ft_field(result, "results") or []:
+        flat.append(_ft_field(item, "id"))
+        if with_scores:
+            flat.append(_ft_field(item, "score"))
+        attributes = _ft_field(item, "extra_attributes") or {}
+        pairs: list[object] = []
+        for key, value in attributes.items():
+            pairs.append(key)
+            pairs.append(value)
+        flat.append(pairs)
+    return flat
+
+
 def parse_bm25_result(result: list[object]) -> list[dict[str, object]]:
     memories: list[dict[str, object]] = []
     if not result or len(result) <= 1:
@@ -559,7 +596,7 @@ def search_bm25(r: redis.Redis, text_query: str, anchors: list[Anchor], limit: i
             "LIMIT", "0", str(limit),
             "DIALECT", "2",
         )
-        parsed = parse_bm25_result(result)
+        parsed = parse_bm25_result(normalize_ft_search(result, with_scores=True))
         if fuzzy_token:
             for memory in parsed:
                 memory["_fuzzy_tokens"] = [fuzzy_token]
@@ -618,7 +655,7 @@ def search_vector(r: redis.Redis, query_bytes: bytes, limit: int) -> list[dict[s
         "LIMIT", "0", str(limit),
         "DIALECT", "2",
     )
-    return parse_hash_result(result)
+    return parse_hash_result(normalize_ft_search(result))
 
 
 def search_hybrid(
@@ -630,15 +667,25 @@ def search_hybrid(
 ) -> list[dict[str, object]]:
     tokens = bm25_tokens(text_query, anchors)
     text_filter = scoped_text_query(tokens)
-    result = r.execute_command(
-        "FT.HYBRID", INDEX_NAME,
-        "SEARCH", text_filter,
-        "VSIM", "@vector", query_bytes,
-        "KNN", "2", "K", str(limit),
-        "COMBINE", "RRF", "4", "WINDOW", "20", "CONSTANT", "30",
-        "LIMIT", "0", str(limit),
-        "LOAD", "14", "@title", "@section", "@content", "@source", "@subtype", "@canonical", "@date", "@rel_path", "@mtime", "@__score", "@meta", "@affect_score", "@affect_flags", "@affect_version",
-    )
+    # FT.HYBRID only exists on newer servers. Redis Stack 7.4 rejects it as an
+    # unknown command, and the caller wraps hybrid and vector search in one try
+    # block, so that rejection used to take vector search down with it --
+    # semantic recall silently disappeared on those servers. Report "no hybrid
+    # results" instead so the vector pass still runs.
+    try:
+        result = r.execute_command(
+            "FT.HYBRID", INDEX_NAME,
+            "SEARCH", text_filter,
+            "VSIM", "@vector", query_bytes,
+            "KNN", "2", "K", str(limit),
+            "COMBINE", "RRF", "4", "WINDOW", "20", "CONSTANT", "30",
+            "LIMIT", "0", str(limit),
+            "LOAD", "14", "@title", "@section", "@content", "@source", "@subtype", "@canonical", "@date", "@rel_path", "@mtime", "@__score", "@meta", "@affect_score", "@affect_flags", "@affect_version",
+        )
+    except redis.ResponseError as exc:
+        if "unknown command" in str(exc).lower():
+            return []
+        raise
     return parse_hybrid_result(result)
 
 
