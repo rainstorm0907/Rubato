@@ -34,33 +34,52 @@ export function buildTaskToolDescription(input: DescriptionInput): string {
   const agents = listTaskAgents(input.agents)
   const plainAgents = agents.filter((agent) => !PLAN_GATED_AGENT_NAMES.has(agent.name))
   const gatedAgents = agents.filter((agent) => PLAN_GATED_AGENT_NAMES.has(agent.name))
-  const agentNames = plainAgents.map((agent) => agent.name).join(", ") || "none loaded"
+  // With zero loaded agents, subagent_type is a dead rail: every spawn naming one fails at
+  // validateTaskTarget. Advertising the parameter (and a momus example) in that state invites the
+  // model to invent an agent name, so the whole route is omitted instead of being rendered with a
+  // "none loaded" placeholder. The model-override note rides on the same branch because model is
+  // only reachable alongside subagent_type (validation.ts rejects a model-only target).
+  const hasAgentRoute = plainAgents.length > 0 || gatedAgents.length > 0
+  const agentNames = plainAgents.map((agent) => agent.name).join(", ")
+  const plainAgentLine =
+    plainAgents.length === 0
+      ? ""
+      : `\n- subagent_type invokes a loaded agent directly. Available agents: ${agentNames}`
   const gatedLine =
     gatedAgents.length === 0
       ? ""
-      : `\n  Plan-gated agents (spawnable only after the user explicitly requests the ulw-plan workflow, a .omo/plans/*.md plan artifact was touched in this session, and start-work was never invoked): ${gatedAgents.map((agent) => agent.name).join(", ")}`
+      : `${plainAgents.length === 0 ? "\n- subagent_type invokes a loaded agent directly." : ""}\n  Plan-gated agents (spawnable only after the user explicitly requests the ulw-plan workflow, a .omo/plans/*.md plan artifact was touched in this session, and start-work was never invoked): ${gatedAgents.map((agent) => agent.name).join(", ")}`
   const momusNotice =
     gatedAgents.length === 0
       ? ""
       : "\n  momus is one-shot: spawn it, read task_output, optionally task_cancel; task_send is always refused. The harness replaces the momus spawn prompt with the canonical plan-review contract (one .omo/plans/*.md path only) - any other prompt content is discarded, so pass the plan path and nothing else."
+  const targetRule = hasAgentRoute
+    ? "Each spawn MUST provide EITHER category OR subagent_type after inheritance. DO NOT provide both."
+    : "Each spawn MUST provide a category after inheritance."
+  const modelNote = hasAgentRoute
+    ? `name is an optional stable handle. model is an explicit override for subagent_type spawns ONLY.
+NEVER combine model with category: a category-routed task always takes its model from omo.json (categories.<name>.models), so passing both fails with invalid_arguments.
+  CORRECT: task(subagent_type="${gatedAgents[0]?.name ?? plainAgents[0]?.name}", model="openai/gpt-5.6-sol", prompt="...")
+  INCORRECT: task(category="architect", model="quotio-openai/gpt-5.6-luna-fast", prompt="...")`
+    : `name is an optional stable handle. A category-routed task takes its model from omo.json (categories.<name>.models), so NEVER pass model: it fails with invalid_arguments.
+  INCORRECT: task(category="architect", model="quotio-openai/gpt-5.6-luna-fast", prompt="...")`
+  const batchLine = hasAgentRoute
+    ? "- Batch: tasks (1-16 items); top-level target, model, and skills are inherited when an item omits them. An inherited model is rejected when the item's effective target is a category."
+    : "- Batch: tasks (1-16 items); the top-level target and skills are inherited when an item omits them."
   return `Spawn one child task or fan out a batch.
 
 Choose exactly one input form:
 - Single: prompt
-- Batch: tasks (1-16 items); top-level target, model, and skills are inherited when an item omits them. An inherited model is rejected when the item's effective target is a category.
+${batchLine}
 
-Each spawn MUST provide EITHER category OR subagent_type after inheritance. DO NOT provide both.
+${targetRule}
 
 - category routes through Sisyphus-Junior. Available categories:
-${renderCategoryList(categories)}
-- subagent_type invokes a loaded agent directly. Available agents: ${agentNames}${gatedLine}${momusNotice}
+${renderCategoryList(categories)}${plainAgentLine}${gatedLine}${momusNotice}
 
 Blank provider padding is normalized automatically; do not add filler values.
 load_skills prepends named skills. run_in_background defaults to true: the spawn returns task ids immediately and completion arrives as a notification. Pass run_in_background=false to block this turn until the child finishes.
-name is an optional stable handle. model is an explicit override for subagent_type spawns ONLY.
-NEVER combine model with category: a category-routed task always takes its model from omo.json (categories.<name>.models), so passing both fails with invalid_arguments.
-  CORRECT: task(subagent_type="momus", model="openai/gpt-5.6-sol", prompt="...")
-  INCORRECT: task(category="architect", model="quotio-openai/gpt-5.6-luna-fast", prompt="...")
+${modelNote}
 task_send continues an existing child; task always spawns.
 Prompts MUST be in English.`
 }
