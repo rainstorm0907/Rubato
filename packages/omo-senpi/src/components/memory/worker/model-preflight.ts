@@ -3,11 +3,15 @@ import { stat } from "node:fs/promises"
 
 import type { SenpiLauncher } from "@oh-my-opencode/senpi-task"
 
+import { memoryChildExtensionArgs, memoryChildExtensionPaths } from "./child-extensions"
 import type { MemoryModelChain } from "./memory-model-attempts"
 import type { ReflectionModelCandidate } from "./resolve-model"
 
 const PREFLIGHT_TIMEOUT_MS = 10_000
 const CATALOG_CACHE_TTL_MS = 2 * 60_000
+// The probe must see exactly the catalog the spawned child will see. The host's provider
+// extensions therefore ride along here too; otherwise the probe reports pi-ai's builtin catalog,
+// every candidate looks visible, and the run only discovers the missing credential at 401.
 const DISCOVERY_DISABLED_MODEL_LIST_ARGS = [
   "--no-extensions",
   "--no-skills",
@@ -54,7 +58,7 @@ type CatalogCacheEntry = {
 const catalogCache = new Map<string, CatalogCacheEntry>()
 
 export async function preflightMemoryModels(input: ModelPreflightInput): Promise<ModelPreflightResult> {
-  const cacheKey = await modelCatalogCacheKey(input.launch, input.configSources)
+  const cacheKey = await modelCatalogCacheKey(input.launch, input.env, input.configSources)
   const now = (input.now ?? Date.now)()
   const cached = catalogCache.get(cacheKey)
   const current = cached !== undefined && now - cached.probedAt < CATALOG_CACHE_TTL_MS ? cached : undefined
@@ -95,6 +99,7 @@ async function probeChildModels(
   const child = spawn(launch.command, [
     ...launch.prefixArgs,
     ...DISCOVERY_DISABLED_MODEL_LIST_ARGS,
+    ...memoryChildExtensionArgs(env),
   ], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -143,6 +148,7 @@ function parseModelCatalog(output: string): ReadonlySet<string> {
 
 async function modelCatalogCacheKey(
   launch: SenpiLauncher,
+  env: NodeJS.ProcessEnv,
   sources: readonly { readonly path: string; readonly exists: boolean }[],
 ): Promise<string> {
   const sourceMtimes = await Promise.all(sources.filter((source) => source.exists).map(async (source) => {
@@ -152,7 +158,9 @@ async function modelCatalogCacheKey(
       return `${source.path}:missing`
     }
   }))
-  return JSON.stringify([launch.command, launch.prefixArgs, sourceMtimes])
+  // The extension list is part of the identity of the probed catalog: change which providers the
+  // child loads and the visible set changes, so a shared cache entry would answer for the wrong one.
+  return JSON.stringify([launch.command, launch.prefixArgs, memoryChildExtensionPaths(env), sourceMtimes])
 }
 
 function asMemoryModelChain(candidates: readonly ReflectionModelCandidate[]): MemoryModelChain {

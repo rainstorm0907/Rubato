@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { brandProfile, defaultAgentDir, defaultMeasurementLogPath, launchEnv } from "../../src/brand.mjs";
+import { existsSync } from "node:fs";
+import { delimiter } from "node:path";
+import {
+  brandProfile,
+  defaultAgentDir,
+  defaultMeasurementLogPath,
+  launchEnv,
+  providerExtensionPaths,
+} from "../../src/brand.mjs";
 
 test("brand is rubato and never uses the omo config dir", () => {
   const brand = brandProfile();
@@ -29,6 +37,19 @@ test("launch env isolates state and clears the omo native badge", () => {
   assert.equal(parsed.configDir, ".rubato-pi");
   assert.equal(env.FX_CACHE_RETENTION, "long");
   assert.equal(env.PI_CACHE_RETENTION, "long");
+});
+
+// 배경 memory 자식(reflection/dream/facts)은 --no-extensions 로 뜬다. 우리 프로바이더는
+// models.json 이 아니라 broker-overlay 가 런타임에 등록하므로, 이 목록이 자식에게
+// 넘어가지 않으면 자식은 자격증명 없는 pi-ai 빌트인으로 벤더 API 를 때려 401 로 죽는다.
+test("launch env hands background children the provider extensions to reload", () => {
+  const paths = providerExtensionPaths();
+  assert.equal(paths.length, 1);
+  assert.match(paths[0], /broker-overlay\.mjs$/);
+  assert.ok(existsSync(paths[0]), `provider extension must exist on disk: ${paths[0]}`);
+
+  const env = launchEnv({ HOME: "/tmp/home" }, "/tmp/home/.rubato-pi/agent");
+  assert.deepEqual(env.OMO_MEMORY_CHILD_EXTENSIONS.split(delimiter), paths);
 });
 
 test("measurement recording defaults off and needs an explicit opt-in", () => {

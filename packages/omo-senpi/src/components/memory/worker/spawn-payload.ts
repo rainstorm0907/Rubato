@@ -17,6 +17,7 @@ import type {
   ReflectionSpawnArgs,
   ReflectionSpawnPaths,
 } from "./spawn-types"
+import { memoryChildExtensionArgs } from "./child-extensions"
 import { resolveMemoryChildLaunch, resolveSenpiLaunch } from "./senpi-command"
 
 export async function prepareReflectionSpawn(input: PrepareReflectionSpawnInput): Promise<ReflectionSpawnArgs> {
@@ -104,11 +105,14 @@ export async function prepareReflectionSpawn(input: PrepareReflectionSpawnInput)
   // --no-extensions/--no-skills/--no-prompt-templates/--no-context-files disable discovery;
   // --session-dir isolates JSONL storage; --model/--thinking select the category result; @file
   // loads the mechanics prompt as the initial non-interactive message.
+  // --no-extensions suppresses discovery only, so the host's provider extensions still load from
+  // the explicit -e entries that follow it (see child-extensions.ts).
   const args = [
     "-p",
     "--system-prompt", persona,
     "--tools", "bash,edit",
     "--no-extensions",
+    ...memoryChildExtensionArgs(env),
     "--no-skills",
     "--no-prompt-templates",
     "--no-context-files",
@@ -158,9 +162,15 @@ export async function prepareReflectionForkSpawn(input: PrepareReflectionSpawnIn
   }
   // Fork mode replaces the sandboxed argv wholesale, so it must re-apply the launch prefix the
   // base spawn resolved: without it the child is the bare interpreter and dies on senpi flags.
+  // It must also re-apply the host's provider extensions. Fork mode leaves discovery ON, but a
+  // provider extension the host passed as an explicit -e path is not discoverable from disk, so
+  // without these entries the forked child inherits the same credential-less providers that made
+  // every background run 401. -e registers providers only; it does not alter the system prompt,
+  // tool list, or cwd that the reused request prefix is keyed on.
   const args = [
     ...resolveMemoryChildLaunch(input).prefixArgs,
     "-p",
+    ...memoryChildExtensionArgs(input.env),
     "--fork", parentSessionFile,
     "--session-dir", base.paths.sessionDir,
     "--model", input.model,
@@ -200,6 +210,7 @@ export async function prepareFactsSpawn(input: PrepareFactsSpawnInput): Promise<
     "--system-prompt", loadFactsPersona(),
     "--tools", "read,write",
     "--no-extensions",
+    ...memoryChildExtensionArgs(env),
     "--no-skills",
     "--no-prompt-templates",
     "--no-context-files",

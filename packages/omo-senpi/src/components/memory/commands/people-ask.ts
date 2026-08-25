@@ -11,6 +11,7 @@ import { spawn } from "node:child_process"
 import type { OmoConfig } from "@oh-my-opencode/omo-config-core"
 import type { SenpiModelPort, SenpiModelRegistryPort } from "@oh-my-opencode/senpi-task"
 
+import { memoryChildExtensionArgs } from "../worker/child-extensions"
 import { resolveSenpiLaunch } from "../worker/senpi-command"
 import { resolveReflectionModel } from "../worker/resolve-model"
 
@@ -88,6 +89,7 @@ export function createPeopleAskRunner(options: PeopleAskOptions): PeopleAskRunne
       "--system-prompt", PERSONA,
       "--tools", "none",
       "--no-extensions",
+      ...memoryChildExtensionArgs(env),
       "--no-skills",
       "--no-prompt-templates",
       "--no-context-files",
