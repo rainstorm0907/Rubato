@@ -82,6 +82,16 @@ find_bun() {
   return 1
 }
 
+find_uv() {
+  local bin
+  for bin in "${HOME}/.local/bin/uv" /opt/homebrew/bin/uv /usr/local/bin/uv \
+             "$(command -v uv 2>/dev/null || true)"; do
+    [ -n "$bin" ] && [ -x "$bin" ] || continue
+    printf '%s' "$bin"; return 0
+  done
+  return 1
+}
+
 # 로그인 셸의 rc 파일. zsh 가 아니어도 맞는 자리에 쓴다.
 shell_rc() {
   case "${SHELL##*/}" in
@@ -116,6 +126,12 @@ else err "Node 24+ 가 없다"; add_manual "nvm install 24 또는 brew install n
 BUN="$(find_bun || true)"
 if [ -n "$BUN" ]; then ok "bun 1.4+ : $BUN ($("$BUN" --version))"
 else err "bun 1.4+ 가 없다"; add_manual "curl -fsSL https://bun.sh/install | bash"; fi
+
+UV="$(find_uv || true)"
+if [ "$ONLY_SHELL" -eq 1 ]; then
+  : # 셸만 갱신할 때는 Python 도구를 요구하지 않는다.
+elif [ -n "$UV" ]; then ok "uv : $UV ($("$UV" --version))"
+else say "uv 없음 (msearch venv 를 새로 만들 때만 필요)"; fi
 
 command -v opencodex >/dev/null 2>&1 && ok "opencodex 있다 (선택 — 추가 모델을 카탈로그에 얹는다)" \
   || say "opencodex 없음 (선택). Codex 는 OAuth 로 직접 간다"
@@ -290,6 +306,50 @@ else
     *) add_manual "~/.local/bin 이 PATH 에 없다. rc 에 추가해야 msearch 가 잡힌다" ;;
   esac
 fi
+
+if [ "$ONLY_SHELL" -eq 0 ]; then
+
+head_ "단계 4.3 · msearch 파이썬 환경"
+# 4.2 의 심링크는 명령을 PATH 에 놓을 뿐이다. msearch 는 redis/dotenv/openai/konlpy
+# 위에서 돌기 때문에, 심링크만 걸어 두면 "명령은 있는데 첫 줄에서 죽는" 상태가 된다 —
+# 절반만 설치된 그 상태가 실제로 한 머신에서 오래 갔다.
+# 최근 배포판의 시스템 파이썬은 PEP 668 로 전역 설치를 막으므로(EXTERNALLY-MANAGED)
+# 전역 pip 를 강행하지 않고 msearch 옆에 잠긴 venv 를 원자적으로 세운다. 설치가
+# 중간에 끊겨도 완성 전 venv 는 런처가 볼 수 없다.
+MSEARCH_VENV="$HARNESS/msearch/.venv"
+MSEARCH_LOCK="$HARNESS/msearch/requirements.lock"
+msearch_env_ok() { "$1" "$HARNESS/msearch/msearch_env.py" >/dev/null 2>&1; }
+
+if [ -x "$MSEARCH_VENV/bin/python" ] && msearch_env_ok "$MSEARCH_VENV/bin/python"; then
+  ok "msearch venv 가 잠금과 맞다 ($MSEARCH_VENV)"
+elif [ "$APPLY" -eq 0 ]; then
+  plan "runtime.lock의 Python으로 $MSEARCH_LOCK 그대로 venv 를 세운다"
+else
+  MSEARCH_VENV_TMP="$(mktemp -d "$HARNESS/msearch/.venv.tmp.XXXXXX")"
+  MSEARCH_PYTHON_VERSION="$(awk -F= '$1 == "PYTHON_VERSION" { print $2 }' "$HARNESS/msearch/runtime.lock")"
+  if [ -n "$UV" ] &&
+     "$UV" venv --python "$MSEARCH_PYTHON_VERSION" --managed-python --seed "$MSEARCH_VENV_TMP" >/dev/null 2>&1 &&
+     "$UV" pip install --python "$MSEARCH_VENV_TMP/bin/python" -q -r "$MSEARCH_LOCK" >/dev/null 2>&1 &&
+     msearch_env_ok "$MSEARCH_VENV_TMP/bin/python"; then
+    rm -rf "$MSEARCH_VENV"
+    mv "$MSEARCH_VENV_TMP" "$MSEARCH_VENV"
+    ok "msearch venv 를 잠금대로 세웠다 ($MSEARCH_VENV)"
+  else
+    rm -rf "$MSEARCH_VENV_TMP"
+    warn "msearch venv 를 못 세웠다"
+    if [ -z "$UV" ]; then
+      add_manual "uv 설치: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    else
+      add_manual "harness/msearch/runtime.lock을 확인한 뒤 다시 실행: ./install.sh --apply"
+    fi
+  fi
+fi
+
+# 검색 백엔드(Redis Stack, OPENAI_API_KEY)는 이 설치기가 세우지 않는다. 상태 판정은
+# doctor 한 곳에만 두고 여기서는 가리키기만 한다 — 판정이 두 곳에 있으면 갈린다.
+say "백엔드(Redis Stack · OPENAI_API_KEY)는 msearch --doctor 로 본다"
+
+fi   # ONLY_SHELL 의존성 스킵 끝
 
 head_ "단계 4.5 · cmux 세션 복원 (선택)"
 # cmux 는 터미널 안의 코딩 에이전트를 감지해 앱을 다시 띄울 때 세션을 이어붙인다.
