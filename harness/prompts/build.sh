@@ -15,10 +15,10 @@ D="$(cd "$(dirname "$0")" && pwd)"
 OUT="$D/.build"
 mkdir -p "$OUT"
 
-# 헤더에 절대경로를 박지 않는다. 산출물은 git 에 추적되는데, 절대경로를 넣으면
-# 빌드한 머신마다 값이 달라져서 파일이 항상 dirty 로 남는다. 그러면
-# rubato 를 한 번 켜는 것만으로 업데이트가 영원히 막힌다 — 세션마다 build.sh 가
-# 자동으로 돌기 때문이다. 위치는 저장소 안에서 고정이라 상대경로로 충분하다.
+# 헤더에 절대경로를 박지 않는다. 산출물은 시스템 프롬프트로 통 주입되므로
+# 빌드한 머신에 따라 내용이 달라지면 같은 조각으로 만든 프롬프트가 서로 달라진다.
+# 위치는 저장소 안에서 고정이라 상대경로로 충분하다.
+# .build/ 는 gitignore 라 산출물 자체는 추적하지 않는다.
 emit() {  # emit <산출파일명> <조각...>
   local out="$OUT/$1"; shift
   {
@@ -46,15 +46,19 @@ fresh() {
   return 0
 }
 
-# 시스템 프롬프트 = 공통 운영 계약 + 역할 + 말투. 말투가 마지막인 것은 의도다 — 앞의 영어 산문에
-# 눌리지 않아야 하고, 역할마다 읽는 사람이 달라서 갈리는 것이 말투 하나뿐이기 때문이다.
+# 시스템 프롬프트 = 공통 운영 계약 + 역할 + 말투. 말투가 마지막인 것은 의도다. 앞의 영어
+# 산문에 눌리지 않아야 하기 때문이다.
 #
-# 역할은 셋(lead/owner/verifier)이지만 파일은 둘이다. owner 와 verifier 는 같은
-# teammate 파일을 쓴다 — 검증도 하나의 워크스트림이고, verifier 는 산출물이 판단인
-# owner 다. 둘을 가르는 것은 부팅 프롬프트가 아니라 받는 브리프다.
-if ! fresh "$OUT/lead.pi.md" base.pi.md core-lead.pi.md voice-lead.md; then
-  emit lead.pi.md     base.pi.md core-lead.pi.md     voice-lead.md
+# 말투 조각은 한 벌이다. 말하는 방식 자체는 역할을 타지 않기 때문이고, 역할마다
+# 달라지는 보고 계약은 core-*.pi.md 가 이미 갖고 있다. 둘로 나눠 두면 같은 문장
+# 규칙을 두 곳에서 고쳐야 해서 한쪽만 낙후된다.
+#
+# 역할은 셋(lead/owner/verifier)이지만 core 파일은 둘이다. owner 와 verifier 는 같은
+# teammate 파일을 쓴다. 검증도 하나의 워크스트림이고, verifier 는 산출물이 판단인
+# owner 이기 때문이다. 둘을 가르는 것은 부팅 프롬프트가 아니라 받는 브리프다.
+if ! fresh "$OUT/lead.pi.md" base.pi.md core-lead.pi.md voice.md; then
+  emit lead.pi.md     base.pi.md core-lead.pi.md     voice.md
 fi
-if ! fresh "$OUT/teammate.pi.md" base.pi.md core-teammate.pi.md voice-teammate.md; then
-  emit teammate.pi.md base.pi.md core-teammate.pi.md voice-teammate.md
+if ! fresh "$OUT/teammate.pi.md" base.pi.md core-teammate.pi.md voice.md; then
+  emit teammate.pi.md base.pi.md core-teammate.pi.md voice.md
 fi
