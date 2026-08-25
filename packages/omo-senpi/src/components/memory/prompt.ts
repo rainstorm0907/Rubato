@@ -32,7 +32,9 @@ export interface MemoryPromptInjectionOptions {
   readonly createRepo?: (context: MemoryIdentityContext) => GitMemoryRepo
   readonly cache?: MemoryBlockCache
   readonly searchExposure?: () => boolean
-  readonly resolveCompileWarnTokens?: (identity: string) => number
+  // undefined means "no advisory" — addMemoryPressureMetadata already treats it that way,
+  // which lets a caller degrade to it when settings cannot be read.
+  readonly resolveCompileWarnTokens?: (identity: string) => number | undefined
   readonly resolveNudgeTurns?: (
     repo: GitMemoryRepo,
     sessionId: string,
@@ -43,6 +45,11 @@ export interface MemoryPromptInjectionOptions {
     sessionId: string,
     identity: string,
   ) => Promise<{ readonly sha: string } | undefined>
+  /**
+   * Whether the compiled memory block rides in the system prompt for this identity.
+   * Defaults to true when absent, so hosts that never wire it keep the old behaviour.
+   */
+  readonly resolveProjection?: (identity: string) => boolean | undefined
 }
 
 /**
@@ -70,14 +77,22 @@ export function createMemoryPromptHandler(
     const repo = createRepo(context)
     const nudgeTurns = await options.resolveNudgeTurns?.(repo, session.id, context.identity)
     const soulNotice = await options.resolveSoulNotice?.(repo, session.id, context.identity)
+    const projection = options.resolveProjection?.(context.identity) !== false
+    // The template stays a pure template id; the cache folds output-affecting options
+    // (projection) into its own variant, so callers cannot forget to encode one.
     const block = await cache.compile(repo, `${MEMORY_PROMPT_TEMPLATE}:${context.identity}`, {
       agentId: context.identity,
+      projection,
     })
-    const pressureBlock = await addMemoryPressureMetadata(
-      block,
-      repo,
-      options.resolveCompileWarnTokens?.(context.identity),
-    )
+    // Pressure advises trimming system/ because it is expensive every turn. With projection off
+    // it is not in the prompt at all, so the advice would be noise about a cost nobody pays.
+    const pressureBlock = projection
+      ? await addMemoryPressureMetadata(
+        block,
+        repo,
+        options.resolveCompileWarnTokens?.(context.identity),
+      )
+      : block
     const composed = options.searchExposure?.() === true ? `${pressureBlock}\n\n${MEMORY_TOOL_DISCOVERY_NOTE}` : pressureBlock
     const includeRecall = !hasMemoryNotice(session.entries) && recallNoticeGuard(session.id)
     const notice = renderMemoryNotice(

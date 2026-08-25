@@ -165,6 +165,7 @@ export const OmoMemoryAgentOverridesSchema = z.object({
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
+  projection: z.boolean().optional(),
 }).strict()
 
 // ---------------------------------------------------------------------------
@@ -201,6 +202,11 @@ export const OmoMemorySettingsSchema = z.object({
   sync: OmoMemorySyncSchema.default({ enabled: true }),
   search: OmoMemorySearchSchema.default({ enabled: true }),
   compile_warn_tokens: z.number().int().positive().default(30000),
+  // Project committed memory into the system prompt every turn. Turning this off leaves the
+  // repository, the memory tools, and every slash command intact; only the compiled block stops
+  // riding in the prompt, so memory is reached on demand (for example through an external index)
+  // instead of costing its full size on every request.
+  projection: z.boolean().default(true),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).default({}),
 }).strict()
 
@@ -218,6 +224,7 @@ export const OmoMemorySettingsLayerSchema = z.object({
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
+  projection: z.boolean().optional(),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).optional(),
 }).strict()
 

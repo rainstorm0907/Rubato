@@ -111,4 +111,39 @@ describe("MemoryBlockCache", () => {
     expect(hashMemoryTemplate("template")).toMatch(/^[0-9a-f]{64}$/)
     expect(hashMemoryTemplate("template")).not.toBe(hashMemoryTemplate("template changed"))
   })
+
+  it("#given the same template and HEAD but opposite projection #when compiled #then each variant compiles on its own", async () => {
+    // given: Sol's reproduction against the public cache API. The cache must own this itself;
+    // relying on callers to encode the option into `template` means one forgetful caller is
+    // silently served the other variant's block.
+    const { repo } = await createRepo()
+    const cache = new MemoryBlockCache()
+
+    // when
+    const on = await cache.compile(repo, "template-a", { agentId: "cache-agent", projection: true })
+    const off = await cache.compile(repo, "template-a", { agentId: "cache-agent", projection: false })
+    const onAgain = await cache.compile(repo, "template-a", { agentId: "cache-agent", projection: true })
+
+    // then
+    expect(on).toContain("<self>")
+    expect(off).not.toContain("<self>")
+    expect(off).toContain("- AGENT_ID: ")
+    expect(onAgain).toBe(on)
+  }, WINDOWS_INTEGRATION_TEST_TIMEOUT)
+
+  it("#given projection omitted then explicitly true #when compiled #then they share one cache entry", async () => {
+    // given: absent must normalize to the same variant as true, or the default path
+    // recompiles on every turn and the cache stops doing its job.
+    const { repo } = await createRepo()
+    const cache = new MemoryBlockCache()
+
+    // when
+    const implicit = await cache.compile(repo, "template-a", { agentId: "cache-agent" })
+    const explicit = await cache.compile(repo, "template-a", { agentId: "cache-agent", projection: true })
+
+    // then
+    expect(explicit).toBe(implicit)
+    expect(cache.size).toBe(1)
+  }, WINDOWS_INTEGRATION_TEST_TIMEOUT)
+
 })

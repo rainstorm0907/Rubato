@@ -34,6 +34,7 @@ const FULL_DEFAULTS: OmoMemorySettings = {
   sync: { enabled: true },
   search: { enabled: true },
   compile_warn_tokens: 30000,
+  projection: true,
   agents: {},
 }
 
@@ -79,6 +80,7 @@ describe("OmoMemorySettingsSchema defaults", () => {
       sync: { remote: "file:///tmp/memory-mirror.git", enabled: true },
       search: { enabled: false },
       compile_warn_tokens: 50000,
+      projection: false,
       agents: {
         "backend-lead": {
           enabled: true,

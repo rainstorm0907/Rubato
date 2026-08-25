@@ -78,7 +78,24 @@ export function registerMemoryStatic(input: {
     resolveContext,
     cache: promptCache,
     searchExposure: () => toolExposure === "search",
-    resolveCompileWarnTokens: () => loadCommandSettings().settings.compile_warn_tokens,
+    // An unreadable config must not take the prompt down with it. Both resolvers below run
+    // inside before_agent_start, so a throw here rejects prompt assembly outright instead of
+    // degrading. They fail toward the pre-existing behaviour: projection ON, no advisory.
+    resolveCompileWarnTokens: () => {
+      try {
+        return loadCommandSettings().settings.compile_warn_tokens
+      } catch {
+        return undefined
+      }
+    },
+    resolveProjection: (identity) => {
+      try {
+        const settings = loadCommandSettings().settings
+        return settings.agents[identity]?.projection ?? settings.projection
+      } catch {
+        return true
+      }
+    },
     resolveNudgeTurns: (repo, sessionId, identity) => nudgeWiring.nudgeTurns(repo, sessionId, identity),
     resolveSoulNotice: async (repo, sessionId, identity) => {
       const context = resolveContext(sessionId)

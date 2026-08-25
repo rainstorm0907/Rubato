@@ -173,6 +173,96 @@ describe("memory pressure compile wiring", () => {
   }, 30_000)
 })
 
+describe("memory projection config wiring", () => {
+  // Sol's finding: every projection test injected `resolveProjection` directly, so deleting the
+  // four wiring lines in wiring-static.ts left them all green while the operator's config did
+  // nothing in production. These drive the real component through `loadConfig` instead.
+  const PERSONA_SENTINEL = "PERSONA_BODY_SENTINEL"
+  const IDENTITY = "projection-agent"
+
+  async function boundPi(memory: Parameters<typeof loadedMemoryConfig>[0], loadConfig?: () => never) {
+    const root = realpathSync.native(await mkdtemp(join(tmpdir(), "omo-memory-projection-wiring-")))
+    roots.push(root)
+    const paths = buildIdentityPaths(root, IDENTITY)
+    const repo = new GitMemoryRepo({ dir: paths.repo, agentId: IDENTITY })
+    await repo.init({
+      seedFiles: [{
+        relativePath: "system/persona.md",
+        content: `---\ndescription: Persona\n---\n${PERSONA_SENTINEL}\n`,
+      }],
+    })
+    const context = createMemoryIdentityContext({
+      identity: IDENTITY,
+      identityPaths: paths,
+      binding: { identity: IDENTITY, repoPathHash: "hash", boundAt: 1 },
+    })
+    const pi = new MemoryFakeExtensionAPI()
+    createMemoryWiring({
+      sessions: new Map([["session-projection", { context }]]),
+      loadConfig: loadConfig ?? (() => loadedMemoryConfig(memory)),
+      cwd: () => root,
+      env: {},
+    }).registerStatic(pi, componentContext())
+    return pi
+  }
+
+  async function promptFor(pi: MemoryFakeExtensionAPI): Promise<string> {
+    const [result] = await pi.dispatch(
+      "before_agent_start",
+      { type: "before_agent_start", prompt: "continue", systemPrompt: "BASE" },
+      sessionContext("session-projection"),
+    )
+    return (result as { systemPrompt?: string } | undefined)?.systemPrompt ?? ""
+  }
+
+  test("#given root projection false #when a real session compiles #then the persona never reaches the prompt", async () => {
+    const pi = await boundPi(memorySettings({ projection: false }))
+    const prompt = await promptFor(pi)
+    expect(prompt).toContain("BASE")
+    expect(prompt).not.toContain(PERSONA_SENTINEL)
+    expect(prompt).not.toContain("<self>")
+  }, 30_000)
+
+  test("#given root projection true #when a real session compiles #then the persona is projected", async () => {
+    const pi = await boundPi(memorySettings({ projection: true }))
+    expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
+  }, 30_000)
+
+  test("#given a per-agent false override under a true root #when compiled #then the override wins", async () => {
+    const pi = await boundPi(memorySettings({
+      projection: true,
+      agents: { [IDENTITY]: { projection: false } },
+    }))
+    expect(await promptFor(pi)).not.toContain(PERSONA_SENTINEL)
+  }, 30_000)
+
+  test("#given a per-agent true override under a false root #when compiled #then the override wins", async () => {
+    const pi = await boundPi(memorySettings({
+      projection: false,
+      agents: { [IDENTITY]: { projection: true } },
+    }))
+    expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
+  }, 30_000)
+
+  test("#given another agent's override #when this agent compiles #then it is unaffected", async () => {
+    const pi = await boundPi(memorySettings({
+      projection: true,
+      agents: { "someone-else": { projection: false } },
+    }))
+    expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
+  }, 30_000)
+
+  test("#given config loading throws #when a real session compiles #then the prompt survives with projection on", async () => {
+    // Telemetry-shaped rule: an unreadable config must not take prompt assembly down with it.
+    const pi = await boundPi(memorySettings(), () => {
+      throw new Error("config is unreadable")
+    })
+    const prompt = await promptFor(pi)
+    expect(prompt).toContain("BASE")
+    expect(prompt).toContain(PERSONA_SENTINEL)
+  }, 30_000)
+})
+
 describe("memory footer wiring", () => {
   test("#given committed memory bound without a visible footer #when memory tools return #then only the first result shows relative age", async () => {
     const fixture = await createFixture()

@@ -52,6 +52,7 @@ export function memorySettings(overrides: Partial<OmoMemorySettings> = {}): OmoM
     sync: { enabled: true },
     search: { enabled: true },
     compile_warn_tokens: 30000,
+    projection: true,
     agents: {},
     ...overrides,
   }

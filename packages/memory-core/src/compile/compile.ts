@@ -13,6 +13,17 @@ const REMINDER =
 
 export interface CompileMemoryBlockOptions {
   agentId: string
+  /**
+   * Project memory file contents into the system prompt. Default true.
+   *
+   * When false the compiled block is metadata only: no reminder, no <self>,
+   * no <memory>, no <external_projection>. The repository is untouched and the
+   * memory tools still read and write it — this governs what rides in the
+   * prompt every turn, not what the agent can reach. Deployments that retrieve
+   * memory on demand (msearch) pay ~30KB per turn for a projection they do not
+   * read; this turns that off without disabling the component.
+   */
+  projection?: boolean
 }
 
 export async function compileMemoryBlock(
@@ -27,6 +38,7 @@ export async function compileMemoryBlockAtRevision(
   revision: string | null,
   options: CompileMemoryBlockOptions,
 ): Promise<string> {
+  if (options.projection === false) return renderMetadata(options)
   const paths = revision ? await repo.lsTree(revision) : []
   const persona = revision && paths.includes(PERSONA_PATH)
     ? await readSystemFile(repo, revision, PERSONA_PATH)

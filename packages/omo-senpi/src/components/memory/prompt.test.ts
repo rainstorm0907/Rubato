@@ -461,4 +461,80 @@ describe("createMemoryPromptHandler", () => {
     expect(second?.systemPrompt?.match(new RegExp(`<!-- senpi-memory:${IDENTITY}:end -->`, "g"))).toHaveLength(1)
     expect(second?.systemPrompt).toContain("BASE PROMPT")
   }, 30_000)
+
+  test("#given projection disabled #when before_agent_start dispatches #then the sentinel block carries metadata only and no persona body", async () => {
+    // given
+    const { repo, context } = await fixture("PERSONA_BODY_SENTINEL")
+    const pi = new FakeExtensionAPI()
+    pi.on(
+      "before_agent_start",
+      createMemoryPromptHandler({
+        resolveContext: () => context,
+        createRepo: () => repo,
+        resolveProjection: () => false,
+      }),
+    )
+
+    // when
+    const result = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-1", 2))
+
+    // then
+    const prompt = result?.systemPrompt ?? ""
+    expect(prompt).toContain("BASE PROMPT")
+    expect(prompt).toContain(`<!-- senpi-memory:${IDENTITY}:begin -->`)
+    expect(prompt).toContain("- AGENT_ID: ")
+    expect(prompt).not.toContain("PERSONA_BODY_SENTINEL")
+    expect(prompt).not.toContain("<self>")
+    expect(prompt).not.toContain("Reminder:")
+  }, 30_000)
+
+  test("#given projection disabled on a repository over the pressure advisory #when dispatched #then no pressure line is emitted", async () => {
+    // given: pressure advises trimming system/ because it is expensive every turn; with projection
+    // off that cost is not paid, so the advice would point at a bill nobody receives.
+    const warnTokens = 100
+    const { repo, context } = await fixtureAtSystemTokens(Math.ceil(warnTokens * MEMORY_PRESSURE_SOFT_RATIO) + 10)
+    const pi = new FakeExtensionAPI()
+    pi.on(
+      "before_agent_start",
+      createMemoryPromptHandler({
+        resolveContext: () => context,
+        createRepo: () => repo,
+        resolveCompileWarnTokens: () => warnTokens,
+        resolveProjection: () => false,
+      }),
+    )
+
+    // when
+    const result = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-1", 2))
+
+    // then
+    expect(result?.systemPrompt ?? "").not.toContain(MEMORY_PRESSURE_METADATA_TOKEN)
+  }, 30_000)
+
+  test("#given projection toggled between runs #when dispatched twice #then the cache does not serve the other variant", async () => {
+    // given: one cache instance, one identity, one HEAD - only the flag differs, so a cache key
+    // that ignored it would hand the second run the first run's block.
+    const { repo, context } = await fixture("PERSONA_BODY_SENTINEL")
+    let projection = true
+    const handler = createMemoryPromptHandler({
+      resolveContext: () => context,
+      createRepo: () => repo,
+      resolveProjection: () => projection,
+    })
+    const pi = new FakeExtensionAPI()
+    pi.on("before_agent_start", handler)
+
+    // when
+    const on = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-1", 2))
+    projection = false
+    const off = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-2", 2))
+    projection = true
+    const backOn = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-3", 2))
+
+    // then
+    expect(on?.systemPrompt ?? "").toContain("PERSONA_BODY_SENTINEL")
+    expect(off?.systemPrompt ?? "").not.toContain("PERSONA_BODY_SENTINEL")
+    expect(backOn?.systemPrompt ?? "").toContain("PERSONA_BODY_SENTINEL")
+  }, 30_000)
+
 })

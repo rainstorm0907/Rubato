@@ -34,7 +34,10 @@ export class MemoryBlockCache {
   ): Promise<string> {
     const revision = await repo.head()
     const key = `${hashMemoryTemplate(template)}:${options.agentId}`
-    const variant = revision ?? "no-head"
+    // The variant must cover every input that changes the compiled output, not just HEAD.
+    // Options that alter the result belong here rather than in the caller's template string:
+    // a caller that forgot to encode one would silently be served the other variant's block.
+    const variant = `${revision ?? "no-head"}:projection=${options.projection !== false}`
     const existing = this.entries.get(key)
     if (existing?.variant === variant) return existing.pending
 
