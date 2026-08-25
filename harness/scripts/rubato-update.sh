@@ -128,20 +128,27 @@ DIRTY="$(git status --porcelain -- . ':(exclude).omo/evidence' 2>/dev/null || tr
 
 # 받는 동안 사람 작업을 잠시 치웠는지. 어떻게 끝나든 되돌리기 위해 기록해 둔다.
 STASHED=0
-STASH_TAG="rubato-update $(date +%s)"
+STASH_SHA=""
+STASH_TAG="rubato-update pid=$$ ts=$(date +%s)"
 
-# 중간에 죽어도(Ctrl-C, 터미널 닫기) 치운 작업을 그대로 두지 않는다.
-# 성공 경로에서는 restore_stash 가 이미 돌아 STASHED 가 0 이라 아무 일도 없다.
-# 우리가 치운 항목을 이름으로 찾는다. `git stash pop` 은 무조건 stash@{0} 을
-# 꾼는데, 그게 우리 것이라는 보장은 없다 — 이 레포는 여러 세션이 같이 쓰고,
-# 우리가 치운 뒤에 다른 세션이 하나 더 치우면 순서가 밀린다. 그 상태로 pop 하면
-# 남의 작업을 내 워킹트리에 풀어놓고 내 것은 stash 에 갇힌다.
+# 우리가 방금 쌓은 항목만 고른다. 메시지 부분 문자열은 같은 초에 돌거나
+# 사람이 비슷한 제목을 붙인 stash 와 겹친다. push 직후 refs/stash SHA 가 소유권이다.
+remember_stash() {
+  STASH_SHA="$(git rev-parse -q --verify refs/stash 2>/dev/null || true)"
+  [ -n "$STASH_SHA" ] || return 1
+  STASHED=1
+}
+
 find_our_stash() {
-  git stash list --format='%gd %gs' 2>/dev/null \
+  [ -n "$STASH_SHA" ] || return 0
+  git stash list --format='%gd %H' 2>/dev/null \
     | while IFS= read -r line; do
-        case "$line" in
-          *"$STASH_TAG"*) printf '%s' "${line%% *}"; break ;;
-        esac
+        ref="${line%% *}"
+        hash="${line#* }"
+        if [ "$hash" = "$STASH_SHA" ]; then
+          printf '%s' "$ref"
+          break
+        fi
       done
 }
 
@@ -151,8 +158,9 @@ restore_stash() {
 
   REF="$(find_our_stash)"
   if [ -z "$REF" ]; then
-    warn "치워둔 수정을 stash 에서 찾지 못했습니다. 직접 확인해 주세요:"
-    printf '    git stash list   %s"%s" 항목입니다%s\n' "$DIM" "$STASH_TAG" "$RST" >&2
+    warn "치워둔 수정을 stash 에서 찾지 못했습니다. 직접 확인해 주세요."
+    printf '    git stash list\n' >&2
+    [ -n "$STASH_SHA" ] && printf '    git stash show -p %s   %s우리가 치운 커밋%s\n' "$STASH_SHA" "$DIM" "$RST" >&2
     return 1
   fi
 
@@ -163,10 +171,12 @@ restore_stash() {
     ok "작업하던 수정을 되돌렸습니다"
     return 0
   fi
-  # pop 이 충돌해도 stash 는 스택에 남아 있다. 잃은 것은 없다.
-  warn "수정을 되돌리는 중 충돌이 났습니다. 작업은 stash 에 그대로 있어요:"
-  printf '    git stash list        %s"%s" 항목입니다%s\n' "$DIM" "$STASH_TAG" "$RST" >&2
-  printf '    git stash pop %-7s %s충돌을 정리한 뒤 불러오면 됩니다%s\n' "$REF" "$DIM" "$RST" >&2
+  # pop 이 충돌하면 워킹트리는 unmerged 이고 stash 는 스택에 남는다.
+  # 그 상태에서 다시 pop 하면 같은 패치를 한 번 더 얹는다. 고친 뒤 drop 한다.
+  warn "수정을 되돌리는 중 충돌이 났습니다. 지금 워킹트리에서 정리하세요."
+  printf '    git status\n' >&2
+  printf '    git add -u\n' >&2
+  printf '    git stash drop %s          %s%s / %s%s\n' "$REF" "$DIM" "$STASH_TAG" "$STASH_SHA" "$RST" >&2
   return 1
 }
 # 중단 신호를 받으면 치운 것을 되돌리고 **거기서 멈춘다**. 복원만 하고
@@ -201,16 +211,61 @@ if [ -n "$DIRTY" ] && ! git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1; th
   # 다음 merge 가 똑같이 거부당한다. 이 레포는 여러 세션이 같이 쓰고
   # 스테이징된 상태가 흔해서 정면으로 밟는다.
   if git stash push --include-untracked --message "$STASH_TAG" >/dev/null 2>&1; then
-    STASHED=1
-    ok "작업하던 수정을 잠시 치웠습니다"
+    if remember_stash; then
+      ok "작업하던 수정을 잠시 치웠습니다"
+    else
+      err "치운 수정의 stash 를 확인하지 못했습니다. 업데이트를 중단합니다."
+      exit 1
+    fi
   fi
 fi
 
-if ! git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1; then
+if git merge --ff-only "origin/$BRANCH" >/dev/null 2>&1; then
+  :
+elif [ "$AHEAD" -gt 0 ]; then
+  # --ff-only 는 로컬 전용 커밋이 있으면 절대 통과하지 않는다.
+  # 사람 작업은 이미 치워 두었고, 커밋은 브랜치로 남겨 둔 다음
+  # 체크아웃된 $BRANCH 만 origin 으로 옮긴다. reset --hard 가
+  # 워킹트리를 origin 과 맞추는 가장 작은 프리미티브다 — rebase
+  # 는 충돌을 만들고, merge 는 히스토리를 섞는다.
+  if [ -n "$DIRTY" ] && [ "$STASHED" != 1 ]; then
+    err "작업 중 수정을 치우지 못해 업데이트를 중단합니다."
+    exit 1
+  fi
+  # DIRTY 판단에서 뺀 .omo/evidence 는 reset --hard 가 지운다.
+  # 사람 작업이 그것뿐이면 여기서 따로 치운다. DIRTY 가 비었으니
+  # pathspec 없이 stash 해도 다른 사람 파일은 없다.
+  if [ "$STASHED" != 1 ]; then
+    EVIDENCE_DIRTY="$(git status --porcelain -- .omo/evidence 2>/dev/null || true)"
+    if [ -n "$EVIDENCE_DIRTY" ]; then
+      if git stash push --include-untracked --message "$STASH_TAG" >/dev/null 2>&1 && remember_stash; then
+        ok ".omo/evidence 수정을 잠시 치웠습니다"
+      else
+        err ".omo/evidence 수정을 지키지 못해 업데이트를 중단합니다."
+        exit 1
+      fi
+    fi
+  fi
+  # 같은 초에 다른 rubato 세션도 업데이트할 수 있으므로 PID까지 붙인다.
+  BACKUP="rubato/update-backup-$(date +%Y%m%d%H%M%S)-$$"
+  if ! git branch "$BACKUP" HEAD >/dev/null 2>&1; then
+    err "로컬 커밋을 백업하지 못했습니다. 업데이트를 중단합니다."
+    restore_stash || true
+    exit 1
+  fi
+  if ! git reset --hard "origin/$BRANCH" >/dev/null 2>&1; then
+    err "원격을 적용하지 못했습니다. 로컬 HEAD 는 $BACKUP 에 있습니다."
+    printf '    git reset --hard %s\n' "$BACKUP" >&2
+    restore_stash || true
+    exit 1
+  fi
+  warn "로컬 전용 커밋 $AHEAD 개를 $BACKUP 에 남겼습니다"
+  printf '    git log --oneline origin/%s..%s\n' "$BRANCH" "$BACKUP" >&2
+  printf '    git cherry-pick origin/%s..%s\n' "$BRANCH" "$BACKUP" >&2
+else
   err "fast-forward 가 안 됩니다. 로컬에만 있는 커밋과 갈라졌을 수 있어요."
   printf '    %s갈라진 지점을 보려면: git log --oneline --graph HEAD origin/%s%s\n' \
     "$DIM" "$BRANCH" "$RST" >&2
-  # 받지 못했으니 치운 것을 반드시 제자리에 돌려놓고 나간다.
   restore_stash || true
   exit 1
 fi
@@ -218,7 +273,12 @@ ok "소스 $BEHIND 커밋"
 
 # 되돌리는 것은 받자마자. 뒤에 오는 재빌드보다 먼저 해야 한다 — 재빌드가
 # 건드리는 파일과 사람 작업이 겹치면 순서가 뒤바뀔 때 가짜 충돌이 난다.
-restore_stash || true
+# 충돌이면 재빌드와 완료 메시지를 내지 않는다. 워킹트리가 unmerged 인 채로
+# bun/npm 이 돌면 사람 작업을 덮는다.
+if ! restore_stash; then
+  err "소스는 받았지만 치워 둔 수정을 되돌리지 못했습니다. 재빌드는 하지 않습니다."
+  exit 1
+fi
 
 BUN="$(command -v bun || true)"
 
