@@ -52,8 +52,17 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
   assert.equal(grouped.xai[0].contextWindow, 500_000);
-  for (const id of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+  for (const id of [
+    "gpt-5.6-sol", "gpt-5.6-sol-fast",
+    "gpt-5.6-terra", "gpt-5.6-terra-fast",
+    "gpt-5.6-luna", "gpt-5.6-luna-fast",
+  ]) {
     assert.equal(grouped["openai-codex"].find((model) => model.id === id).contextWindow, 272_000);
+  }
+  for (const variant of ["sol", "terra", "luna"]) {
+    const fast = grouped["openai-codex"].find((model) => model.id === `gpt-5.6-${variant}-fast`);
+    assert.equal(fast.upstreamModelId, `gpt-5.6-${variant}`);
+    assert.equal(fast.serviceTier, "priority");
   }
 });
 
@@ -662,6 +671,18 @@ test("openai-codex catalog models advertise the Responses API that /fast require
   }
   const grok = models.find((model) => model.id === "grok-4.6");
   assert.equal(grok.api, "openai-completions");
+});
+
+test("Codex Fast catalog entries keep pairing metadata and canonical thinking levels", () => {
+  const models = brokerProviders()
+    .flatMap((provider) => provider.getModels())
+    .filter((model) => model.provider === "openai-codex" && model.id.endsWith("-fast"));
+  assert.equal(models.length, 3);
+  for (const model of models) {
+    assert.equal(model.serviceTier, "priority");
+    assert.equal(model.upstreamModelId, model.id.slice(0, -5));
+    assert.equal(model.thinkingLevelMap.max, "max");
+  }
 });
 
 test("streamBroker posts a service_tier injected by onPayload", async () => {

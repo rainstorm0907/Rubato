@@ -24,7 +24,7 @@ export function isDirectModel(model: string): boolean {
 
 type DirectProvider = "xai" | "anthropic" | "openai-codex";
 
-function providerModel(model: string): { provider: DirectProvider; modelId: string } {
+export function providerModel(model: string): { provider: DirectProvider; modelId: string } {
   if (model.startsWith("xai/")) return { provider: "xai", modelId: model.slice(4) };
   if (model.startsWith("anthropic/")) return { provider: "anthropic", modelId: model.slice("anthropic/".length) };
   if (model.startsWith("claude-")) return { provider: "anthropic", modelId: model };
@@ -45,8 +45,11 @@ export const DIRECT_CATALOG = [
   { id: "anthropic/claude-fable-5", type: "language", owned_by: "anthropic", tags: ["tool-use", "reasoning"] },
   { id: "anthropic/claude-haiku-4-5", type: "language", owned_by: "anthropic", tags: ["tool-use", "reasoning"] },
   { id: "openai-codex/gpt-5.6-sol", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-sol-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "openai-codex/gpt-5.6-luna", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-luna-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "openai-codex/gpt-5.6-terra", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: "openai-codex/gpt-5.6-terra-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "google-antigravity/gemini-3.7-flash", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "google-antigravity/gemini-3.1-pro", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
 ];
@@ -342,9 +345,10 @@ export async function* directProviderToFxSse(args: {
   );
   const model = models.getModel(selected.provider, selected.modelId);
   if (!model) throw new Error(`unknown ${selected.provider} model: ${args.model}`);
+  const requestModel = model.upstreamModelId ? { ...model, id: model.upstreamModelId } : model;
   const context = fxPromptToPiContext(args.body.prompt, args.body.tools, selected.provider, selected.modelId);
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;
-  const stream = models.streamSimple(model, context, {
+  const stream = models.streamSimple(requestModel, context, {
     fetch: args.upstreamFetch ?? upstreamFetch,
     signal: args.signal,
     sessionId: args.sessionId,
@@ -355,6 +359,12 @@ export async function* directProviderToFxSse(args: {
     ...(args.transport ? { transport: args.transport } : {}),
     ...(args.cacheRetention ? { cacheRetention: args.cacheRetention } : {}),
     ...fxBodyToPiStreamOptions(args.body),
+    // pi-ai streamSimple currently drops serviceTier in buildBaseOptions before
+    // Codex serialization. Keep the catalog metadata authoritative and inject it
+    // at the provider's final payload hook instead of teaching the bridge aliases.
+    ...(model.serviceTier
+      ? { onPayload: (body: JsonObject) => ({ ...body, service_tier: model.serviceTier }) }
+      : {}),
   });
 
   const generationId = newGatewayGenerationId();

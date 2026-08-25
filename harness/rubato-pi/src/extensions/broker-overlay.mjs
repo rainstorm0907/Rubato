@@ -109,7 +109,9 @@ export function providerConfigs(catalog = FALLBACK_CATALOG) {
       provider: id,
       baseUrl: "http://127.0.0.1:8788",
       cost: COST,
-      ...(THINKING_LEVEL_MAPS[model.id] ? { thinkingLevelMap: THINKING_LEVEL_MAPS[model.id] } : {}),
+      ...(THINKING_LEVEL_MAPS[model.id] ?? THINKING_LEVEL_MAPS[model.upstreamModelId]
+        ? { thinkingLevelMap: THINKING_LEVEL_MAPS[model.id] ?? THINKING_LEVEL_MAPS[model.upstreamModelId] }
+        : {}),
     })),
   }));
 }

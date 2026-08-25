@@ -4,7 +4,7 @@ import { zstdDecompressSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, readClaudeSetupToken } from "../src/direct-provider.ts";
+import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, providerModel, readClaudeSetupToken } from "../src/direct-provider.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("fx history and tools become pi-ai context without executing tools", () => {
@@ -55,7 +55,22 @@ test("direct provider fx bodies carry reasoning and only priority service_tier i
   assert.deepEqual(fxBodyToPiStreamOptions({}), {});
 });
 
-test("Codex direct sends the configured reasoning effort on the upstream wire", async () => {
+test("Codex fast catalog ids reach pi-ai without losing their model metadata", () => {
+  assert.deepEqual(providerModel("openai-codex/gpt-5.6-sol-fast"), {
+    provider: "openai-codex",
+    modelId: "gpt-5.6-sol-fast",
+  });
+  assert.deepEqual(providerModel("openai-codex/gpt-5.6-luna-fast"), {
+    provider: "openai-codex",
+    modelId: "gpt-5.6-luna-fast",
+  });
+  assert.deepEqual(providerModel("openai-codex/gpt-5.6-terra-fast"), {
+    provider: "openai-codex",
+    modelId: "gpt-5.6-terra-fast",
+  });
+});
+
+test("Codex fast alias sends canonical model, reasoning, and priority on the upstream wire", async () => {
   const directory = mkdtempSync(join(tmpdir(), "fx-codex-auth-"));
   const authPath = join(directory, "auth.json");
   const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
@@ -77,7 +92,7 @@ test("Codex direct sends the configured reasoning effort on the upstream wire", 
   };
   const frames = [];
   for await (const frame of directProviderToFxSse({
-    model: "openai-codex/gpt-5.6-terra",
+    model: "openai-codex/gpt-5.6-terra-fast",
     body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }], reasoning: "high" },
     xaiAuthPath: authPath,
     upstreamFetch,
@@ -86,7 +101,9 @@ test("Codex direct sends the configured reasoning effort on the upstream wire", 
     frames.push(frame);
   }
   assert.ok(wireBody, `upstream fetch was not called: ${frames.join("")}`);
+  assert.equal(wireBody.model, "gpt-5.6-terra");
   assert.deepEqual(wireBody.reasoning, { effort: "high", summary: "auto" });
+  assert.equal(wireBody.service_tier, "priority");
 });
 
 // 위의 fxPromptToPiContext 테스트는 우리 변환까지만 본다. 여기는 pi-ai 직렬화까지 끌고 가서
