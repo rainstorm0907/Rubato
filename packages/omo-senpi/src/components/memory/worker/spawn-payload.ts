@@ -81,7 +81,7 @@ export async function prepareReflectionSpawn(input: PrepareReflectionSpawnInput)
     ...(dreamTarget === undefined ? {} : { dreamTarget }),
   }
   const env: NodeJS.ProcessEnv = {
-    ...input.env,
+    ...withoutTuiLoaderHooks(input.env),
     MEMORY_DIR: input.worktree.dir,
     TRANSCRIPT_PATH: transcript,
     ...(dreamPaths === undefined ? {} : {
@@ -199,7 +199,7 @@ export async function prepareFactsSpawn(input: PrepareFactsSpawnInput): Promise<
   await writeFile(payload, serializeFactsPayload(input.payload), { encoding: "utf8", mode: 0o600 })
   await chmod(payload, 0o400)
   const env: NodeJS.ProcessEnv = {
-    ...input.env,
+    ...withoutTuiLoaderHooks(input.env),
     FACTS_PAYLOAD_PATH: payload,
     FACTS_EXTRACTION_PATH: extraction,
     SENPI_MEMORY_FACTS: "1",
@@ -280,6 +280,26 @@ async function copyJsonOrEmpty(source: string, destination: string): Promise<voi
     if (errorCode(error) !== "ENOENT") throw error
   }
   await writeFile(destination, content, "utf8")
+}
+
+// The parent TUI injects `--import=...no-changelog-register` so senpi's interactive-mode.js
+// can be patched in-process. A detached print-mode child inherits that NODE_OPTIONS and then
+// often resolves a different senpi than the parent (PATH's brew install vs the repo pin).
+// The hook's replaceOnce then throws `busy enter transform drift` before the child can run.
+// Strip only that loader token; leave any other NODE_OPTIONS the host actually needs.
+export function withoutTuiLoaderHooks(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const prev = env.NODE_OPTIONS
+  if (prev === undefined) return env
+  const kept = prev
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !token.includes("no-changelog-register"))
+    .join(" ")
+  if (kept.length === 0) {
+    const next = { ...env }
+    delete next.NODE_OPTIONS
+    return next
+  }
+  return { ...env, NODE_OPTIONS: kept }
 }
 
 function errorCode(error: unknown): string | undefined {

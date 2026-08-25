@@ -213,6 +213,53 @@ describe("worker senpi command resolution", () => {
   })
 })
 
+describe("memory child TUI loader isolation", () => {
+  // Reproduces reflection-run-2: the parent TUI injects `--import=...no-changelog-register`
+  // via NODE_OPTIONS. The child inherited that hook and then loaded PATH's older senpi,
+  // so replaceOnce threw `busy enter transform drift` and the run died in under a second.
+  const HOOK = "--import=file:///Users/wy/Github-repos/Rubato/harness/rubato-pi/src/no-changelog-register.mjs"
+  const OTHER = "--max-old-space-size=4096"
+
+  test("#given a parent TUI loader hook #when a reflection spawn is prepared #then the child does not inherit it", async () => {
+    const base = await root()
+    const prepared = await prepareReflectionSpawn({
+      run,
+      worktree: {
+        dir: base,
+        commonConfigPath: join(base, "config"),
+      } as unknown as ReflectionWorktree,
+      reflectionSessionsDir: join(base, "sessions"),
+      category: "quick",
+      model: "provider/model",
+      env: { NODE_OPTIONS: `${OTHER} ${HOOK}` },
+      mergePolicy: "auto",
+      skillsUsageSource: join(base, "skills.json"),
+      memoryUsageSource: join(base, "memory-usage.json"),
+      dreamStateSource: join(base, "dream.json"),
+      peoplePolicy: { enabled: true, max_entries: 40, max_entry_chars: 200 },
+      senpiCommand: "/custom/senpi",
+    })
+
+    expect(prepared.env.NODE_OPTIONS).toBe(OTHER)
+    expect(prepared.env.NODE_OPTIONS).not.toContain("no-changelog-register")
+    expect(prepared.env.SENPI_MEMORY_REFLECTION).toBe("1")
+  })
+
+  test("#given only a parent TUI loader hook #when a facts spawn is prepared #then NODE_OPTIONS is dropped", async () => {
+    const prepared = await prepareFactsSpawn({
+      runId: "facts-1",
+      runDir: await root(),
+      payload,
+      model: "provider/model",
+      env: { NODE_OPTIONS: HOOK },
+      senpiCommand: "/custom/senpi",
+    })
+
+    expect(prepared.env.NODE_OPTIONS).toBeUndefined()
+    expect(prepared.env.SENPI_MEMORY_FACTS).toBe("1")
+  })
+})
+
 describe("worker senpi prefix args", () => {
   const PREFIX_MARKER = "<marker>.js"
 

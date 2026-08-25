@@ -313,4 +313,37 @@ setInterval(() => undefined, 30_000)
     expect(result).toEqual({ kind: "filtered", candidates: headerless, rejected: [] })
   })
 
+  test("#given a parent TUI loader hook #when the catalog is probed #then the child does not inherit it", async () => {
+    // given
+    const item = await fixture(`
+import { writeFileSync } from "node:fs"
+writeFileSync(process.env.ENV_DUMP, JSON.stringify({
+  nodeOptions: process.env.NODE_OPTIONS ?? null,
+  kept: process.env.KEPT ?? null,
+}))
+process.stdout.write("builtin/fallback\\n")
+`)
+    const dump = join(item.root, "env.json")
+
+    // when
+    const result = await preflightMemoryModels({
+      candidates,
+      launch: item.launch,
+      env: {
+        PATH: process.env.PATH,
+        ENV_DUMP: dump,
+        KEPT: "yes",
+        NODE_OPTIONS: "--max-old-space-size=4096 --import=file:///tmp/no-changelog-register.mjs",
+      },
+      configSources: [{ path: item.config, exists: true }],
+    })
+
+    // then
+    expect(result.kind).toBe("filtered")
+    expect(JSON.parse(await Bun.file(dump).text())).toEqual({
+      nodeOptions: "--max-old-space-size=4096",
+      kept: "yes",
+    })
+  })
+
 })
