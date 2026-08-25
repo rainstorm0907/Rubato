@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { senpiNested } from "../../src/engine-paths.mjs";
+import { senpiDir, senpiNested } from "../../src/engine-paths.mjs";
 import {
   injectEditorMouse,
   injectEditorMouseRouting,
@@ -15,6 +15,7 @@ import {
 const tuiDist = senpiNested("@earendil-works/pi-tui/dist");
 const editorPath = join(tuiDist, "components/editor.js");
 const altScreenPath = join(tuiDist, "tui-alt-screen.js");
+const customEditorPath = join(senpiDir, "dist/modes/interactive/components/custom-editor.js");
 const nestedPrefix = "file:///repo/node_modules/@code-yeongyu/senpi/node_modules/@earendil-works/pi-tui/dist/";
 const hoistedPrefix = "file:///repo/node_modules/@earendil-works/pi-tui/dist/";
 const registerHref = new URL("../../src/no-changelog-register.mjs", import.meta.url).href;
@@ -32,15 +33,52 @@ const theme = {
   },
 };
 
-function makeEditor(Editor, rows = 24) {
-  const tui = {
+function makeTui(rows = 24) {
+  return {
     terminal: { rows, columns: 80 },
     requestRender() {},
     getShowHardwareCursor() { return false; },
   };
-  const editor = new Editor(tui, theme);
+}
+
+function makeEditor(Editor, rows = 24, options) {
+  const editor = new Editor(makeTui(rows), theme, options);
   editor.focused = true;
   return editor;
+}
+
+function makeCustomEditor(CustomEditor, rows = 24, options) {
+  const editor = new CustomEditor(makeTui(rows), theme, { matches() { return false; } }, options);
+  editor.focused = true;
+  return editor;
+}
+
+function inverseOpenAtEnd(line) {
+  let inverse = false;
+  const re = /\x1b\[([0-9;]*)m/g;
+  let match;
+  while ((match = re.exec(line))) {
+    const codes = match[1].length === 0 ? [0] : match[1].split(";").map(Number);
+    if (codes.includes(0) || codes.includes(27)) inverse = false;
+    else if (codes.includes(7)) inverse = true;
+  }
+  return inverse;
+}
+
+function stripAnsi(line) {
+  return line.replace(/\x1b[_\]][^\x07]*\x07/g, "").replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function inverseCells(line) {
+  const cells = [];
+  const re = /\x1b\[7m([\s\S]*?)\x1b\[27m/g;
+  let match;
+  while ((match = re.exec(line))) cells.push(stripAnsi(match[1]));
+  return cells.join("");
+}
+
+function contentRow(lines) {
+  return lines.find((line) => !/^─+$/.test(stripAnsi(line))) ?? "";
 }
 
 function pointer(editor, kind, x, y) {
@@ -463,5 +501,109 @@ if (!runtime) {
 
     editor.handleInput("\x7f");
     assert.equal(editor.getText(), "AAAA\nBB\nCCCC");
+  });
+
+  test("CustomEditor row-1 click selects the cells after the prompt, not paddingX again", async () => {
+    const { CustomEditor } = await import(`${pathToFileURL(customEditorPath).href}?mouse=${Date.now()}`);
+    const editor = makeCustomEditor(CustomEditor);
+    editor.setText("hello world");
+    editor.render(20);
+    pointer(editor, "press", 2, 1);
+    pointer(editor, "drag", 7, 1);
+    pointer(editor, "release", 7, 1);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 0 },
+      end: { line: 0, col: 5 },
+    });
+    const row = contentRow(editor.render(20));
+    assert.equal(stripAnsi(row).startsWith("❯ hello world"), true);
+    assert.equal(inverseCells(row), "hello");
+  });
+
+  test("CustomEditor CJK highlight covers the contiguous wide cells the pointer covered", async () => {
+    const { CustomEditor } = await import(`${pathToFileURL(customEditorPath).href}?mouse=${Date.now()}`);
+    const editor = makeCustomEditor(CustomEditor);
+    editor.setText("한글가나다 abc");
+    editor.render(24);
+    pointer(editor, "press", 2, 1);
+    pointer(editor, "drag", 8, 1);
+    pointer(editor, "release", 8, 1);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 0 },
+      end: { line: 0, col: 3 },
+    });
+    const row = contentRow(editor.render(24));
+    assert.match(stripAnsi(row), /한글가나다 abc/);
+    assert.equal(inverseCells(row), "한글가");
+  });
+
+  test("CustomEditor wrapped-row selection keeps the literal padding and paints those cells", async () => {
+    const { CustomEditor } = await import(`${pathToFileURL(customEditorPath).href}?mouse=${Date.now()}`);
+    const editor = makeCustomEditor(CustomEditor);
+    editor.setText("한글가나다라마바사아자차");
+    const lines = editor.render(12);
+    assert.equal(stripAnsi(lines[1]).startsWith("❯ 한글가나"), true);
+    assert.equal(stripAnsi(lines[2]).startsWith("  다라마바"), true);
+    pointer(editor, "press", 2, 2);
+    pointer(editor, "drag", 8, 2);
+    pointer(editor, "release", 8, 2);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 4 },
+      end: { line: 0, col: 7 },
+    });
+    const painted = editor.render(12);
+    assert.equal(inverseCells(painted[2]), "다라마");
+    assert.equal(inverseCells(painted[1]), "");
+    assert.match(stripAnsi(painted[2]), /다라마바/);
+  });
+
+  test("CustomEditor configured padding > 2 still hit-tests row 1 at the visible ❯ gutter", async () => {
+    const { CustomEditor } = await import(`${pathToFileURL(customEditorPath).href}?mouse=${Date.now()}`);
+    const editor = makeCustomEditor(CustomEditor, 24, { paddingX: 4 });
+    editor.setText("hello world");
+    const first = editor.render(24);
+    assert.equal(stripAnsi(first[1]).startsWith("❯ hello world"), true);
+    assert.equal(editor.paddingX, 4);
+    assert.equal(editor.getPaddingX(), 4);
+    pointer(editor, "press", 2, 1);
+    pointer(editor, "drag", 7, 1);
+    pointer(editor, "release", 7, 1);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 0 },
+      end: { line: 0, col: 5 },
+    });
+    assert.equal(inverseCells(contentRow(editor.render(24))), "hello");
+
+    editor.setText("abcdefghijklmnopqr");
+    const wrapped = editor.render(24);
+    assert.equal(stripAnsi(wrapped[2]).startsWith("    qr"), true);
+    pointer(editor, "press", 4, 2);
+    pointer(editor, "drag", 6, 2);
+    pointer(editor, "release", 6, 2);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 16 },
+      end: { line: 0, col: 18 },
+    });
+    assert.equal(inverseCells(editor.render(24)[2]), "qr");
+  });
+
+  test("selection paint does not swallow the fake cursor reset", async () => {
+    const { Editor } = await import(`${pathToFileURL(editorPath).href}?mouse=${Date.now()}`);
+    const editor = makeEditor(Editor);
+    editor.setText("abc\nxyz");
+    editor.render(20);
+    pointer(editor, "press", 0, 1);
+    pointer(editor, "drag", 3, 2);
+    pointer(editor, "release", 3, 2);
+    assert.deepEqual(editor.getMouseSelection(), {
+      start: { line: 0, col: 0 },
+      end: { line: 1, col: 3 },
+    });
+    const painted = editor.render(20);
+    assert.equal(inverseCells(painted[1]), "abc");
+    assert.match(stripAnsi(painted[1]), /abc/);
+    assert.match(stripAnsi(painted[2]), /xyz/);
+    assert.equal(inverseOpenAtEnd(painted[2]), false, painted[2]);
+    assert.match(painted[2], /\x1b\[(?:0|27)m/);
   });
 }

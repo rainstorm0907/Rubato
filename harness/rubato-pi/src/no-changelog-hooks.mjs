@@ -5,6 +5,7 @@ import {
   isEditorMouseModuleUrl,
   isEditorMouseTuiUrl,
 } from "./editor-mouse.mjs";
+import { injectPasteExpand } from "./paste-expand.mjs";
 import { injectTitleGuard, isTerminalModuleUrl, titleGuardHref } from "./title-guard.mjs";
 import { busyEnterHref, injectBusyEnter, isBusyEnterModuleUrl } from "./busy-enter.mjs";
 import {
@@ -24,6 +25,7 @@ export async function load(url, context, nextLoad) {
   if (isEditorMouseModuleUrl(url) || isEditorMouseTuiUrl(url)) {
     const source = String(result.source);
     let next = isEditorMouseModuleUrl(url) ? injectEditorMouse(source) : injectEditorMouseRouting(source);
+    if (isEditorMouseModuleUrl(url)) next = injectPasteExpand(next);
     if (isEditorMouseTuiUrl(url)) next = injectCollapsibleMouseRouting(next);
     return { format: result.format, source: next, shortCircuit: true };
   }
