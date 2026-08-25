@@ -274,10 +274,16 @@ const powerRoot = `const CHATGPT_POWER_PICKER_ROOT_SELECTOR =
     '[role="menu"][data-state="open"]:has([role="menuitem"][aria-label="Power"])';`;
 const preflight = `async function assertChatSurfaceForModelMutation(page) {
     const { detectChatGptComposerSurface } = await import('./product-surfaces.mjs');`;
+// The Power-shell submenu probe lines must be present in the stub, otherwise the
+// locale-widening replacements below have nothing to match and the assertions
+// would pass vacuously on an unpatched loader.
+const submenuProbe = `        hasModel ||= menuTextHasExactLine(text, 'Model');
+        hasEffort ||= menuTextHasExactLine(text, 'Effort');
+        if (menuTextHasExactLine(text, heading)) return trigger;`;
 const result = await load(
     'file:///tmp/agbrowse/web-ai/chatgpt-model.mjs',
     {},
-    async () => ({ format: 'module', source: `${powerRoot}\n${preflight}\n${marker}` }),
+    async () => ({ format: 'module', source: `${powerRoot}\n${preflight}\n${marker}\n${submenuProbe}` }),
 );
 process.stdout.write(String(result.source));
 '''
@@ -296,7 +302,10 @@ process.stdout.write(String(result.source));
         self.assertNotIn("composer-intelligence-picker-content", result.stdout)
         self.assertIn("modal-conversation-history-rate-limit", result.stdout)
         self.assertIn("menuTextHasExactLine(text, '모델')", result.stdout)
-        self.assertIn("menuTextHasExactLine(text, '추론 강도')", result.stdout)
+        # The live Korean Power shell labels the effort submenu trigger '추론 수준'.
+        # '추론 강도' never appeared in the DOM and silently disabled effort
+        # enforcement, so the current label is what must be pinned here.
+        self.assertIn("menuTextHasExactLine(text, '추론 수준')", result.stdout)
 
     def test_initial_call_derives_distinct_title_and_adds_open_korean_preference(self) -> None:
         packet = self.root / "title.md"

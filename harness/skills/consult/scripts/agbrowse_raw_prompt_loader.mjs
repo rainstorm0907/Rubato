@@ -125,13 +125,13 @@ export async function load(url, context, nextLoad) {
             )
             .replace(
                 `hasEffort ||= menuTextHasExactLine(text, 'Effort');`,
-                `hasEffort ||= menuTextHasExactLine(text, 'Effort') || menuTextHasExactLine(text, '추론 강도');`,
+                `hasEffort ||= menuTextHasExactLine(text, 'Effort') || menuTextHasExactLine(text, '추론 수준') || menuTextHasExactLine(text, '추론 강도');`,
             )
             .replace(
                 `if (menuTextHasExactLine(text, heading)) return trigger;`,
                 `if (menuTextHasExactLine(text, heading)
                     || (heading === 'Model' && menuTextHasExactLine(text, '모델'))
-                    || (heading === 'Effort' && menuTextHasExactLine(text, '추론 강도'))) return trigger;`,
+                    || (heading === 'Effort' && (menuTextHasExactLine(text, '추론 수준') || menuTextHasExactLine(text, '추론 강도')))) return trigger;`,
             );
         return {
             ...result,
