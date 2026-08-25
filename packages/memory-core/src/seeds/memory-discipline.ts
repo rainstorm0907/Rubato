@@ -121,6 +121,19 @@ Before writing, **search for what you are about to contradict.**
 
 **Deleting is the point, and it is yours to do, at the moment you write.** Deferring cleanup to \`/dream\` means it never happens and the store rots into a pile that contradicts itself.
 
+### Contradiction is the failure mode. Remove it on sight.
+
+A store where two files — or two lines — answer the same question differently is worse than an empty one. The reader cannot tell which is true, and a confidently retrieved stale answer sends the next session down a path that was already abandoned.
+
+So whenever you touch memory, this is not optional housekeeping, it is the job:
+
+- If a file you are editing contains a claim you now know to be wrong, **delete that claim.** Do not leave it beside the correction. Do not annotate it as outdated.
+- If two files answer one question, **merge them and delete one.**
+- If you learn something that invalidates a decision you are not currently editing, **go fix that file too.** The contradiction does not wait for the next time someone happens to open it.
+- A correction never appends. It overwrites.
+
+The most common way this rot starts is the honest-looking entry: "Earlier I concluded X, but actually Y." That sentence keeps both X and Y in the store and search will return either. Keep Y as the conclusion; X belongs in \`Rejected:\` with the reason it was wrong, or nowhere at all.
+
 Deleting is safe: the content stays in git forever. \`git log -p\` and \`git show\` recover anything. A deleted decision leaves search - which is exactly right, because a superseded answer retrieved confidently is worse than no answer at all.
 
 Never append a new dated section to an existing decision file. If the answer changed, the old answer is wrong, and wrong answers do not deserve shelf space.

@@ -43,18 +43,27 @@ Follow the phases below in order.
 
 Understand the current memory landscape before changing anything. Start with the memory filesystem tree and the `system/` files, then survey the transcript payload for what the agent actually did and looked at recently. Use the tree's descriptions to decide what's worth reading, and follow `[[path]]` cross-references when relevant. You can't consolidate a structure you don't know.
 
-## Phase 2: Consolidate
+## Phase 2: Inspect
 
-This is the dream's core duty: make memory smaller, better placed, and less redundant.
+This is the dream's core duty, and it is **inspection, not rewriting**. You report; the working agent fixes. A nightly pass that rewrites files it only half understands does more damage than the drift it was chasing, and it does that damage unattended.
 
-**Cross-file dedupe**: the same fact, preference, or convention recorded in more than one file is a maintenance hazard; the copies drift and contradict. Pick the file that's the natural home, keep the best-worded version there, remove the others, and leave a `[[path]]` cross-reference where a reader might still look for it.
+**Contradiction is the first thing you look for, and the most important thing you report.** A store where two files — or two lines in one file — answer the same question differently is worse than an empty one: search returns either, and a confidently retrieved stale answer sends the next session down a path that was already abandoned. Report every one you find, with both locations quoted, and say which one the evidence favours.
 
-**Tier rebalance**, driven by evidence from the transcripts, file references, and the `$MEMORY_USAGE_PATH` ledger, not by guesswork:
-- An external file the agent keeps fetching turn after turn is hot: promote it to `system/` (trimmed to what's needed every turn, verbose detail stays external). Use the ledger as primary evidence: a file with high `count` and recent `lastUsedAt` is a strong promote candidate.
-- A `system/` file nothing recent has needed is stale: demote it to `reference/` so it stops costing context on every turn. A `system/` file that never appears in the ledger and has no recent transcript references is a strong demote candidate.
-- Demotion is reversible: it MOVES the file to `reference/` with a `[[path]]` cross-reference at the former point of use. It never deletes content.
+The shapes contradiction takes:
+- Two files answering the same question with different answers.
+- One file whose conclusion contradicts a line further down in the same file.
+- A conclusion that no longer matches the code: the decision says X, the source says Y.
+- The honest-looking entry that keeps both: "Earlier I concluded X, but actually Y." Both halves are now retrievable.
 
-**Fact archiving**: entries in `notes/facts/` older than 6 months get summarized into `ARCHIVE.md`, the single non-system root archive file. Compress them into concise dated summary entries, append those to `ARCHIVE.md`, and remove the summarized originals. Keep anything younger, and keep anything old that's still clearly load-bearing. Delete (don't archive) content the user asked to forget, sensitive or wrong content, and junk with no future-reference value.
+Then the lesser rot:
+
+**Duplication**: the same fact recorded in more than one file. Name the natural home and the copies, so the agent can merge and delete.
+
+**Noise**: a file whose content git already answers — what changed, which files, in what order, at what time. Name it; it is costing search precision and giving nothing back.
+
+**Bloat**: a file that has grown past the point where its `##` sections still mark real boundaries, or that has started answering more than one question. Name the questions it is trying to hold, so it can be split.
+
+**Staleness**: a `system/` file nothing recent has needed, evidenced by the `$MEMORY_USAGE_PATH` ledger (low or absent `count`, old `lastUsedAt`) and by transcript references. Report it as a demote candidate; do not move it yourself.
 
 ### System Token Budget Contract
 
@@ -116,6 +125,8 @@ Quick sanity pass before committing.
 
 ## Phase 6: Commit
 
+**You commit your report, not edits to other files.** Phase 2 is inspection: it produces findings, and the working agent acts on them. The only paths you write are your own report and the people/skill records Phases 3-4 own. If you believe a decision file is wrong, that belief goes in the report — you do not edit the file.
+
 Before writing the commit, resolve the actual agent ID value:
 
 ```bash
@@ -166,8 +177,11 @@ Return a report with:
 
 ## Critical Reminders
 
+- **Inspect, do not rewrite.** Phase 2 reports; it never edits decision or reference files. An unattended rewrite of something you half-understood is worse than the drift.
+- **Contradiction outranks every other finding.** Two answers to one question is the failure mode this whole store is shaped to prevent. Lead the report with it, quote both sides, and say which the evidence favours.
+
 1. **Not the primary agent**: don't respond to messages
-2. **Consolidate, don't accumulate**: a dream that only adds content has failed; shrink, merge, and place
+2. **Name what should shrink**: a dream that only notes additions has failed; the useful output is what should be merged, split, or deleted
 3. **Usage evidence reports, contradiction evidence acts**: unused skills become report candidates; wrong skills get fixed in place
 4. **When unsure, `none`**: for skills and for people writes alike, doubt means don't
 5. **Induction never touches cards, contradictions stay open**: those two rules have no exceptions

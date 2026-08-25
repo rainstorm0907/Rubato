@@ -63,13 +63,21 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```bash
 cd ~/.omo/memory/agents
 ls -d */ | wc -l                                   # 저장소 개수
+
+# 저장소별 '진짜 내용' 개수. seed 는 세지 않는다.
 for d in */repo; do
-  n=$(find "$d" -name '*.md' ! -path '*memory-discipline*' 2>/dev/null | wc -l | tr -d ' ')
-  [ "$n" -gt 2 ] && echo "  $n  ${d%/repo}"
-done
+  n=$(find "$d" -name '*.md' \
+        ! -path '*memory-discipline*' \
+        ! -name 'persona.md' ! -name 'human.md' 2>/dev/null | wc -l | tr -d ' ')
+  printf '%4s  %s\n' "$n" "${d%/repo}"
+done | sort -rn
 ```
 
-**두 번째 명령에 안 뜨는 저장소는 seed 뿐이다.** 참고 머신에서는 41개 중 3개만 내용이 있었다. `persona.md` 는 대개 모든 저장소가 **바이트 단위로 동일**하다:
+**0 인 저장소만 버릴 후보다.** 1 이상이면 무엇이 들었는지 반드시 눈으로 본다.
+
+> 이 명령의 앞 버전은 임계값이 `-gt 2` 였다. 참고 머신에서 seed 가 3개라 그 숫자가 맞아 보였을 뿐이고, **내용 파일이 1~2개인 저장소를 "비었다"고 표시해 지우게 만든다.** 샌드박스로 마이그레이션 전 상태를 만들어 돌려보고 잡았다. 지금 형태는 임계값 대신 **전부 세어서 정렬**하므로 판단이 사람에게 남는다.
+
+`persona.md` 는 대개 모든 저장소가 **바이트 단위로 동일**하다:
 
 ```bash
 md5 -q */repo/system/persona.md 2>/dev/null | sort | uniq -c   # macOS
