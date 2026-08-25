@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { stripAnsi } from "../node_modules/@code-yeongyu/senpi/dist/utils/ansi.js";
 import { AssistantMessageComponent } from "../node_modules/@code-yeongyu/senpi/dist/modes/interactive/components/assistant-message.js";
 import { ToolExecutionComponent } from "../node_modules/@code-yeongyu/senpi/dist/modes/interactive/components/tool-execution.js";
@@ -19,6 +21,16 @@ function tool(id: number) {
 }
 
 describe("턴 작업 요약", () => {
+  test("스트리밍 head와 꼬리 segment가 같은 사고를 중복 소유하지 않는다", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "../node_modules/@code-yeongyu/senpi/dist/modes/interactive/interactive-mode.js"),
+      "utf8",
+    );
+    const tracked = source.match(/trackAssistant\(this\.streamingComponent, assistantStreamingHeadMessage\(event\.message\)\)/g) ?? [];
+    expect(tracked).toHaveLength(2);
+    expect(source).not.toContain("trackAssistant(this.streamingComponent, event.message)");
+  });
+
   test("진행 중에도 사고와 도구를 한 줄로 접고 클릭할 때만 펼친다", () => {
     const startedAt = Date.now() - 47_000;
     const message = {
