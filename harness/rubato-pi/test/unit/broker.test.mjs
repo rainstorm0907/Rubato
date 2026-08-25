@@ -294,6 +294,34 @@ test("ensureBroker treats a still-running detached relay as starting, not failed
   assert.ok(checks >= 3);
 });
 
+// read 로 열은 이미지는 toolResult 로 온다. 예전에는 textOf 가 다 지워서
+// 모델이 "열었는데 내용을 못 읽겠다" 고 말했다 — 모든 프로바이더 공통.
+test("a read image survives the toolResult hop instead of being flattened to text", () => {
+  const body = contextToFxRequest({
+    messages: [
+      {
+        role: "toolResult",
+        toolCallId: "c1",
+        toolName: "read",
+        content: [
+          { type: "text", text: "Read image file [image/png]" },
+          { type: "image", data: "SENTINEL456", mimeType: "image/png" },
+        ],
+      },
+    ],
+  });
+  const output = body.prompt[0].content[0].output;
+  assert.ok(Array.isArray(output), "an image tool-result must keep its parts");
+  assert.deepEqual(output[1], { type: "image", data: "SENTINEL456", mimeType: "image/png" });
+});
+
+test("a text-only tool result keeps the old single-value shape", () => {
+  const body = contextToFxRequest({
+    messages: [{ role: "toolResult", toolCallId: "c1", toolName: "bash", content: [{ type: "text", text: "done" }] }],
+  });
+  assert.deepEqual(body.prompt[0].content[0].output, { type: "text", value: "done" });
+});
+
 test("senpi context becomes an fx gateway body, not a Senpi OAuth payload", () => {
   const body = contextToFxRequest({
     systemPrompt: "role prompt",

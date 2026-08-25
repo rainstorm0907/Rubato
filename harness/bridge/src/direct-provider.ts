@@ -140,11 +140,33 @@ function textParts(content: unknown): Array<{ type: "text"; text: string }> {
 function outputText(output: unknown): string {
   if (typeof output === "string") return output;
   if (isObject(output) && typeof output.value === "string") return output.value;
+  // 이미지는 옆에서 별도 블록으로 간다. 여기서까지 직렬화하면 base64 가
+  // 본문에 그대로 쓰여 컨텍스트를 날린다.
+  if (Array.isArray(output)) {
+    const texts = output.filter(isObject).filter((item) => item.type !== "image");
+    const only = texts.map((item) => asString(item.text) ?? asString(item.value)).filter((text) => text);
+    if (only.length) return only.join("");
+    try {
+      return JSON.stringify(texts);
+    } catch {
+      return String(texts);
+    }
+  }
   try {
     return JSON.stringify(output ?? "");
   } catch {
     return String(output ?? "");
   }
+}
+
+// tool-result 에 실려온 이미지를 꺼낸다. read 로 열은 그림이 여기로 온다.
+function outputImages(output: unknown): UserPart[] {
+  if (!Array.isArray(output)) return [];
+  return output.filter(isObject).flatMap((item) =>
+    item.type === "image" && typeof item.data === "string" && typeof item.mimeType === "string"
+      ? [{ type: "image" as const, data: item.data, mimeType: item.mimeType }]
+      : [],
+  );
 }
 
 export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "xai" | "anthropic" = "xai", model = "grok-4.6"): JsonObject {
@@ -194,11 +216,12 @@ export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "
     } else if (role === "tool") {
       for (const part of Array.isArray(content) ? content : []) {
         if (!isObject(part) || part.type !== "tool-result") continue;
+        const images = outputImages(part.output);
         messages.push({
           role: "toolResult",
           toolCallId: asString(part.toolCallId) ?? "",
           toolName: providerToolName(asString(part.toolName) ?? "unknown", provider),
-          content: [{ type: "text", text: outputText(part.output) }],
+          content: [{ type: "text", text: outputText(part.output) }, ...images],
           isError: Boolean(part.isError),
           timestamp: Date.now(),
         });

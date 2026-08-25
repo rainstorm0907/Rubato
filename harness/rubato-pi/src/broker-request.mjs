@@ -54,13 +54,27 @@ function assistantContent(message) {
   return parts;
 }
 
+// read 로 열은 이미지는 toolResult 안에 온다. 예전에는 여기서 textOf 로 넣어서
+// 그림이 통째로 사라졌다 — 모델은 "열었는데 내용을 못 읽겠다" 고 말하게 된다.
+// 모달리티와 무관하게 모든 프로바이더가 같이 당했다.
+function toolImages(content) {
+  if (!Array.isArray(content)) return [];
+  return content.filter(
+    (part) => part?.type === "image" && typeof part.data === "string" && typeof part.mimeType === "string",
+  ).map((part) => ({ type: "image", data: part.data, mimeType: part.mimeType }));
+}
+
 function toolContent(message) {
+  const images = toolImages(message.content);
   return [
     {
       type: "tool-result",
       toolCallId: message.toolCallId,
       toolName: message.toolName ?? "unknown",
-      output: { type: "text", value: textOf(message.content) },
+      // 이미지가 있으면 배열로 싫고 텍스트만 있으면 예전 모양을 지킨다.
+      output: images.length
+        ? [{ type: "text", text: textOf(message.content) }, ...images]
+        : { type: "text", value: textOf(message.content) },
       isError: Boolean(message.isError),
     },
   ];

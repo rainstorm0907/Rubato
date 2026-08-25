@@ -101,6 +101,31 @@ test("Claude direct presents fx tools with Claude Code-compatible names", () => 
   assert.equal(context.messages[2].toolName, "Read");
 });
 
+// 사용자가 Opus 에서 이미지를 못 본다고 한 자리다. tool-result 안의 이미지를
+// 버리면 모델은 치수만 적힌 텍스트 메모만 받고 픽셀은 못 받는다.
+for (const provider of ["anthropic", "xai"] as const) {
+  test(`a read image reaches ${provider} instead of being dropped at the tool hop`, () => {
+    const prompt = [{
+      role: "tool",
+      content: [{
+        type: "tool-result",
+        toolCallId: "c1",
+        toolName: "read",
+        output: [
+          { type: "text", text: "Read image file [image/png]" },
+          { type: "image", data: "SENTINEL456", mimeType: "image/png" },
+        ],
+      }],
+    }];
+    const context = fxPromptToPiContext(prompt, [], provider, "claude-opus-5");
+    const content = context.messages[0].content;
+    assert.deepEqual(content[1], { type: "image", data: "SENTINEL456", mimeType: "image/png" });
+    // base64 가 텍스트로도 새면 컨텍스트를 두 번 먹는다.
+    assert.ok(!content[0].text.includes("SENTINEL456"));
+    assert.match(content[0].text, /Read image file/);
+  });
+}
+
 test("Claude direct uses the installed Claude Code version in its identity header", () => {
   assert.equal(claudeCodeUserAgentFromTarget("/Users/test/.local/share/claude/versions/2.1.237"), "claude-cli/2.1.237");
   assert.throws(() => claudeCodeUserAgentFromTarget("/tmp/claude"), /cannot determine Claude Code version/);
