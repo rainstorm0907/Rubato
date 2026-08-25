@@ -28,7 +28,7 @@
 | **OFF (10)** | `native-badge`, `onboarding`, `init-deep-advisor`, `telemetry`, `mass-ulw`, `start-work-continuation`, `ulw-loop`, `todo-fanout-reminder`, `git-master`, `fallback-architect` |
 | **보류 → v0 OFF (2)** | `ultrawork`, `comment-checker` |
 
-DAG 자식만 예외다. 재귀 task 엔진을 막기 위해 `task`는 OFF지만, 선택된 비-task component 5개는 유지한다. 현재 upstream의 OMO extension 전체 `slice(1)` 동작은 이 정책을 충족하지 않으며 gate 4에서 고친다.
+DAG 에이전트만 예외다. 재귀 task 엔진을 막기 위해 `task`는 OFF지만, 선택된 비-task component 5개는 유지한다. 현재 upstream의 OMO extension 전체 `slice(1)` 동작은 이 정책을 충족하지 않으며 gate 4에서 고친다.
 
 ### 구현으로 판정할 것
 
@@ -36,14 +36,14 @@ DAG 자식만 예외다. 재귀 task 엔진을 막기 위해 `task`는 OFF지만
 
 - gate 4 → 5 → 3 → 6 → 1 → 2 순서로 판정한다.
 - gate 실패는 막힘이 아니라 설계된 분기다. 3절의 승격 기준과 10절의 반환 계약을 따른다.
-- `memory`는 사용자가 ON으로 결정했으므로 캐시·컨텍스트·배경 자식 비용을 반드시 실측한다. 비용이 크다는 이유만으로 구현 세션이 임의로 OFF로 바꿀 수 없다.
+- `memory`는 사용자가 ON으로 결정했으므로 캐시·컨텍스트·배경 에이전트 비용을 반드시 실측한다. 비용이 크다는 이유만으로 구현 세션이 임의로 OFF로 바꿀 수 없다.
 - `ultrawork`와 `comment-checker`는 보류이므로 v0 완료 조건에서 제외하고 OFF 상태와 재활성화 경로만 검증한다.
 
 ### 이 문서가 이미 검증한 것과 구현 세션이 검증할 것
 
 여기 적힌 구조·동작 주장은 (a) 로컬 설치물 `/opt/homebrew/lib/node_modules/omo-ai`의 실제 파일, (b) upstream `dev` 브랜치의 고정 commit 소스, (c) Senpi 공식 문서, (d) 로컬 beta.7을 RPC 모드로 띄워 `get_commands`로 명령·스킬 표면을 읽은 실측 중 하나에 대응한다. 근거 링크와 실측 절차는 11절에 모았다.
 
-**실행 실측은 (d) 범위에서만 했다.** 확장 적재 형태별 명령·스킬 표면과 disable 플래그의 CLI 반응은 실제로 프로세스를 띄워 쟀다. 반면 캐시 적중률, 컴팩션 연속성, crash/resume, 팀원 자식의 확장 상속은 **재지 않았다** — 8절에 "측정해야 할 것"으로만 있다. 실측한 것은 로컬 beta.7이므로 upstream `dev`에 그대로 옮겨 말할 수 없고, 옮길 수 없는 자리는 그때마다 밝혔다.
+**실행 실측은 (d) 범위에서만 했다.** 확장 적재 형태별 명령·스킬 표면과 disable 플래그의 CLI 반응은 실제로 프로세스를 띄워 쟀다. 반면 캐시 적중률, 컴팩션 연속성, crash/resume, 팀원이 띄운 에이전트의 확장 상속은 **재지 않았다** — 8절에 "측정해야 할 것"으로만 있다. 실측한 것은 로컬 beta.7이므로 upstream `dev`에 그대로 옮겨 말할 수 없고, 옮길 수 없는 자리는 그때마다 밝혔다.
 
 ---
 
@@ -128,17 +128,17 @@ Senpi와 OMO 확장을 둘 다 **정확 버전 pin으로 설치만** 하고, 코
 
 **이 후보를 첫 시도로 두는 근거는 하나다: 개조 비용 사다리에서 가장 싼 쪽부터 시도한다** (`CLAUDE.md`의 "개선의 비용 사다리"). 그리고 가장 싼 형태가 무엇인지는 이번에 실측으로 좁혀졌다 — `plugin/extensions/omo.js` **파일 하나**를 `-e`로 지정하면 OMO의 component와 task 엔진은 그대로 들어오면서 OMO 스킬 22개는 따라오지 않는다(7절 표). 포크도, 패키지 필터 설정도 필요 없다.
 
-그러나 같은 조사에서 **gap 넷이 소스로 확인됐다** — 팀원의 중첩 위임 불가, 역할 계약의 시스템 프롬프트 주입 경로 부재, 자식별 permission 전달 필드 부재, 팀원의 task board 직접 접근 부재. 이 중 permission은 pretrusted 역할별 전용 worktree 설정으로 해결될 가능성이 남아 있고, 나머지는 현재 설정으로 열리지 않는다. 여기에 아직 재지 않은 것 둘이 붙는다 — 팀원 자식의 확장·disable 상태 상속(gate 4), component disable 플래그를 실제로 세울 수 있는지(gate 5).
+그러나 같은 조사에서 **gap 넷이 소스로 확인됐다** — 팀원의 중첩 위임 불가, 역할 계약의 시스템 프롬프트 주입 경로 부재, 에이전트별 permission 전달 필드 부재, 팀원의 task board 직접 접근 부재. 이 중 permission은 pretrusted 역할별 전용 worktree 설정으로 해결될 가능성이 남아 있고, 나머지는 현재 설정으로 열리지 않는다. 여기에 아직 재지 않은 것 둘이 붙는다 — 팀원이 띄운 에이전트의 확장·disable 상태 상속(gate 4), component disable 플래그를 실제로 세울 수 있는지(gate 5).
 
 따라서 후보 C의 위치는 "추천 확정"이 아니라 **"가장 싼 첫 PoC이며, 7절의 gate 1~6을 모두 통과해야 채택 가능한 v0 실험 후보"**다. 깨지는 자리에 따라 갈 곳이 다르다.
 
 - **gate 1~2가 해결되지 않으면 → 후보 B로 승격한다.** 둘은 OMO **task internals의 개조**를 요구하기 때문이다. gate 3은 pretrusted 전용 worktree E2E가 실패하거나 worktree 공유가 필수일 때만 같은 승격 후보가 된다. 포크 범위는 monorepo 전체가 아니라 `senpi-task` + `omo-senpi/components/task`로 좁힐 수 있다.
-- **gate 4(자식 상속)가 깨지면 → 후보 A가 살아난다.** OMO 확장을 우리 launcher 아래에서 자식까지 전달할 방법이 없다는 뜻이므로, task/team을 우리가 다시 짓는 비용과 재비교해야 한다.
+- **gate 4(에이전트 상속)가 깨지면 → 후보 A가 살아난다.** OMO 확장을 우리 launcher 아래에서 에이전트까지 전달할 방법이 없다는 뜻이므로, task/team을 우리가 다시 짓는 비용과 재비교해야 한다.
 - **gate 5(플래그)가 깨지면 → 먼저 대안 경로를 찾고, 없으면 후보 B다.** component를 못 끄면 "필요한 것만 켠다"는 후보 C의 정의가 성립하지 않는다.
 
 **승격 기준을 미리 못 박아 둔다.** 아래 둘 중 하나가 되면 후보 C 실험을 접고 후보 B로 올린다. 실험을 붙들고 있는 시간이 포크 비용을 넘기 전에 끊기 위해서다.
 
-1. gate 1~2와, 전용 worktree PoC가 실패한 gate 3의 해법이 모두 "자식에 강제 적재되는 우리 확장이 OMO 내부 동작을 되돌려 놓는" 형태로 수렴할 때. 그 시점의 어댑터는 이미 thin overlay가 아니라 **바깥에서 하는 포크**이며, 같은 일을 소스에서 하는 쪽이 읽기도 고치기도 싸다.
+1. gate 1~2와, 전용 worktree PoC가 실패한 gate 3의 해법이 모두 "에이전트에 강제 적재되는 우리 확장이 OMO 내부 동작을 되돌려 놓는" 형태로 수렴할 때. 그 시점의 어댑터는 이미 thin overlay가 아니라 **바깥에서 하는 포크**이며, 같은 일을 소스에서 하는 쪽이 읽기도 고치기도 싸다.
 2. 하나의 gate를 통과시키려고 넣은 우회가 다른 gate를 깨서 되돌리는 일이 반복될 때. 내부 패치가 서로 얽히기 시작하면 upstream pin을 올릴 때마다 전부 다시 검증해야 하고, 이것이 `harness/README.md`가 기록한 fx 포크의 조용한 실패와 같은 모양이다.
 
 | | A. bare Senpi | B. monorepo fork | C. thin overlay |
@@ -220,7 +220,7 @@ Senpi는 레인마다 유효 TTL이 다르다는 것을 인정하고, 그 값을
 
 **캐시 인지 타임아웃**은 우리가 fx에서 만들지 않은 종류의 기능이다. `promptCache.cacheAwareTimeouts`(기본 true)가 foreground 도구 대기를 모델의 캐시 TTL에서 `promptCache.safetyBufferSeconds`(기본 30)를 뺀 값으로 상한을 건다. 즉 긴 `bash` 하나가 캐시 만료를 걸치고 전체 재읽기를 유발하지 않는다. 예산에 걸린 foreground 명령은 죽이는 대신 살아 있는 background 세션으로 넘긴다.
 
-**parked 세션의 wake source 집계**도 있다. `wake_source_state` 이벤트를 terminal monitor, background bash, detached eval, 그리고 `senpi-task`(OMO의 background 자식과 소유 팀원)가 발행하고, goal 확장이 전부 합산해 하나라도 근무 중이면 캐시 TTL 안에서 대기한다.
+**parked 세션의 wake source 집계**도 있다. `wake_source_state` 이벤트를 terminal monitor, background bash, detached eval, 그리고 `senpi-task`(OMO의 background 에이전트와 소유 팀원)가 발행하고, goal 확장이 전부 합산해 하나라도 근무 중이면 캐시 TTL 안에서 대기한다.
 
 ### 컨텍스트와 컴팩션
 
@@ -263,7 +263,7 @@ Senpi는 세션 로그에 라인별 JSON을 남기며 `kind`가 `bootstrap`/`del
 - **persistent child와 두 실행 모드.** in-process 러너는 부모의 살아 있는 도구 클로저를 공유하고(단 `task_*`/`team_*` 계열은 뺀다), process 러너는 자식 Senpi 프로세스를 띄워 JSON-RPC로 steer/abort/prompt를 건넨다. 일반 `task`/`dag` child와 `team_create` 멤버가 같은 process-child 운반체를 쓰지만 의미는 다르다. 멤버만 team identity, member extension, mailbox, team runtime state를 받는 **resident peer**다. caller-worker subagent가 아니며, `team_create`도 작업 결과를 기다려 반환하지 않고 spawn 완료만 반환한다.
 - **직접 peer messaging.** 이것이 fx Team Overlay에서 우리가 Zig 소스를 고쳐가며 얻었던 바로 그 능력이다(`harness/docs/fx-team-overlay.md`). OMO에서는 이미 있다.
 - **내구 mailbox와 exactly-once 원장.** unread `<messageId>.json` → `.delivering-<messageId>.json` → 수신 세션에서 메시지가 관측된 뒤에만 `processed/<messageId>.json`으로 커밋. processed 파일이 내구 원장이다.
-- **crash/reload/resume 재조정.** 모든 `session_start`가 정해진 순서의 복구 체인을 돈다: 버퍼된 완료 flush 또는 drop → reconcile(재개된 세션의 정지된 자식 부활, 내구 process 멤버 재부착) → 소유 멤버 liveness 재관측 → 오래된 예약 회수 → 미통지 완료 재배달 → await TTL 정리 → 소유 리드 poll → 상태 동기화.
+- **crash/reload/resume 재조정.** 모든 `session_start`가 정해진 순서의 복구 체인을 돈다: 버퍼된 완료 flush 또는 drop → reconcile(재개된 세션의 정지된 에이전트 부활, 내구 process 멤버 재부착) → 소유 멤버 liveness 재관측 → 오래된 예약 회수 → 미통지 완료 재배달 → await TTL 정리 → 소유 리드 poll → 상태 동기화.
 - **컴팩션 중 버퍼링.** 완료 라우팅이 부모 상태에 따라 갈린다: `idle` → wake, `streaming` → 즉시 전달, `compacting`/`session_switching`/`session_shutdown` → 부모가 안정될 때까지 buffer.
 - **DAG/status 저장소.** Task 스키마에 `status`(pending/claimed/in_progress/completed/deleted), `owner`, `blocks`, `blockedBy`가 있다. 다만 현재는 peer-shared board가 아니다. 6개 team board 도구는 리드에만 등록되고, 팀원 확장은 `task_send` 하나만 제공한다. 팀원은 직접 list/claim/update할 수 없다.
 
@@ -273,11 +273,11 @@ Senpi는 세션 로그에 라인별 JSON을 남기며 `kind`가 `bootstrap`/`del
 
 **사용자 roster 승인 gate가 없다.** `TeamSpecSchema`에는 사용자 승인 필드가 없다. 팀 생성은 `team_create`라는 도구 호출 한 번이고, 모델이 그것을 부를 수 있다. Taskforce는 "리드가 최소 모델·역할 배치안을 먼저 사용자에게 보고하고 승인 뒤 teammate를 띄운다"를 스킬의 정의로 갖는다.
 
-gate를 걸어야 할 대상은 **실제로 자식을 띄우는 세 도구**다.
+gate를 걸어야 할 대상은 **실제로 에이전트를 띄우는 세 도구**다.
 
 - `team_create` — `spawnTeamMembers`로 멤버 프로세스를 만든다.
-- `task` — `manager.start`로 자식 하나(또는 `tasks:[...]` 배치)를 만든다.
-- `dag` — 노드들을 병렬 wave로 실행하며 노드마다 자식을 만든다.
+- `task` — `manager.start`로 에이전트 하나(또는 `tasks:[...]` 배치)를 만든다.
+- `dag` — 노드들을 병렬 wave로 실행하며 노드마다 에이전트를 만든다.
 
 `task_create`는 gate 대상이 **아니다.** 이름이 비슷해 오해하기 쉽지만 `createTeamTask` → team-core `team-tasklist`의 `createTask`로 내려가는 **tasklist 레코드 생성**이다. 프로세스를 만들지 않는다. 나머지 team 도구(`team_delete`, `task_get`, `task_list`, `task_update`)도 마찬가지다.
 
@@ -285,37 +285,37 @@ gate를 걸어야 할 대상은 **실제로 자식을 띄우는 세 도구**다.
 
 그 결과 **지금도 되는 것**과 **지금은 안 되는 것**이 갈린다. 리드의 `task_update`는 `owner` 파라미터를 받고 기본값만 리드다. 그러므로 리드가 멤버 이름으로 대신 claim해 주는 **리드 중개 board는 추가 코드 없이 오늘 성립한다.** 그러나 이는 팀원이 직접 접근·claim·update하는 Agent Taskforce의 shared board 요구를 충족하지 않는 축소안이다. 멤버가 스스로 board를 읽고 자기 이름으로 claim하는 경로는 도구가 없어서 막히며, gate 6에서 반드시 열어야 한다.
 
-**역할 계약을 시스템 프롬프트로 주입할 경로가 없다.** `spawn-members.ts`의 `buildMemberPrompt`가 `member.prompt`(없으면 기본 문장)를 다른 안내 문장 넷과 이어붙여 **하나의 문자열**로 만들고, 그것이 자식의 첫 프롬프트가 된다. 시스템 프롬프트 채널이 아니다.
+**역할 계약을 시스템 프롬프트로 주입할 경로가 없다.** `spawn-members.ts`의 `buildMemberPrompt`가 `member.prompt`(없으면 기본 문장)를 다른 안내 문장 넷과 이어붙여 **하나의 문자열**로 만들고, 그것이 에이전트의 첫 프롬프트가 된다. 시스템 프롬프트 채널이 아니다.
 
 이 차이가 실무적으로 중요하다. `CLAUDE.md`가 복제를 정당화하는 유일한 자리로 인정한 것은 "**파일 하나가 통째로 시스템 프롬프트로 주입되는 경로**"인데, 멤버 첫 프롬프트는 그 경로가 아니다. 그리고 계약 파일 경로를 가리키는 포인터를 넣는 방식도 **보장 수단이 아니다** — 모델이 그 파일을 읽을지 여부는 모델에 달렸고, 컴팩션 뒤에 그 첫 프롬프트가 요약에 흡수되면 계약은 사라진다. 즉 현재 OMO에서 역할 계약은 "지켜지길 기대하는 텍스트"이지 "무조건 실리는 계약"이 아니다.
 
-무조건 주입을 얻으려면 계층이 하나 더 필요하다: **역할별 멤버 확장(또는 역할별 시스템 프롬프트)** — 자식 프로세스에 확장으로 적재되어 매 턴 계약을 소유하는 형태다. 이것이 후보 C의 gate 2다.
+무조건 주입을 얻으려면 계층이 하나 더 필요하다: **역할별 멤버 확장(또는 역할별 시스템 프롬프트)** — 에이전트 프로세스에 확장으로 적재되어 매 턴 계약을 소유하는 형태다. 이것이 후보 C의 gate 2다.
 
 **process 멤버는 중첩 위임을 할 수 없다.** 제약이 아니라 부재다. `createTaskComponent`의 `register`가 첫 줄에서 `if (isTeamMemberProcess()) return`으로 빠져나간다 — 즉 팀원 프로세스에서는 task component 자체가 등록되지 않고, `task`·`dag`·team 도구 11개가 전부 없다. 그 자리에 들어가는 멤버 확장(`team/member-extension/tools.ts`)은 `task_send` **하나만** 등록한다.
 
-fx 쪽에서는 팀원이 headless로도 자기 자식을 띄우고 `inspect.wait`로 거둘 수 있음을 2026-08-21에 실측했다(`skills/agent-taskforce/runtimes/fx.md`). OMO에서는 같은 것이 설정으로 열리지 않는다 — **early return을 지나가려면 소스를 고쳐야 한다.** 이것이 후보 C의 gate 1이며, 통과 방법은 upstream 변경, fork, 또는 자식에 강제로 적재되는 우리 확장으로 도구를 되돌려 주는 것 셋뿐이다.
+fx 쪽에서는 팀원이 headless로도 자기 에이전트를 띄우고 `inspect.wait`로 거둘 수 있음을 2026-08-21에 실측했다(`skills/agent-taskforce/runtimes/fx.md`). OMO에서는 같은 것이 설정으로 열리지 않는다 — **early return을 지나가려면 소스를 고쳐야 한다.** 이것이 후보 C의 gate 1이며, 통과 방법은 upstream 변경, fork, 또는 에이전트에 강제로 적재되는 우리 확장으로 도구를 되돌려 주는 것 셋뿐이다.
 
 **persona tool policy가 멤버에서 강제되지 않는다.** curated read-only 에이전트 4개는 in-process에 고정되어 있고, `team/member-validator.ts`가 이 이름들을 팀 멤버 spec에서 **거부**한다. 거부 사유가 결정적이다 — "process-mode 스폰(멤버에 필수)은 persona 지시와 도구 allowlist를 떨어뜨린다". 즉 **읽기 전용으로 고정된 독립 검증자를 팀 멤버로 앉히는 경로가 현재 OMO에는 없다.**
 
 **멤버별 permission을 spawn spec/argv로 전달할 경로가 없다.** 이것은 소스에서 확인된다.
 
 - `RpcRunnerSpec`(`runners/types.ts`)의 필드는 `task_id`, `cwd`, `state_dir`, `prompt`, `resumeSessionPath`, `model`, `reasoning`, `variant`, `extensions`, `memberEnv`뿐이다. permission 관련 필드가 없다.
-- `buildChildArgs`(`runners/rpc/spawn.ts`)가 만드는 argv는 `--no-extensions`, `--extension <path>`(반복), `--model`, `--thinking`뿐이다. Senpi에는 `--permission-preset`과 `--permission` 플래그가 실재하지만 OMO는 그것을 자식에 실어 보내지 않는다.
-- 설정 파일 우회는 **기본값에서는** 먹지 않는다. `permissionPreset`은 전역 또는 프로젝트 범위이고, 자식은 `--mode rpc`로 뜬다. Senpi 문서는 비대화형 모드(`-p`, `--mode json`, `--mode rpc`)가 trust 프롬프트를 띄우지 않고 `defaultProjectTrust`(기본 `ask`)를 쓰며, `ask`와 `never`는 미신뢰 프로젝트 리소스를 무시한다고 명시한다. 그러나 해당 worktree의 trust 결정이 이미 저장됐거나 `defaultProjectTrust: "always"`이면 프로젝트 설정을 읽을 가능성이 있다. 전자는 멤버별 설정의 가장 싼 PoC 경로이고, 후자를 전역으로 켜는 것은 임의 저장소의 프로젝트 설정까지 신뢰하므로 기본 해법으로 삼지 않는다.
+- `buildChildArgs`(`runners/rpc/spawn.ts`)가 만드는 argv는 `--no-extensions`, `--extension <path>`(반복), `--model`, `--thinking`뿐이다. Senpi에는 `--permission-preset`과 `--permission` 플래그가 실재하지만 OMO는 그것을 에이전트에 실어 보내지 않는다.
+- 설정 파일 우회는 **기본값에서는** 먹지 않는다. `permissionPreset`은 전역 또는 프로젝트 범위이고, 에이전트는 `--mode rpc`로 뜬다. Senpi 문서는 비대화형 모드(`-p`, `--mode json`, `--mode rpc`)가 trust 프롬프트를 띄우지 않고 `defaultProjectTrust`(기본 `ask`)를 쓰며, `ask`와 `never`는 미신뢰 프로젝트 리소스를 무시한다고 명시한다. 그러나 해당 worktree의 trust 결정이 이미 저장됐거나 `defaultProjectTrust: "always"`이면 프로젝트 설정을 읽을 가능성이 있다. 전자는 멤버별 설정의 가장 싼 PoC 경로이고, 후자를 전역으로 켜는 것은 임의 저장소의 프로젝트 설정까지 신뢰하므로 기본 해법으로 삼지 않는다.
 
 따라서 gate 3은 **pretrusted 전용 worktree 설정이 실제 RPC 멤버에서 역할별 정책으로 작동하는지 먼저 재는 문제**다. OMO가 멤버마다 다른 `worktreePath`를 `cwd`로 넘기므로, 우리가 역할별 worktree를 따로 프로비저닝하면 디렉토리별 설정이 결과적으로 역할별 정책이 될 수 있다.
 
-이 경로에는 경계가 있다. 같은 worktree를 두 역할이 공유하면 디렉토리 단위 설정으로 역할을 구분할 수 없다. 또한 Senpi permission은 OS 샌드박스가 아니라 확인 정책이므로, verifier에는 `read-only` 프리셋의 `ask`에 기대지 않고 `edit`와 `bash`를 명시적으로 `deny`해야 한다. 이 E2E가 실패하거나 worktree 공유가 필수라면 그때 구조 변경 셋으로 올라간다 — OMO의 child argv에 Senpi `--permission-preset`/`--permission`을 전달하거나, fork하거나, 자식에 강제 적재되는 확장이 도구 호출 단계에서 거부한다.
+이 경로에는 경계가 있다. 같은 worktree를 두 역할이 공유하면 디렉토리 단위 설정으로 역할을 구분할 수 없다. 또한 Senpi permission은 OS 샌드박스가 아니라 확인 정책이므로, verifier에는 `read-only` 프리셋의 `ask`에 기대지 않고 `edit`와 `bash`를 명시적으로 `deny`해야 한다. 이 E2E가 실패하거나 worktree 공유가 필수라면 그때 구조 변경 셋으로 올라간다 — OMO의 child argv에 Senpi `--permission-preset`/`--permission`을 전달하거나, fork하거나, 에이전트에 강제 적재되는 확장이 도구 호출 단계에서 거부한다.
 
 그 PoC를 돌릴 때 정확히 해 둘 것 셋. 셋 다 Senpi 공식 문서(commit `a5eed44`)에서 나온다.
 
-- **"디렉토리별"이 어디까지 역할별이 되는지는 우리가 정한다.** `spawnOneMember`가 멤버마다 `member.worktreePath`를 자식의 `cwd`로 넘기므로, 멤버마다 다른 worktree를 우리가 프로비저닝하면 프로젝트 설정도 멤버마다 갈린다. 남는 구멍은 **한 worktree를 두 역할이 공유하는 경우**이고, 그때는 디렉토리 단위 설정이 역할을 구분하지 못한다.
-- **verifier 설정은 프리셋이 아니라 명시 규칙으로 쓴다.** `read-only` 프리셋은 `edit`/`bash`/`external_directory`를 거부가 아니라 **묻는데**, `--mode rpc` 자식에는 그 물음에 답할 사람이 없다. `"permission": {"edit": "deny", "bash": "deny"}` 형태의 플랫 규칙은 해당 권한의 모든 패턴에 적용되므로 "묻기"의 낙착을 기다리지 않아도 된다. 물론 이것도 확인 정책이지 샌드박스가 아니다.
+- **"디렉토리별"이 어디까지 역할별이 되는지는 우리가 정한다.** `spawnOneMember`가 멤버마다 `member.worktreePath`를 에이전트의 `cwd`로 넘기므로, 멤버마다 다른 worktree를 우리가 프로비저닝하면 프로젝트 설정도 멤버마다 갈린다. 남는 구멍은 **한 worktree를 두 역할이 공유하는 경우**이고, 그때는 디렉토리 단위 설정이 역할을 구분하지 못한다.
+- **verifier 설정은 프리셋이 아니라 명시 규칙으로 쓴다.** `read-only` 프리셋은 `edit`/`bash`/`external_directory`를 거부가 아니라 **묻는데**, `--mode rpc` 에이전트에는 그 물음에 답할 사람이 없다. `"permission": {"edit": "deny", "bash": "deny"}` 형태의 플랫 규칙은 해당 권한의 모든 패턴에 적용되므로 "묻기"의 낙착을 기다리지 않아도 된다. 물론 이것도 확인 정책이지 샌드박스가 아니다.
 - **trust는 permission보다 넓은 문을 연다.** 프로젝트 신뢰는 설정 파일 하나를 읽는 허가가 아니라 그 프로젝트의 리소스·패키지 설치·**프로젝트 확장 실행**까지 허용하는 것이다. 우리가 만든 멤버 worktree로 범위를 좁혀야 하는 이유이고, `defaultProjectTrust: "always"`를 전역에 켜면 임의 저장소까지 그 문이 열린다.
 
 **구조 변경으로 갈 때의 직접 접합점은 OMO child argv다.** OMO는 `open_session`을 호출하지 않고 `senpi --mode rpc` 프로세스를 직접 띄운다. 따라서 가장 작은 upstream 변경 후보는 멤버별 permission 값을 `RpcRunnerSpec`에 넣고 Senpi의 기존 `--permission-preset`/`--permission` CLI 플래그로 전달하는 배선이다.
 
-**`worktreePath`는 git worktree를 만들지 않는다.** 만드는 것은 평범한 디렉토리다. `spawnOneMember`가 `if (member.worktreePath !== undefined) await mkdir(member.worktreePath, { recursive: true })`를 하고, 그 경로를 자식의 `cwd`로 넘긴다. `git worktree add`는 어디에도 없다. 즉 이름이 worktree일 뿐 격리된 git 작업 트리가 아니고, 실제 worktree 생성은 호출자가 미리 해 두어야 한다.
+**`worktreePath`는 git worktree를 만들지 않는다.** 만드는 것은 평범한 디렉토리다. `spawnOneMember`가 `if (member.worktreePath !== undefined) await mkdir(member.worktreePath, { recursive: true })`를 하고, 그 경로를 에이전트의 `cwd`로 넘긴다. `git worktree add`는 어디에도 없다. 즉 이름이 worktree일 뿐 격리된 git 작업 트리가 아니고, 실제 worktree 생성은 호출자가 미리 해 두어야 한다.
 
 **owner/verifier/budget/done-evidence 상태 모델이 부분적이다.** 정확히 적으면 이렇다. 예산은 **팀 런 수준으로는 있다** — 로컬 번들의 bounds 스키마가 `maxMembers` 8, `maxParallelMembers` 4, `maxMessagesPerRun` 10000, `maxWallClockMinutes` 120, `maxMemberTurns` 500을 기본값으로 갖는다. 없는 것은 (a) 위임 단위의 예산과 예산 반환 계약, (b) 완료 증거 필드, (c) owner와 verifier를 구분하는 역할 타입이다. 멤버의 `agentType`은 `leader` 아니면 `general-purpose` 둘뿐이다.
 
@@ -325,18 +325,18 @@ fx 쪽에서는 팀원이 headless로도 자기 자식을 띄우고 `inspect.wai
 
 **어댑터로 되는 것**
 
-1. **승인 gate** — 자식을 만드는 세 도구(`team_create`, `task`, `dag`)의 호출을 실행 전에 가로채, 배치안을 사용자에게 보이고 승인 전에는 통과시키지 않는다. Senpi 확장은 도구 호출을 가로채거나 막을 수 있으므로(`extensions.md`의 "Event interception — Block or modify tool calls") 접합점이 있다. `task_create` 등 tasklist 도구는 대상이 아니다.
+1. **승인 gate** — 에이전트를 만드는 세 도구(`team_create`, `task`, `dag`)의 호출을 실행 전에 가로채, 배치안을 사용자에게 보이고 승인 전에는 통과시키지 않는다. Senpi 확장은 도구 호출을 가로채거나 막을 수 있으므로(`extensions.md`의 "Event interception — Block or modify tool calls") 접합점이 있다. `task_create` 등 tasklist 도구는 대상이 아니다.
 2. **완료 증거와 예산 반환** — Task 스키마의 `metadata`가 자유 레코드이므로 여기에 실을 수 있다. 엔진이 그 값을 강제하지 않으므로 강제는 우리 어댑터가 한다.
 
 **구조 변경 또는 선행 실측이 필요한 것 (후보 C의 gate)**
 
-3. **gate 1 — 팀원의 중첩 위임.** `isTeamMemberProcess()` early return을 지나갈 방법이 필요하다. upstream 변경, `senpi-task`+`components/task` fork, 또는 자식에 강제 적재되는 우리 확장이 위임 도구를 다시 제공하는 것 중 하나다.
+3. **gate 1 — 팀원의 중첩 위임.** `isTeamMemberProcess()` early return을 지나갈 방법이 필요하다. upstream 변경, `senpi-task`+`components/task` fork, 또는 에이전트에 강제 적재되는 우리 확장이 위임 도구를 다시 제공하는 것 중 하나다.
 4. **gate 2 — 역할 계약의 무조건 주입.** 역할별 멤버 확장 또는 역할별 시스템 프롬프트 계층. `member.prompt`도, 계약 파일 경로 포인터도 보장 수단이 아니다.
-5. **gate 3 — verifier 쓰기 차단.** 먼저 역할별 전용 worktree를 pretrust하고 프로젝트 설정에서 `edit`·`bash`를 명시적으로 `deny`한 뒤 RPC 멤버에서 E2E로 확인한다. 실패하거나 worktree 공유가 필수면 child argv 배선, fork, 또는 자식 강제 확장으로 올라간다.
+5. **gate 3 — verifier 쓰기 차단.** 먼저 역할별 전용 worktree를 pretrust하고 프로젝트 설정에서 `edit`·`bash`를 명시적으로 `deny`한 뒤 RPC 멤버에서 E2E로 확인한다. 실패하거나 worktree 공유가 필수면 child argv 배선, fork, 또는 에이전트 강제 확장으로 올라간다.
 6. **gate 6 — 팀원의 board 접근.** 현재 멤버는 `task_send`만 받는다. Agent Taskforce의 peer-owned shared board를 구현하려면 member extension에 최소 `task_list`/`task_get`/`task_update`와 자기 이름 기반 claim 권한을 안전하게 추가해야 한다. 리드 중개 board는 비호환 축소안일 뿐 gate 통과로 간주하지 않는다.
 7. **worktree provisioning** — `worktreePath`를 채우기 전에 실제 `git worktree add`를 우리가 돌린다. OMO는 `mkdir -p`만 하므로 이것은 어댑터 쪽 추가 작업이며 gate는 아니다.
 
-gate 1·2·6과 gate 3 PoC 실패 뒤의 해법 형태는 "자식 프로세스에 우리 확장을 강제로 적재할 수 있는가"에 크게 걸린다. 그것이 7절의 gate 4이며, **나머지 해법 형태를 결정하므로 가장 먼저 재야 한다.** 이 요구들이 모두 task internals 변경으로만 풀린다면 3절의 승격 기준에 해당한다 — 그때의 어댑터는 이름만 어댑터이고 실질은 바깥에서 하는 포크다.
+gate 1·2·6과 gate 3 PoC 실패 뒤의 해법 형태는 "에이전트 프로세스에 우리 확장을 강제로 적재할 수 있는가"에 크게 걸린다. 그것이 7절의 gate 4이며, **나머지 해법 형태를 결정하므로 가장 먼저 재야 한다.** 이 요구들이 모두 task internals 변경으로만 풀린다면 3절의 승격 기준에 해당한다 — 그때의 어댑터는 이름만 어댑터이고 실질은 바깥에서 하는 포크다.
 
 ---
 
@@ -370,12 +370,12 @@ OMO 확장 (설치만, 포크 없음)
 
 **확장 적재 형태 — 파일 단위 `-e`가 답이다 (실측).** 이 자리가 앞선 초안이 틀렸던 곳이고, 이번에 실측으로 뒤집힌 곳이다.
 
-앞선 초안은 settings `packages`에 객체 형태 필터(`{"source": "...", "skills": [], "extensions": ["..."]}`)로 설치해 스킬을 걸러 내자고 추천했다. **그 추천을 내린다.** 소스를 보면 그 경로는 자식 상속을 깨뜨린다.
+앞선 초안은 settings `packages`에 객체 형태 필터(`{"source": "...", "skills": [], "extensions": ["..."]}`)로 설치해 스킬을 걸러 내자고 추천했다. **그 추천을 내린다.** 소스를 보면 그 경로는 에이전트 상속을 깨뜨린다.
 
 - `team-service.ts`가 멤버 확장을 조립할 때 `inheritedExtensions: parseExtensionEntries(process.argv)`를 쓴다. 이름 그대로 **부모 argv의 `-e`/`--extension` 항목만** 긁는다.
-- `buildChildArgs`(`runners/rpc/spawn.ts`)는 argv를 `--no-extensions`로 시작한 뒤 그 긁어온 항목만 `--extension`으로 다시 붙인다. 소스 주석이 명시한다 — 자식은 "부모의 패키지 세트 전체를 자동 적재하지 않는다".
+- `buildChildArgs`(`runners/rpc/spawn.ts`)는 argv를 `--no-extensions`로 시작한 뒤 그 긁어온 항목만 `--extension`으로 다시 붙인다. 소스 주석이 명시한다 — 에이전트는 "부모의 패키지 세트 전체를 자동 적재하지 않는다".
 
-settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtensionEntries`가 빈 배열을 돌려주고 멤버 자식은 `--no-extensions`만 받은 채 뜬다.
+settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtensionEntries`가 빈 배열을 돌려주고 멤버 에이전트는 `--no-extensions`만 받은 채 뜬다.
 
 **대신 파일 단위 `-e`가 스킬 문제와 argv 문제를 동시에 푼다.** 로컬 beta.7을 RPC 모드로 띄워 `get_commands`로 명령·스킬 표면을 읽어 셋을 비교했다.
 
@@ -389,23 +389,23 @@ settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtens
 
 `--no-skills`는 쓰지 않는다. 스킬 발견 자체를 끄므로 **우리 스킬 26개까지 죽인다** — Senpi는 `~/.agents/skills/`를 전역 스킬 위치로 읽으며 이 레포의 정본이 거기 있다(`CLAUDE.md`). 위 표의 두 번째 행이 보여 주듯 파일 단위 적재는 `--no-skills` 없이도 원하는 결과를 준다.
 
-**`-e` 순서가 의미를 갖는다.** `buildChildArgs`에 이런 분기가 있다 — DAG가 소유한 자식은 상속받은 확장 목록에서 `slice(1)`로 **첫 항목을 버린다.** 주석이 이유를 밝힌다: "The OMO launcher prepends its own extension before user/provider entries" — 즉 첫 항목이 OMO 확장이라고 가정하고, DAG 자식이 또 다른 task 엔진을 부팅하지 못하게 막는 것이다. 우리 launcher도 이 가정을 지켜야 한다. **OMO 확장을 첫 `-e`로, 우리 어댑터 확장을 그 뒤로 둔다.** 순서를 뒤집으면 DAG 자식이 우리 어댑터를 잃고 OMO task 엔진은 유지하게 되어, 의도와 정확히 반대가 된다.
+**`-e` 순서가 의미를 갖는다.** `buildChildArgs`에 이런 분기가 있다 — DAG가 소유한 에이전트는 상속받은 확장 목록에서 `slice(1)`로 **첫 항목을 버린다.** 주석이 이유를 밝힌다: "The OMO launcher prepends its own extension before user/provider entries" — 즉 첫 항목이 OMO 확장이라고 가정하고, DAG 에이전트이 또 다른 task 엔진을 부팅하지 못하게 막는 것이다. 우리 launcher도 이 가정을 지켜야 한다. **OMO 확장을 첫 `-e`로, 우리 어댑터 확장을 그 뒤로 둔다.** 순서를 뒤집으면 DAG 에이전트이 우리 어댑터를 잃고 OMO task 엔진은 유지하게 되어, 의도와 정확히 반대가 된다.
 
-**자식 종류마다 확장 목록이 다르게 조립된다.** `slice(1)`이 어디에 걸리는지를 오해하지 않으려면 세 갈래를 나눠 봐야 한다. 셋 다 소스에 있다.
+**에이전트 종류마다 확장 목록이 다르게 조립된다.** `slice(1)`이 어디에 걸리는지를 오해하지 않으려면 세 갈래를 나눠 봐야 한다. 셋 다 소스에 있다.
 
-- **일반 `task` 자식** — 시작 spec에 `extensions`가 없으므로 process 러너가 자기 `inheritedExtensions`(= 부모 argv의 `-e` 항목)를 채워 넣는다(`engine-runners.ts`의 `new RpcProcessRunner({ inheritedExtensions: parseExtensionEntries(process.argv) })`). 이 자식은 멤버가 아니므로 `isTeamMemberProcess()`가 거짓이고, **task component가 등록되어 중첩 위임이 된다.** 막히는 것은 팀 멤버와 DAG 자식이지 모든 자식이 아니다.
-- **DAG 자식** — 같은 목록을 받되 현재 `buildChildArgs`가 `slice(1)`로 첫 OMO extension 전체를 버린다. 이 동작은 중첩 task 엔진을 막지만 `ast-grep`·`lsp`·`memory` 등 사용자가 유지한 비-task component까지 함께 제거하므로 최종 정책이 아니다.
-- **팀 멤버** — `assembleMemberExtensions(entryPath, inherited)`가 **멤버 확장 번들(`omo-member.js`)을 첫 항목으로** 두고 그 뒤에 상속분을 붙인다. 멤버는 DAG 소유가 아니므로 `slice(1)`이 적용되지 않고, 목록 전체가 실린다. 반대로 멤버가 아닌 자식에서는 `buildChildProfile`이 그 번들을 목록에서 걸러 내고 멤버 식별 env(`SENPI_TASK_MEMBER` 등)도 지운다 — 이것이 6절이 말한 "같은 운반체, 다른 계약"의 구현체다.
+- **일반 `task` 에이전트** — 시작 spec에 `extensions`가 없으므로 process 러너가 자기 `inheritedExtensions`(= 부모 argv의 `-e` 항목)를 채워 넣는다(`engine-runners.ts`의 `new RpcProcessRunner({ inheritedExtensions: parseExtensionEntries(process.argv) })`). 이 에이전트는 멤버가 아니므로 `isTeamMemberProcess()`가 거짓이고, **task component가 등록되어 중첩 위임이 된다.** 막히는 것은 팀 멤버와 DAG 에이전트이지 모든 에이전트가 아니다.
+- **DAG 에이전트** — 같은 목록을 받되 현재 `buildChildArgs`가 `slice(1)`로 첫 OMO extension 전체를 버린다. 이 동작은 중첩 task 엔진을 막지만 `ast-grep`·`lsp`·`memory` 등 사용자가 유지한 비-task component까지 함께 제거하므로 최종 정책이 아니다.
+- **팀 멤버** — `assembleMemberExtensions(entryPath, inherited)`가 **멤버 확장 번들(`omo-member.js`)을 첫 항목으로** 두고 그 뒤에 상속분을 붙인다. 멤버는 DAG 소유가 아니므로 `slice(1)`이 적용되지 않고, 목록 전체가 실린다. 반대로 멤버가 아닌 에이전트에서는 `buildChildProfile`이 그 번들을 목록에서 걸러 내고 멤버 식별 env(`SENPI_TASK_MEMBER` 등)도 지운다 — 이것이 6절이 말한 "같은 운반체, 다른 계약"의 구현체다.
 
-소스만 보면 우리 어댑터 확장은 세 갈래 모두에 실린다(DAG 자식에서는 OMO가 대신 빠진다). gate 1·2·6과 gate 3 PoC 실패 뒤의 해법으로 "자식에 강제 적재되는 우리 확장"을 검토할 수 있는 근거가 이것이고, **동시에 현재 DAG 배선이 확정 component 정책과 충돌한다는 증거**다.
+소스만 보면 우리 어댑터 확장은 세 갈래 모두에 실린다(DAG 에이전트에서는 OMO가 대신 빠진다). gate 1·2·6과 gate 3 PoC 실패 뒤의 해법으로 "에이전트에 강제 적재되는 우리 확장"을 검토할 수 있는 근거가 이것이고, **동시에 현재 DAG 배선이 확정 component 정책과 충돌한다는 증거**다.
 
-**여전히 안 재 본 것 — gate 4.** 위 실측은 전부 **리드 프로세스 한 개**에서 잰 것이다. 팀원 자식이 부모의 명시적 `-e` 항목과 disable 플래그를 실제로 그대로 물려받는지는 **E2E로 확인하지 않았다.** 소스상 `-e` 항목은 `parseExtensionEntries`가 긁어 `buildChildArgs`가 다시 붙이므로 상속될 것으로 보이지만, disable 플래그는 argv에서 긁히는 대상이 아니다 — `parseExtensionEntries`는 `-e`/`--extension`만 본다. 즉 부모에서 `memory`를 껐어도 **자식은 그것을 모른 채 뜰 수 있다.** 이것은 추측이며, 재야 안다.
+**여전히 안 재 본 것 — gate 4.** 위 실측은 전부 **리드 프로세스 한 개**에서 잰 것이다. 팀원이 띄운 에이전트가 부모의 명시적 `-e` 항목과 disable 플래그를 실제로 그대로 물려받는지는 **E2E로 확인하지 않았다.** 소스상 `-e` 항목은 `parseExtensionEntries`가 긁어 `buildChildArgs`가 다시 붙이므로 상속될 것으로 보이지만, disable 플래그는 argv에서 긁히는 대상이 아니다 — `parseExtensionEntries`는 `-e`/`--extension`만 본다. 즉 부모에서 `memory`를 껐어도 **에이전트는 그것을 모른 채 뜰 수 있다.** 이것은 추측이며, 재야 안다.
 
 **gate 4는 다음 셋을 한 번에 만족하는 것이다.**
 
-1. 파일 단위 `-e`로 띄운 리드에서 팀원을 스폰했을 때, 자식 argv에 같은 확장 경로가 실린다.
-2. 부모의 component disable 상태가 자식에도 동일하게 적용된다 (아니라면, 자식에 그 상태를 전달하는 것이 우리 어댑터의 일이 된다).
-3. 리드·일반 `task` 자식·팀 멤버는 ON 6/OFF 12를 따른다. DAG 자식은 재귀 task 엔진을 막기 위해 `task`만 OFF로 두되, 나머지 선택 component 5개(`config-startup`, `ast-grep`, `lsp`, `memory`, `config-watch`)는 유지한다. 현재의 OMO extension 전체 `slice(1)`은 이 조건을 통과하지 못하므로 child extension 조립 또는 component-filtered 배선을 고쳐야 한다.
+1. 파일 단위 `-e`로 띄운 리드에서 팀원을 스폰했을 때, 에이전트 argv에 같은 확장 경로가 실린다.
+2. 부모의 component disable 상태가 에이전트에도 동일하게 적용된다 (아니라면, 에이전트에 그 상태를 전달하는 것이 우리 어댑터의 일이 된다).
+3. 리드·일반 `task` 에이전트·팀 멤버는 ON 6/OFF 12를 따른다. DAG 에이전트는 재귀 task 엔진을 막기 위해 `task`만 OFF로 두되, 나머지 선택 component 5개(`config-startup`, `ast-grep`, `lsp`, `memory`, `config-watch`)는 유지한다. 현재의 OMO extension 전체 `slice(1)`은 이 조건을 통과하지 못하므로 child extension 조립 또는 component-filtered 배선을 고쳐야 한다.
 
 **gate 5 — disable 플래그를 세울 수 있는가.** 4절이 적은 대로, 플래그가 소스에 있다는 것과 우리가 그것을 세울 수 있다는 것은 다르다. 로컬 beta.7에서는 CLI 인자로 세워지지 않았다. dev에서 다시 재야 하고, 만약 dev에서도 안 되면 component를 끄는 수단이 사라지므로 후보 C의 "필요한 것만 켠다"는 전제 자체가 무너진다. 그때의 대안은 셋이다 — 플래그를 세울 다른 경로를 찾거나(설정 파일, 환경변수), 원하지 않는 component가 켜진 채로 사는 비용을 받아들이거나, 후보 B로 올라간다.
 
@@ -416,7 +416,7 @@ settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtens
 | 1 | 팀원의 중첩 위임 (`isTeamMemberProcess()` early return) | 소스로 **불가 확정**. 해법을 만들어야 함 | 후보 B로 (범위: `senpi-task` + `components/task`) |
 | 2 | 역할 계약의 무조건 주입 (역할별 확장/시스템 프롬프트 계층) | 소스로 **경로 부재 확정** | 후보 B로 |
 | 3 | 멤버별 permission (spawn spec/argv에 경로 부재) | pretrusted 전용 worktree E2E **미측정** | 실패 또는 worktree 공유 필수 시 child argv 배선·후보 B 검토 |
-| 4 | 자식의 확장·disable 정책과 DAG의 task-only 제외 | DAG가 OMO 전체를 버리는 **정책 충돌은 소스로 확정**, 나머지 자식 상속은 미측정 | 상속 자체가 안 되면 A 재검토, component-filtered child profile이 내부 변경을 요구하면 B 검토 |
+| 4 | 에이전트의 확장·disable 정책과 DAG의 task-only 제외 | DAG가 OMO 전체를 버리는 **정책 충돌은 소스로 확정**, 나머지 에이전트 상속은 미측정 | 상속 자체가 안 되면 A 재검토, component-filtered child profile이 내부 변경을 요구하면 B 검토 |
 | 5 | component disable 플래그를 세울 수 있는가 | beta.7에서 **실패**, dev 미측정 | 대안 경로 탐색 → 없으면 후보 B로 |
 | 6 | 팀원의 board 직접 list/get/update/claim 제공 | 소스로 **현재 경로 부재 확정** | 제공할 수 없으면 후보 B로 |
 
@@ -424,7 +424,7 @@ settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtens
 
 **component allowlist와 update gate.** allowlist는 코드가 아니라 설정으로 둔다 — launcher가 조립하는 플래그 목록이며, 그것이 실제로 먹는지가 gate 5다. 그리고 **버전을 올릴 때 component 목록의 diff를 먼저 본다** — upstream이 component를 추가하면 새 것은 기본적으로 켜져서 들어오기 때문이다(`compose.ts`가 각 플래그의 default를 `false`로, 즉 "비활성화 안 함"으로 등록한다). 갱신 절차는 `component-list.ts`를 이전 pin과 대조하고, 늘어난 이름을 4절 카탈로그에 추가한 뒤 결정 칸을 비운 채로 사용자에게 올리는 것이다.
 
-**Taskforce role/member 어댑터.** 6절 마지막의 목록 중 어댑터로 되는 둘(승인 gate, 완료 증거·예산)은 우리 코드로 우리 레포에 둔다. gate 1·2·6과 gate 3 PoC 실패 뒤의 구조 해법은 gate 4의 자식 확장 상속을 확인한 뒤에야 가장 작게 정할 수 있다.
+**Taskforce role/member 어댑터.** 6절 마지막의 목록 중 어댑터로 되는 둘(승인 gate, 완료 증거·예산)은 우리 코드로 우리 레포에 둔다. gate 1·2·6과 gate 3 PoC 실패 뒤의 구조 해법은 gate 4의 에이전트 확장 상속을 확인한 뒤에야 가장 작게 정할 수 있다.
 
 **전용 brand/state/launcher.** OMO launcher가 주입하는 것(`SENPI_BRAND`, `SENPI_CODING_AGENT_DIR`, `OMO_NATIVE`)을 우리 값으로 바꿔 넣는 얇은 launcher를 쓴다. 상태 디렉토리를 분리하는 것이 특히 중요하다 — OMO 설치물과 상태를 공유하면 두 제품이 같은 세션·인증 파일을 만진다.
 
@@ -445,12 +445,12 @@ settings로 적재된 확장은 `process.argv`에 없다. 따라서 `parseExtens
 | cache hit | Senpi 세션 로그의 `kind` 라인. `SENPI_SESSION_DEBUG=1`로 stderr 미러 | `flatten`이 반복되면 레인이 대화 전체를 재전송 중이다 |
 | prompt tokens | component ON/OFF 조합별 첫 요청의 입력 토큰 | 도구·에이전트 정의가 접두를 부풀려 캐시 접두가 흔들린다 |
 | compaction continuity | 컴팩션 전후로 팀 런이 끊기지 않는지. 완료 라우팅이 `compacting`에서 buffer 하는지 | 컴팩션 중 도착한 완료 알림이 사라진다 |
-| crash/resume | 리드 프로세스를 죽인 뒤 세션 재개. 정지된 자식이 부활하고 process 멤버가 재부착되는지 | 자식이 `lost`로 떨어지거나 원 프롬프트를 재실행한다 |
+| crash/resume | 리드 프로세스를 죽인 뒤 세션 재개. 정지된 에이전트가 부활하고 process 멤버가 재부착되는지 | 에이전트가 `lost`로 떨어지거나 원 프롬프트를 재실행한다 |
 | mailbox exactly-once | 주입과 커밋 사이에서 프로세스를 죽인 뒤 재시작. `processed/<messageId>.json` 원장으로 중복 판정 | 같은 메시지가 두 번 관측된다 |
-| nested helper | gate 1을 통과시킨 뒤 process 멤버가 자기 자식을 띄우는지 (fx에서는 2026-08-21 실측으로 가능). **현재 upstream 상태에서는 재 볼 것도 없이 불가**이므로, 이 항목은 gate 1의 해법을 넣은 뒤의 회귀 지표다 | 해법을 넣어도 멤버가 `task_send`만 받는다 |
+| nested helper | gate 1을 통과시킨 뒤 process 멤버가 자기 에이전트를 띄우는지 (fx에서는 2026-08-21 실측으로 가능). **현재 upstream 상태에서는 재 볼 것도 없이 불가**이므로, 이 항목은 gate 1의 해법을 넣은 뒤의 회귀 지표다 | 해법을 넣어도 멤버가 `task_send`만 받는다 |
 | verifier write deny | gate 3. pretrusted 전용 worktree의 프로젝트 설정에서 `edit`·`bash`를 명시적으로 deny하고 verifier RPC 멤버에게 쓰기를 시킨다. 실패하면 구조 해법 뒤에 반복한다 | 거부되지 않고 파일이 써진다. 권한 계층은 확인 정책일 뿐이라는 5절의 한계도 함께 본다 |
-| 자식의 확장 상속 | gate 4. 파일 단위 `-e`로 띄운 리드에서 팀원을 스폰하고 자식 argv를 확인한다. 리드 쪽 표면은 RPC `get_commands`로 이미 쟀으므로(7절), 남은 것은 자식이다 | 자식이 `--no-extensions`만 받고 뜬다 |
-| 자식의 disable 상태 상속 | gate 4. 부모에서 특정 component를 끈 뒤 자식의 명령 표면에 그것이 남아 있는지 | 자식이 부모가 끈 component를 켠 채로 뜬다. `parseExtensionEntries`가 `-e`만 긁으므로 이쪽이 실패할 가능성이 더 크다 |
+| 에이전트의 확장 상속 | gate 4. 파일 단위 `-e`로 띄운 리드에서 팀원을 스폰하고 에이전트 argv를 확인한다. 리드 쪽 표면은 RPC `get_commands`로 이미 쟀으므로(7절), 남은 것은 에이전트다 | 에이전트가 `--no-extensions`만 받고 뜬다 |
+| 에이전트의 disable 상태 상속 | gate 4. 부모에서 특정 component를 끈 뒤 에이전트의 명령 표면에 그것이 남아 있는지 | 에이전트가 부모가 끈 component를 켠 채로 뜬다. `parseExtensionEntries`가 `-e`만 긁으므로 이쪽이 실패할 가능성이 더 크다 |
 | disable 플래그 반응 | gate 5. dev pin에서 `--omo-senpi-<name>-disabled`를 붙이고 `get_commands`의 명령 표면 차이를 본다 | 플래그를 붙여도 표면이 그대로다 (beta.7에서 실제로 이랬다) |
 | team board 접근 | gate 6. 팀원이 직접 list/get/update하고 자기 이름으로 claim하는 시나리오를 실행. 리드 중개는 호환 판정에서 제외한다 | 팀원이 자기 작업 상태를 갱신할 수 없거나 권한 범위를 넘어 다른 owner의 task를 claim/update한다 |
 
@@ -492,8 +492,8 @@ fx 어댑터가 이미 요구하는 것이 여기서도 그대로 적용된다: 
 
 정책 해석은 다음과 같다.
 
-- **ON**은 launcher와 모든 자식에서 실제로 등록되어 동작해야 한다.
-- **OFF**는 리드와 모든 자식의 명령·도구·프롬프트 표면에서 빠져야 한다.
+- **ON**은 launcher와 모든 에이전트에서 실제로 등록되어 동작해야 한다.
+- **OFF**는 리드와 모든 에이전트의 명령·도구·프롬프트 표면에서 빠져야 한다.
 - **보류**는 v0에서 OFF다. `ultrawork`와 `comment-checker`를 임의로 켜지 않는다.
 - 새 upstream component는 결정 전까지 OFF다. update gate가 이를 강제해야 한다.
 
@@ -501,11 +501,11 @@ fx 어댑터가 이미 요구하는 것이 여기서도 그대로 적용된다: 
 
 gate 3·4·5는 먼저 실측할 가장 싼 경로가 있고, 1·2·6은 해법이 필요하다. 순서는 4 → 5 → 3 → 6 → 1 → 2가 자연스럽다 — 확장 상속과 component 차단이 성립해야 나머지 해법 형태를 결정할 수 있다.
 
-- ☐ **gate 4** — 파일 단위 `-e`로 띄운 리드에서 스폰한 팀원 자식이 (a) 같은 확장 경로를 상속받는가, (b) 부모의 component disable 상태도 물려받는가. (7절, 8절)
+- ☐ **gate 4** — 파일 단위 `-e`로 띄운 리드에서 스폰한 팀원이 띄운 에이전트가 (a) 같은 확장 경로를 상속받는가, (b) 부모의 component disable 상태도 물려받는가. (7절, 8절)
 - ☐ **gate 5** — dev pin에서 `--omo-senpi-<name>-disabled`가 실제로 component를 끄는가. 안 되면 어떤 경로로 세울 것인가. (4절, 7절)
-- ☐ **gate 3** — pretrusted 역할별 전용 worktree의 명시적 `edit`·`bash` deny가 RPC 멤버에서 작동하는가. 실패하거나 worktree 공유가 필수면 child argv 배선 / fork / 자식 강제 확장 중 어디로 올라갈 것인가. (6절)
+- ☐ **gate 3** — pretrusted 역할별 전용 worktree의 명시적 `edit`·`bash` deny가 RPC 멤버에서 작동하는가. 실패하거나 worktree 공유가 필수면 child argv 배선 / fork / 에이전트 강제 확장 중 어디로 올라갈 것인가. (6절)
 - ☐ **gate 6** — member extension에 `task_list`/`task_get`/`task_update`와 자기 이름 기반 claim을 어떤 권한으로 제공할 것인가. 리드 중개는 비호환 축소안이다. (6절)
-- ☐ **gate 1** — 팀원 프로세스의 `isTeamMemberProcess()` early return을 어떤 방법으로 지나갈 것인가. upstream 변경 / fork / 자식 강제 확장 중 무엇인가. (6절)
+- ☐ **gate 1** — 팀원 프로세스의 `isTeamMemberProcess()` early return을 어떤 방법으로 지나갈 것인가. upstream 변경 / fork / 에이전트 강제 확장 중 무엇인가. (6절)
 - ☐ **gate 2** — 역할 계약을 무조건 주입하는 계층을 어떤 형태로 만들 것인가. 역할별 멤버 확장인가, 역할별 시스템 프롬프트인가. (6절)
 - ☐ **승격 판정** — 3절의 승격 기준 둘 중 하나에 걸리면 그 자리에서 후보 C를 중단하고 증거와 함께 후보 B 또는 A 분기를 적용한다. 구현 세션이 이 판정을 소유한다.
 
@@ -513,14 +513,14 @@ gate 3·4·5는 먼저 실측할 가장 싼 경로가 있고, 1·2·6은 해법�
 
 - ☐ `rubato-pi` launcher와 alias가 Node.js 24 이상에서 뜨고 기존 `rubato`·`omo`의 설정과 state를 건드리지 않는다.
 - ☐ exact pin과 OMO 파일 단위 `-e` 적재가 런타임 출력에서 확인된다. OMO 스킬은 0개 추가되고 기존 Taskforce 스킬은 남는다.
-- ☐ 리드·일반 `task` 자식·팀 멤버는 ON 6/OFF 12이고, DAG 자식은 `task`만 추가로 OFF이며 선택된 비-task component 5개는 유지된다.
-- ☐ 사용자 승인 전에는 `team_create`·`task`·`dag`가 자식을 만들지 않는다.
+- ☐ 리드·일반 `task` 에이전트·팀 멤버는 ON 6/OFF 12이고, DAG 에이전트는 `task`만 추가로 OFF이며 선택된 비-task component 5개는 유지된다.
+- ☐ 사용자 승인 전에는 `team_create`·`task`·`dag`가 에이전트를 만들지 않는다.
 - ☐ 역할 계약이 owner/verifier의 system prompt 또는 매 턴 강제 extension 계층에 무조건 실리고 컴팩션 뒤에도 잔존하며, verifier의 `edit`·`bash`가 실제로 거부된다.
-- ☐ 팀원이 자기 자식을 위임하고 회수할 수 있으며, shared board를 직접 list/get/claim/update한다. 다른 owner의 작업 변경은 거부된다.
+- ☐ 팀원이 자기 에이전트를 위임하고 회수할 수 있으며, shared board를 직접 list/get/claim/update한다. 다른 owner의 작업 변경은 거부된다.
 - ☐ 실제 git worktree가 멤버별로 생성·정리되고 평범한 디렉토리를 worktree로 오인하지 않는다.
 - ☐ 완료 증거와 위임 단위 예산·예산 반환이 task metadata 또는 동등한 내구 상태에 남는다.
 - ☐ crash/reload/resume, mailbox exactly-once, compaction 중 완료 버퍼링을 실제 프로세스 종료·재시작으로 통과한다.
-- ☐ `memory` ON 상태의 첫 요청 토큰, 안정 상태 토큰, 컴팩션 전후 연속성, background dreaming 자식, 캐시 `bootstrap/delta/flatten` 로그를 기록한다.
+- ☐ `memory` ON 상태의 첫 요청 토큰, 안정 상태 토큰, 컴팩션 전후 연속성, background dreaming 에이전트, 캐시 `bootstrap/delta/flatten` 로그를 기록한다.
 - ☐ 보류 2개는 OFF이며 재활성화 방법과 측정 항목만 문서화된다.
 - ☐ live Agent Taskforce 스킬에 Pi runtime adapter를 추가하고 `./snapshot.sh`로 이 레포에 동기화한다.
 - ☐ 단위 테스트, 통합 테스트, 실제 모델을 사용한 한 번의 end-to-end 팀 lifecycle smoke test가 모두 통과한다.
@@ -559,7 +559,7 @@ gate 3·4·5는 먼저 실측할 가장 싼 경로가 있고, 1·2·6은 해법�
 - 팀원 확장이 `task_send`만 등록하는 진입점: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/member-extension/index.ts
 - `inheritedExtensions: parseExtensionEntries(process.argv)` 호출부: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/omo-senpi/src/components/task/team-service.ts
 - argv에서 `-e`/`--extension`만 긁는 파서: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/rpc/parent-extensions.ts
-- 자식 argv 구성 (`--no-extensions` + `--extension` + `--model` + `--thinking`, permission 없음): https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/rpc/spawn.ts
+- 에이전트 argv 구성 (`--no-extensions` + `--extension` + `--model` + `--thinking`, permission 없음): https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/rpc/spawn.ts
 - `RpcRunnerSpec` 필드 목록: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/runners/types.ts
 - 멤버 확장의 유일한 도구 `task_send`: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/member-extension/tools.ts
 - `task_create`가 tasklist 레코드 생성임을 보이는 경로: https://github.com/code-yeongyu/oh-my-openagent/blob/024cd9fe0374a87e0d17f540d229f3e087059385/packages/senpi-task/src/team/tasks.ts
@@ -585,7 +585,7 @@ gate 3·4·5는 먼저 실측할 가장 싼 경로가 있고, 1·2·6은 해법�
 - 확장 API — 도구 호출 가로채기, 모델 fallback, 세션 영속: https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/extensions.md
 - 영속 터미널 도구: https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/terminal-tools.md
 - 스킬 — 적재 위치(`~/.agents/skills/` 포함), `--no-skills`: https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/skills.md
-- 패키지 — 소스 종류, 객체 형태 필터링. **이 필터 방식은 7절에서 기각됐다**(settings 경로로 적재된 확장은 `process.argv`에 없어 팀원 자식이 상속하지 못한다): https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/packages.md
+- 패키지 — 소스 종류, 객체 형태 필터링. **이 필터 방식은 7절에서 기각됐다**(settings 경로로 적재된 확장은 `process.argv`에 없어 팀원이 띄운 에이전트가 상속하지 못한다): https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/packages.md
 - RPC 모드 프로토콜 — `get_commands`, `get_loaded_surfaces`(로컬 실측이 쓴 관측 창구): https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/rpc.md
 - 사용법 — 컨텍스트 파일, CLI 플래그: https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/docs/usage.md
 - changelog — 요약 재시도 예산과 speculative warm-up, project rule 중복 제거, 스킬 심링크 중복 제거: https://github.com/code-yeongyu/senpi/blob/a5eed44536f3024c5740dc3dfff4ffe0bb08b717/packages/coding-agent/CHANGELOG.md

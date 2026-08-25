@@ -30,7 +30,7 @@ export function defaultAgentDir(home = homedir()) {
  * broker-overlay 가 부팅 때 브리지 카탈로그로 직접 등록한다(`providers: {}` 인 이유).
  *
  * 그래서 확장 없이 뜨는 자식 프로세스는 pi-ai 빌트인 프로바이더만 갖고, 자격증명 없이
- * 벤더 API 를 직접 때려 401 로 죽는다. 실제로 reflection·dream·facts 배경 자식이
+ * 벤더 API 를 직접 때려 401 로 죽는다. 실제로 reflection·dream·facts 배경 에이전트이
  * 전부 그렇게 죽고 있었다 — 부모 세션은 `-e broker-overlay` 로 멀쩡했으므로 증상이
  * 자식 쪽에만 보였다.
  *

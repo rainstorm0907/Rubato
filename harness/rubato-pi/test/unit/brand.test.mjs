@@ -39,9 +39,9 @@ test("launch env isolates state and clears the omo native badge", () => {
   assert.equal(env.PI_CACHE_RETENTION, "long");
 });
 
-// 배경 memory 자식(reflection/dream/facts)은 --no-extensions 로 뜬다. 우리 프로바이더는
-// models.json 이 아니라 broker-overlay 가 런타임에 등록하므로, 이 목록이 자식에게
-// 넘어가지 않으면 자식은 자격증명 없는 pi-ai 빌트인으로 벤더 API 를 때려 401 로 죽는다.
+// 배경 memory 에이전트(reflection/dream/facts)은 --no-extensions 로 뜬다. 우리 프로바이더는
+// models.json 이 아니라 broker-overlay 가 런타임에 등록하므로, 이 목록이 에이전트에게
+// 넘어가지 않으면 에이전트는 자격증명 없는 pi-ai 빌트인으로 벤더 API 를 때려 401 로 죽는다.
 test("launch env hands background children the provider extensions to reload", () => {
   const paths = providerExtensionPaths();
   assert.equal(paths.length, 1);

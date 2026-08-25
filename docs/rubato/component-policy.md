@@ -48,7 +48,7 @@
 검토했고 **반대**로 결론했다(2026-08-23). 내용이 겹치는 것은 사실이다 — SIZE / fan-out 계산 / 사용자에게 결정 알리기 / todo 신선도, 네 항목 모두 리드 프롬프트에 대응물이 있다. 그럼에도 바꾸지 않는 이유는 셋이다.
 
 1. **조건이 안 맞는다.** 이 리마인더는 `arming.isArmed(sessionId)` 가드 뒤에 있고, 그 arming은 `ultrawork` component가 소유한다. `ulw`를 쓰지 않는 우리 사용 방식에서는 **채택해도 발동하지 않는다.** 발동시키려면 `ultrawork`와 `skill-pointers`까지 되살려야 하는데, 그 둘은 지시문 본문이 리드 프롬프트와 충돌할 수 있어 뜼는 것이 목적이었다.
-2. **작동 시점이 좁다.** 리마인더는 todo 첫 생성 순간 **1회**만 꿂힌다. 그러나 fan-out 판단은 일을 받은 직후·방향 전환·자식 복귀 시점에도 필요하다. 상시 프롬프트가 덤는 범위를 1회 리마인더로 대체할 수 없다.
+2. **작동 시점이 좁다.** 리마인더는 todo 첫 생성 순간 **1회**만 꿂힌다. 그러나 fan-out 판단은 일을 받은 직후·방향 전환·에이전트 복귀 시점에도 필요하다. 상시 프롬프트가 덤는 범위를 1회 리마인더로 대체할 수 없다.
 3. **계약의 폭이 좀 더 좁다.** OMO 문구는 "병렬 서브에이전트에 위임하라"까지다. 우리 리드가 지는 **모델 선택 + 로스터 제시 + 사용자 승인 대기**는 담기지 않는다. 좁은 것으로 넓은 것을 대체하면 승인 gate가 빠진다.
 
 **다만 남는 위험은 기록해 둔다.** 같은 지시가 두 곳(이 component와 리드 프롬프트)에 존재한다. 지금은 component가 져 있어 실질 충돌이 없지만, **누군가 `ultrawork`를 다시 켜면 두 목소리가 생긴다.** 그때는 둘 중 하나를 골라야 하며, 이 문서에 그 결정을 적는다.
@@ -78,7 +78,7 @@
 | `restoreMemberTaskEngine` — `SENPI_TASK_MEMBER`를 잠깐 지우고 task component를 재조립한 뒤 되돌린다. `isTeamMemberProcess()`의 early return을 피하려는 것 | 팀원 프로세스가 중첩 위임을 할 수 있는 경로를 `senpi-task`에 직접 연다 |
 | `replaceSystemPrompt` — 완성된 프롬프트를 넘겨 stock 프롬프트가 서지 못하게 하고, 필요한 조각만 정규식으로 뽑아 붙인다 | 역할별 시스템 프롬프트 계층을 정식 확장점으로 만든다 |
 | `member-board.mjs` — OMO 원장을 건드리지 않고 디스크에 우리 JSON 포맷과 상태 전이표를 따로 둔다 | 팀원이 공유 task 보드를 직접 list/get/update/claim 하는 경로를 `components/task`에 연다 |
-| 자식별 permission이 spawn spec/argv에 없어 pretrusted 전용 worktree로 우회 | spawn spec에 멤버별 permission 필드를 연다 |
+| 에이전트별 permission이 spawn spec/argv에 없어 pretrusted 전용 worktree로 우회 | spawn spec에 멤버별 permission 필드를 연다 |
 
 **주의.** 이것들을 소스로 옮기는 순간 머지 비용이 올라간다. `component-list.ts` 한 파일에서 끝나던 충돌이 `senpi-task`와 `components/task`로 번진다. 옮기기 전에 그 비용을 받을 값어치가 있는지 매번 다시 판단한다.
 

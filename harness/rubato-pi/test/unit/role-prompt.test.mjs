@@ -18,12 +18,16 @@ test("lead prompt names the pi rails and no fx ones", () => {
   assert.match(text, /`task` tool/);
   assert.match(text, /team_create/);
   // 승인 게이트는 team_create 에만 남기고 그 절차는 Skill(agent-taskforce) 가
-  // 소유한다. 일회성 자식은 허락 없이 띄운다 — 그래야 "그냥 내가 하지"로 안 간다.
+  // 소유한다. 일회성 에이전트는 허락 없이 띄운다 — 그래야 "그냥 내가 하지"로 안 간다.
   // Phrased "a one-off child needs no permission" until the paragraph was rewritten to
   // "a `task` child needs no permission". Match the invariant, not the sentence.
   assert.match(text, /needs no permission/);
   assert.match(text, /Skill\(agent-taskforce\) first/);
-  assert.match(text, /You choose each child's model/);
+  // Phrased "You choose each child's model" until the vocabulary moved from child to
+  // agent. The invariant is that the lead owns per-agent model choice, not the noun it
+  // was written with — this is the third time this file pinned a sentence and broke on a
+  // rewrite that kept the meaning. Assert the invariant.
+  assert.match(text, /You choose each agent's model/);
   assert.match(text, /catalog short name/);
   assert.match(text, /runtimes\/pi\.md/);
 
@@ -36,6 +40,23 @@ test("lead prompt names the pi rails and no fx ones", () => {
   assert.doesNotMatch(text, /FX_SUBAGENT_SYSTEM_PROMPT_FILE/);
   assert.doesNotMatch(text, /~\/\.fx\//);
   assert.doesNotMatch(text, /\/approve-spawn/);
+});
+
+// "child" as a word for a spawned agent is what collapsed lead/teammate/agent into one
+// axis: it makes what the lead spawned and what a teammate spawned look like different
+// kinds. Both are agents. The word survives only as an API parameter (`subagent_type`)
+// and for OS process trees, neither of which appears in these prompts.
+test("role prompts do not call a spawned agent a child", () => {
+  for (const role of ["lead", "owner"]) {
+    assert.doesNotMatch(rolePrompt(role), /\bchildren\b/i);
+    assert.doesNotMatch(rolePrompt(role), /\bchild\b/i);
+  }
+});
+
+test("lead prompt keeps lead, teammate, and agent on separate axes", () => {
+  const text = rolePrompt("lead");
+  assert.match(text, /a teammate spawns/);
+  assert.match(text, /always an owner/);
 });
 
 test("teammate prompt points helpers at task, not subagent", () => {

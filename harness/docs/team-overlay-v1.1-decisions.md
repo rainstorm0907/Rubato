@@ -61,7 +61,7 @@ E2E에서 "서로 다른 모델을 가진 owner 둘"은 `xai/grok-4.6`과 `curso
 - restart 후 membership 생존(§24 Recovery)이 자동이다. control_store가 이미 durable하다.
 - 승인된 팀원을 새 세션으로 복구한 뒤 unregister/register하는 절차가 사라진다. 새 child를 만들면 그게 곧 팀원이다.
 - 파일 lock, atomic save, schema version, 세션 capability, 스키마 검증이 전부 불필요해진다. 설계서 §20의 신규 모듈 셋 중 `store.zig`가 통째로 사라지고 `domain.zig`도 거의 남지 않는다.
-- 설계서 §3("Overlay는 판단하지 않는다")과 불변식 10에 더 충실하다. `register`는 "이 자식은 팀이다"라는 판단을 Overlay 안에 기록하는 절차인데, 그 판단은 스킬과 리드의 것이다. 리드가 direct persistent child를 만드는 행위 자체가 이미 팀원 생성이다.
+- 설계서 §3("Overlay는 판단하지 않는다")과 불변식 10에 더 충실하다. `register`는 "이 에이전트는 팀이다"라는 판단을 Overlay 안에 기록하는 절차인데, 그 판단은 스킬과 리드의 것이다. 리드가 direct persistent child를 만드는 행위 자체가 이미 팀원 생성이다.
 
 **남는 반론과 처리.** 리드가 팀과 무관한 장기 작업을 direct persistent child로 돌리면 그것도 자동으로 팀원이 된다. 셋 다 완화된다 — (a) fx에서 persistent direct child는 사실상 "장기 대화 상대"라 팀원과 동의어다, (b) peer가 얻는 권한은 message뿐이고 configure·cancel·close는 여전히 막힌다(§12), (c) 메시지를 받아도 수신자의 승인된 brief와 boundary가 peer 메시지보다 우선한다(§13). 실제로 문제가 관찰되면 그때 opt-out 하나를 추가한다 — 설계서 §27이 shared task ledger에 적용한 것과 같은 원칙이다.
 

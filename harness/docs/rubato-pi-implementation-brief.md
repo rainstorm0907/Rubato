@@ -35,8 +35,8 @@ shared board·완료 증거 계약을 구현한다. 기존 `rubato`와 `omo`는 
   `fallback-architect`
 - 보류이며 v0 OFF: `ultrawork`, `comment-checker`
 - 새 upstream component는 사용자가 결정하기 전까지 OFF다.
-- 리드·일반 `task` 자식·팀 멤버는 ON 6/OFF 12를 동일하게 따른다.
-- DAG 자식은 재귀 task 엔진을 막기 위해 `task`만 추가로 OFF로 두되,
+- 리드·일반 `task` 에이전트·팀 멤버는 ON 6/OFF 12를 동일하게 따른다.
+- DAG 에이전트은 재귀 task 엔진을 막기 위해 `task`만 추가로 OFF로 두되,
   `config-startup`, `ast-grep`, `lsp`, `memory`, `config-watch`는 유지한다.
   현재 upstream의 OMO extension 전체 `slice(1)`은 통과가 아니다.
 
@@ -109,10 +109,10 @@ Off-limits:
 - OMO extension과 rubato-pi adapter extension의 argv 순서
 - component disable 상태의 상속
 - OMO 스킬 0개 추가, 기존 Taskforce 스킬 유지
-- DAG 자식에서 OMO extension 전체를 버리지 않고 `task`만 제외하며 선택된 비-task
+- DAG 에이전트에서 OMO extension 전체를 버리지 않고 `task`만 제외하며 선택된 비-task
   component 5개를 유지하는 child profile
 
-확장 또는 disable 정책을 자식에 전달할 수 없고 작은 배선으로도 해결되지 않으면
+확장 또는 disable 정책을 에이전트에 전달할 수 없고 작은 배선으로도 해결되지 않으면
 후보 A 재검토 증거를 반환한다.
 
 ### 3. Gate 5 — component policy

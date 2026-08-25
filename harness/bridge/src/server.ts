@@ -186,7 +186,7 @@ export function drainAndClose(
 }
 
 /**
- * SIGTERM/SIGINT 를 무시한다. 공유 브리지는 세션·자식의 종료 신호로
+ * SIGTERM/SIGINT 를 무시한다. 공유 브리지는 세션·에이전트의 종료 신호로
  * 내려가면 안 된다. 정상 종료는 인증된 POST /admin/drain 뿐이다.
  * SIGKILL 은 잡을 수 없으니 supervisor 가 크래시 되살림을 맡는다.
  */

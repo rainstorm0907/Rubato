@@ -47,7 +47,7 @@ cd <worktree> && FX_MODEL=xai/grok-4.6 \
 
 **1라운드 프롬프트 관찰**도 같이 한다: 역할 계약만 받은 팀원이 증거 없이 완료를 주장하는가, 범위를 넘는가, 물어야 할 때 묻는가. 구멍이 나오면 그만큼만 `~/.codex/AGENTS.md`에서 떼어 붙이고, 없으면 만들지 않는다.
 
-**격리 한계 관찰**: A(실수만 막기)를 골랐으므로 자식이 절대경로로 옆 트리에 접근하는 것은 막히지 않는다. 실제로 그런 사고가 나면 B(샌드박스 강제)를 승격한다.
+**격리 한계 관찰**: A(실수만 막기)를 골랐으므로 에이전트가 절대경로로 옆 트리에 접근하는 것은 막히지 않는다. 실제로 그런 사고가 나면 B(샌드박스 강제)를 승격한다.
 
 ## v1과 v1.1의 성격 차이
 
@@ -166,7 +166,7 @@ v1은 팀원이 **말할 수 있게** 했다 (`team.members`, `team.message`, �
 
 **구멍 1 — peer가 준 일의 결과는 리드에게 안 간다.** alice가 bob에게 시킨 일의 terminal은 `target_id=alice`다. 이건 배관 부재가 아니라 `target_id = work_item.source_id`가 설계대로 동작한 것이다. 리드가 모든 팀원 terminal을 봐야 한다는 관측이 아직 없으므로 **구현하지 않는다.** 5단계 팀 런에서 리드가 실제로 답답해지면 그때 승격한다.
 
-**구멍 2 — 실패가 성공으로 보인다.** 이건 선호의 문제가 아니다. 없는 도구 호출과 `web_fetch` 실패 모두 work item이 `status=completed`로 끝났고 리드에게 `terminal=completed`가 갔다. 실패 문구는 자식 transcript에만 남고, terminal payload는 상태 태그뿐이라 error summary 자체가 없다. 즉 **"팀원이 실패하면 리드가 안다"는 4단계 목표는 성립하지 않는다.**
+**구멍 2 — 실패가 성공으로 보인다.** 이건 선호의 문제가 아니다. 없는 도구 호출과 `web_fetch` 실패 모두 work item이 `status=completed`로 끝났고 리드에게 `terminal=completed`가 갔다. 실패 문구는 에이전트 transcript에만 남고, terminal payload는 상태 태그뿐이라 error summary 자체가 없다. 즉 **"팀원이 실패하면 리드가 안다"는 4단계 목표는 성립하지 않는다.**
 
 고치지 않는 이유는 값이 없어서가 아니라 경계 때문이다. work status를 모델·도구 결과에서 도출하는 규칙은 subagent 코어 의미론이라 팀 오버레이 밖이고, 바꾸면 팀을 안 쓰는 모든 사용자에게 파급된다. 확정된 계획의 범위도 넘는다.
 
@@ -181,7 +181,7 @@ v1은 팀원이 **말할 수 있게** 했다 (`team.members`, `team.message`, �
 
 ## 승격 — 팀원별 워크스페이스 분리 (관측 있음)
 
-**현재 없다.** fx의 `domain.Configuration`은 `name`/`model`/`effort`/`permission_mode`/`notifications`뿐이라 자식마다 작업 디렉터리를 줄 자리가 없다. `fx workspace` 명령은 세션에 디렉터리를 더하는 것이지 자식 격리가 아니다. 포팅 킷도 worktree 자동화를 명시적으로 비범위로 두고 v1.2 후보로 미뤘다.
+**현재 없다.** fx의 `domain.Configuration`은 `name`/`model`/`effort`/`permission_mode`/`notifications`뿐이라 에이전트마다 작업 디렉터리를 줄 자리가 없다. `fx workspace` 명령은 세션에 디렉터리를 더하는 것이지 에이전트 격리가 아니다. 포팅 킷도 worktree 자동화를 명시적으로 비범위로 두고 v1.2 후보로 미뤘다.
 
 **관측.** 2026-08-20 이 세션에서 실제로 겪었다. 사용자가 별도 세션으로 같은 체크아웃(`~/Github-repos/fx`)에서 upstream v0.0.4 머지와 리브랜딩을 하는 동안 리드가 띄운 워커가 같은 트리에서 작업 중이었다. 충돌은 안 났지만 리드가 손으로 막아야 했다 — 브리프에 off-limits 경로를 적고, 커밋할 때 `-A` 대신 만진 경로만 스테이징하라고 지시했다. 그 손 가드가 없었으면 서로의 변경을 덮었다.
 
@@ -199,7 +199,7 @@ owner가 둘 이상인 팀에서는 이 위험이 손 가드로 감당되지 않
 2. **`lsof +D`는 API 응답을 기다리는 프로세스를 못 잡는다.** 그 시점 그 디렉터리 밑에 열린 파일이 없기 때문이다. cwd만으로는 `+D`에 안 걸리므로 PID의 cwd와 명령줄을 봐야 한다.
 3. 이 사고 역시 **worktree 분리가 있었으면 성립하지 않는다.** 워커가 자기 트리에 있었으면 공유 트리를 옮기는 것이 워커를 위협하지 않는다.
 
-**설계 방향 (미확정).** 자식 소환 시 작업 디렉터리를 지정할 수 있게 하고, 그 값이 git worktree면 owner마다 분리된 트리에서 작업한다. 통합은 리드가 한다 — owner는 자기 worktree에서 커밋까지, 리드가 받아 머지하고 최종 검증한다. Claude Code는 이미 이 모양을 갖고 있다(Agent 도구의 `isolation: "worktree"`).
+**설계 방향 (미확정).** 에이전트 소환 시 작업 디렉터리를 지정할 수 있게 하고, 그 값이 git worktree면 owner마다 분리된 트리에서 작업한다. 통합은 리드가 한다 — owner는 자기 worktree에서 커밋까지, 리드가 받아 머지하고 최종 검증한다. Claude Code는 이미 이 모양을 갖고 있다(Agent 도구의 `isolation: "worktree"`).
 
 주의할 것: 시스템 프롬프트 작업과 같은 자리(`Configuration` 확장 + 소환 스키마)를 건드린다. **6단계가 끝난 뒤에 이어서 하는 것이 맞다** — 같은 파일을 두 작업이 동시에 진화시키면 오늘 겪은 충돌을 우리가 스스로 만든다.
 
@@ -252,7 +252,7 @@ main.zig 14줄도 version bump와 statusline 배선뿐이라 프롬프트 조립
 
 두 번째가 더 위험했다. 셋 중 하나가 **상속받은 워크스페이스가 요청 지문에 섞여 기존 create replay가 `operation_conflict`로 깨지는 하위 호환 회귀**였다. 그대로 포인터를 올렸으면 조용히 나갔다.
 
-리드는 셋의 실패 이름과 diff 원문을 워커에게 돌려보냈고, 워커의 진단이 리드의 처방보다 정확했다 — 리드는 "non-null일 때만 해시"라고 했지만 실제 원인은 **해석된 상태가 요청 지문에 들어간 것**이었다. `create_workspace_explicit` 플래그로 명시 요청이 아닌 선택자를 지문에서 빼는 것이 답이었다. 리드 처방대로 갔으면 상속 자식은 여전히 깨졌다.
+리드는 셋의 실패 이름과 diff 원문을 워커에게 돌려보냈고, 워커의 진단이 리드의 처방보다 정확했다 — 리드는 "non-null일 때만 해시"라고 했지만 실제 원인은 **해석된 상태가 요청 지문에 들어간 것**이었다. `create_workspace_explicit` 플래그로 명시 요청이 아닌 선택자를 지문에서 빼는 것이 답이었다. 리드 처방대로 갔으면 상속 에이전트는 여전히 깨졌다.
 
 **규칙 셋.**
 
@@ -268,15 +268,15 @@ main.zig 14줄도 version bump와 statusline 배선뿐이라 프롬프트 조립
 
 fx가 worktree 생성·머지·정리까지 맡는 안은 **3배의 별도 과제**로 판정돼 기각했다. 리드가 만들고 리드가 치운다.
 
-**격리 강도는 A(실수만 막기)를 골랐다.** `permission_mode` 기본값 `yolo`를 그대로 두었으므로 자식이 절대경로로 옆 트리에 접근하는 것은 막히지 않는다. 관측된 사고 둘이 악의가 아니라 실수였고, 관측 전에 안전장치를 조이면 팀원이 일을 못 하게 될 위험이 더 크다고 판단했다 — 시스템 프롬프트에서 "도구는 뺏지 않는다"로 정한 것과 같은 논리다.
+**격리 강도는 A(실수만 막기)를 골랐다.** `permission_mode` 기본값 `yolo`를 그대로 두었으므로 에이전트가 절대경로로 옆 트리에 접근하는 것은 막히지 않는다. 관측된 사고 둘이 악의가 아니라 실수였고, 관측 전에 안전장치를 조이면 팀원이 일을 못 하게 될 위험이 더 크다고 판단했다 — 시스템 프롬프트에서 "도구는 뺏지 않는다"로 정한 것과 같은 논리다.
 
 **자동 정리는 기각했다.** 근거는 `execution.zig:1750` — 프로세스 teardown이 **의도적으로 사용자 취소를 지어내지 않고** 미완 durable 상태를 복구용으로 남긴다. fx는 이미 "죽었다고 지우지 않는다"를 설계로 갖고 있고, 워크스페이스 자동 삭제는 그것과 정면충돌한다. 게다가 `builtins/context.zig:2142`의 git 상태 탐지기는 dirty나 unknown은 내도 **authoritative clean은 못 낸다.** "깨끗하면 지운다"가 증명 불가능하다.
 
 **리드가 돌린 E2E.** 실제 git worktree 둘에 서로 다른 표식과 AGENTS.md를 심었다.
 
 ```
-ws-a 자식   marker MARKER_ALPHA_5521   codename PROJECT_ALPHACODE
-ws-b 자식   marker MARKER_BETA_7734    codename PROJECT_BETACODE
+ws-a 에이전트   marker MARKER_ALPHA_5521   codename PROJECT_ALPHACODE
+ws-b 에이전트   marker MARKER_BETA_7734    codename PROJECT_BETACODE
 ```
 
 codename이 각자 **자기 워크스페이스의 AGENTS.md**에서 나왔다. 판정 문서가 "cwd만 바꾸면 조용히 샌다"고 경고한 자리다. 구현은 조건 분기를 더한 게 아니라 `Config`에서 `project_context` 필드를 **삭제해** 리드 스냅샷 재사용을 구조적으로 불가능하게 만들었다.
@@ -338,7 +338,7 @@ zig build test           8373 pass, 2 skip, 1 fail (8376)
 
 rubato가 값을 갖는 자리는 셋이다. ① Claude 구독을 아예 안 쓰고 싶을 때의 터미널 ② 우리 팀 프리미티브(`team.members`/`team.message`/`team_task`)가 있는 유일한 곳 ③ Claude 한도가 소진됐을 때.
 
-**rubato의 리드는 Claude다.** `~/.fx/settings.json`의 `FX_MODEL=xai/grok-4.6`은 연결 시험용 기본값이지 모델 설계가 아니다 — 리드는 `harness/README.md`가 처음부터 적어둔 대로 Opus이고, 실행 모델(Sol/Grok)은 리드가 자식마다 따로 배치한다. fx는 자식별 모델을 지원하므로 이 구조가 fx를 쓰는 이유 자체다. `rubato.sh`의 기본값은 처음 `cursor/claude-opus-5`로 잡았으나 2026-08-21에 `anthropic/claude-opus-5`(bridge direct)로 바꿨다 — Cursor 경로가 접혔고(`case-studies/provider-routing/cursor-route-verdict/`), direct 경로는 1시간 prompt cache가 되는 유일한 경로다. `~/.fx/settings.json`도 같은 값으로 맞췄다. 두 값 모두 실제 콜로 도착을 확인했다.
+**rubato의 리드는 Claude다.** `~/.fx/settings.json`의 `FX_MODEL=xai/grok-4.6`은 연결 시험용 기본값이지 모델 설계가 아니다 — 리드는 `harness/README.md`가 처음부터 적어둔 대로 Opus이고, 실행 모델(Sol/Grok)은 리드가 에이전트마다 따로 배치한다. fx는 에이전트별 모델을 지원하므로 이 구조가 fx를 쓰는 이유 자체다. `rubato.sh`의 기본값은 처음 `cursor/claude-opus-5`로 잡았으나 2026-08-21에 `anthropic/claude-opus-5`(bridge direct)로 바꿨다 — Cursor 경로가 접혔고(`case-studies/provider-routing/cursor-route-verdict/`), direct 경로는 1시간 prompt cache가 되는 유일한 경로다. `~/.fx/settings.json`도 같은 값으로 맞췄다. 두 값 모두 실제 콜로 도착을 확인했다.
 
 모델 배치 기준은 새로 만들지 않는다. 정본은 스킬의 `references/08-model-allocation.md`이고, 고르는 축은 phase 라벨이 아니라 **지배적 병목**이다 — 교차 아키텍처·통합이면 리드급 제너럴리스트, 올바른 기술 변경을 발견·증명하는 것이 어려우면 추론 중심 owner(Sol), 계약이 정해지고 넓은 구현이 어려우면 실행 중심 owner(Grok), 구현을 반증해야 하면 다른 맹점을 가진 fresh verifier. 검증 기본 짝(Grok 구현 → Sol 검증, Sol 수정 → 다른 강한 모델 검증, Opus 아키텍처 변경 → Sol 검증)도 거기 있다.
 
@@ -357,7 +357,7 @@ fx 쪽도 실측으로 확인됐다. 3·4단계 E2E에서 팀원 밑에 nested h
 
 ## 역할별 시스템 프롬프트 — 왜 필요한가 (근거)
 
-**문제.** fx는 시스템 프롬프트가 없다(`main.zig:3239`, `:3274`가 `.system_prompt = ""`). 그래서 rubato 리드는 맨몸이다. 그리고 자식 세션은 **부모의 시스템 프롬프트를 그대로 물려받는다** — `context_contract.zig:500`이 계약으로 못박고 있다: "reuses the launching surface's project-context snapshot bytes and its system and skill prompt sections".
+**문제.** fx는 시스템 프롬프트가 없다(`main.zig:3239`, `:3274`가 `.system_prompt = ""`). 그래서 rubato 리드는 맨몸이다. 그리고 에이전트 세션은 **부모의 시스템 프롬프트를 그대로 물려받는다** — `context_contract.zig:500`이 계약으로 못박고 있다: "reuses the launching surface's project-context snapshot bytes and its system and skill prompt sections".
 
 `~/.fx/AGENTS.md`에 "root면 tech-lead.md를 읽어라" 같은 포인터를 두는 안은 기각했다. 포인터는 따라도 되고 안 따라도 되는 지시이고, 자세는 항상 켜져 있어야 한다. 급이 다르다.
 
@@ -365,7 +365,7 @@ fx 쪽도 실측으로 확인됐다. 3·4단계 E2E에서 팀원 밑에 nested h
 
 1. **리드 시스템 프롬프트를 파일에서 읽는다.** composition root(`main.zig`)에서 `~/.fx/system-prompt.md`(또는 `FX_SYSTEM_PROMPT_FILE`)를 읽어 `prompt_policy.system_prompt`에 넣는다. 없으면 지금처럼 빈 문자열. `Policy`(`config/prompt_policy.zig`)는 이미 `system_prompt: []const u8`을 갖고 있으므로 자료형 변경은 없다.
 
-2. **역할별 시스템 프롬프트를 연다.** `domain.Configuration`(`subagent/domain.zig`)에는 `name`/`model`/`effort`/`permission_mode`/`notifications`만 있고 **프롬프트 필드가 없다.** 그래서 지금은 자식이 부모 것을 물려받는 것 외에 선택지가 없다. 여기에 필드를 하나 더해 소환 시 역할 계약을 시스템 프롬프트로 주입한다.
+2. **역할별 시스템 프롬프트를 연다.** `domain.Configuration`(`subagent/domain.zig`)에는 `name`/`model`/`effort`/`permission_mode`/`notifications`만 있고 **프롬프트 필드가 없다.** 그래서 지금은 에이전트가 부모 것을 물려받는 것 외에 선택지가 없다. 여기에 필드를 하나 더해 소환 시 역할 계약을 시스템 프롬프트로 주입한다.
 
 2번은 Claude Code와의 parity이기도 하다. 거기서는 agent 정의 파일이 통째로 시스템 프롬프트로 주입되고, 그것이 CLAUDE.md가 "복제가 정당한 자리는 하나만 남는다"고 인정한 유일한 경로다. fx에 같은 경로를 여는 것이므로 팀원은 `teammate/workstream-owner.md`·`teammate/independent-verifier.md`를 자세로 갖고 뜬다.
 

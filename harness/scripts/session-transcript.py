@@ -276,7 +276,7 @@ def main() -> None:
 
     if args.children:
         kids = children(d)
-        print(f"# 자식 {len(kids)}개\n")
+        print(f"# 에이전트 {len(kids)}개\n")
         for cid, cdir in kids:
             when = datetime.fromtimestamp((cdir / "session.json").stat().st_mtime).strftime("%m/%d %H:%M") if cdir else "?"
             cmodel = (meta(cdir).get("preferences") or {}).get("model", "?") if cdir else "?"

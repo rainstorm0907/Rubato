@@ -200,7 +200,7 @@ rubato               # = rubato-pi. 보통 alias 가 harness/scripts/rubato-pi.s
 
 `./install.sh --apply` 에도 포함돼 있다. 인자 없이 부르면 무엇을 할지만 보여준다.
 
-supervisor 는 크래시만 되살린다. macOS 는 `KeepAlive` 의 `SuccessfulExit=false` + `Crashed=true`, Linux 는 `Restart=on-failure`. 정상 종료는 `rubato restart` 만 한다 — 브리지가 런타임에 쓴 mode 600 비밀 파일로 `POST /admin/drain` 을 인증하고, 옛 프로세스가 끝난 뒤 교체본을 띄워 `/health` 가 200 일 때만 성공한다. SIGTERM/SIGINT 는 브리지가 무시한다. 세션·자식이 공유 브리지를 내릴 수 없고, SIGKILL 뒤에만 supervisor 가 다시 올린다.
+supervisor 는 크래시만 되살린다. macOS 는 `KeepAlive` 의 `SuccessfulExit=false` + `Crashed=true`, Linux 는 `Restart=on-failure`. 정상 종료는 `rubato restart` 만 한다 — 브리지가 런타임에 쓴 mode 600 비밀 파일로 `POST /admin/drain` 을 인증하고, 옛 프로세스가 끝난 뒤 교체본을 띄워 `/health` 가 200 일 때만 성공한다. SIGTERM/SIGINT 는 브리지가 무시한다. 세션·에이전트가 공유 브리지를 내릴 수 없고, SIGKILL 뒤에만 supervisor 가 다시 올린다.
 
 systemd 가 없는 곳(WSL 일부, 컨테이너)에는 아무것도 심지 않고 lazy start 로 남는다. `loginctl enable-linger` 는 권하지 않는다 — 브리지가 사용자 인증 파일을 읽으므로 로그인 세션 밖에서 도는 것은 득보다 실이 크다.
 
