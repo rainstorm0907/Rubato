@@ -46,7 +46,7 @@ describe("/init", () => {
     expect(pi.userMessages).toHaveLength(1)
     const message = pi.userMessages[0]?.content as string
     expect(message).toContain("[MEMORY INITIALIZATION]")
-    expect(message).toContain("system/persona.md")
+    expect(message).toContain("memory.project")
     expect(message).toContain("description:")
     expect(text).toContain("initialized")
   }, 30_000)

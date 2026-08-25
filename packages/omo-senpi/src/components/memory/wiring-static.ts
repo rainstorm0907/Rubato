@@ -80,7 +80,7 @@ export function registerMemoryStatic(input: {
     searchExposure: () => toolExposure === "search",
     // An unreadable config must not take the prompt down with it. Both resolvers below run
     // inside before_agent_start, so a throw here rejects prompt assembly outright instead of
-    // degrading. They fail toward the pre-existing behaviour: projection ON, no advisory.
+    // degrading. They fail toward the safe default: empty project whitelist, no advisory.
     resolveCompileWarnTokens: () => {
       try {
         return loadCommandSettings().settings.compile_warn_tokens
@@ -88,12 +88,12 @@ export function registerMemoryStatic(input: {
         return undefined
       }
     },
-    resolveProjection: (identity) => {
+    resolveProject: (identity) => {
       try {
         const settings = loadCommandSettings().settings
-        return settings.agents[identity]?.projection ?? settings.projection
+        return settings.agents[identity]?.project ?? settings.project
       } catch {
-        return true
+        return []
       }
     },
     resolveNudgeTurns: (repo, sessionId, identity) => nudgeWiring.nudgeTurns(repo, sessionId, identity),

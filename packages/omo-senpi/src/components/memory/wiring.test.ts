@@ -86,7 +86,7 @@ describe("memory pressure dream wiring", () => {
     } as unknown as MemoryIdentityRuntime
     const wiring = createMemoryWiring({
       sessions: new Map([[sessionId, { context: identity }]]),
-      loadConfig: () => loadedMemoryConfig(memorySettings({ compile_warn_tokens: 100 })),
+      loadConfig: () => loadedMemoryConfig(memorySettings({ compile_warn_tokens: 100, project: ["system/persona.md"] })),
       cwd: () => root,
       env: {},
       createRuntime: () => runtime,
@@ -139,7 +139,7 @@ describe("memory pressure compile wiring", () => {
     const pi = new MemoryFakeExtensionAPI()
     createMemoryWiring({
       sessions: new Map([["session-pressure", { context }]]),
-      loadConfig: () => loadedMemoryConfig(memorySettings({ compile_warn_tokens: 100 })),
+      loadConfig: () => loadedMemoryConfig(memorySettings({ compile_warn_tokens: 100, project: ["system/persona.md"] })),
       cwd: () => root,
       env: {},
     }).registerStatic(pi, componentContext())
@@ -174,10 +174,11 @@ describe("memory pressure compile wiring", () => {
 })
 
 describe("memory projection config wiring", () => {
-  // Sol's finding: every projection test injected `resolveProjection` directly, so deleting the
+  // Sol's finding: every projection test injected the resolver directly, so deleting the
   // four wiring lines in wiring-static.ts left them all green while the operator's config did
   // nothing in production. These drive the real component through `loadConfig` instead.
   const PERSONA_SENTINEL = "PERSONA_BODY_SENTINEL"
+  const SOUL_SENTINEL = "SOUL_BODY_SENTINEL"
   const IDENTITY = "projection-agent"
 
   async function boundPi(memory: Parameters<typeof loadedMemoryConfig>[0], loadConfig?: () => never) {
@@ -186,10 +187,16 @@ describe("memory projection config wiring", () => {
     const paths = buildIdentityPaths(root, IDENTITY)
     const repo = new GitMemoryRepo({ dir: paths.repo, agentId: IDENTITY })
     await repo.init({
-      seedFiles: [{
-        relativePath: "system/persona.md",
-        content: `---\ndescription: Persona\n---\n${PERSONA_SENTINEL}\n`,
-      }],
+      seedFiles: [
+        {
+          relativePath: "system/persona.md",
+          content: `---\ndescription: Persona\n---\n${PERSONA_SENTINEL}\n`,
+        },
+        {
+          relativePath: "system/soul.md",
+          content: `---\ndescription: Soul\n---\n${SOUL_SENTINEL}\n`,
+        },
+      ],
     })
     const context = createMemoryIdentityContext({
       identity: IDENTITY,
@@ -215,51 +222,59 @@ describe("memory projection config wiring", () => {
     return (result as { systemPrompt?: string } | undefined)?.systemPrompt ?? ""
   }
 
-  test("#given root projection false #when a real session compiles #then the persona never reaches the prompt", async () => {
-    const pi = await boundPi(memorySettings({ projection: false }))
+  test("#given an empty root project list #when a real session compiles #then the persona never reaches the prompt", async () => {
+    const pi = await boundPi(memorySettings({ project: [] }))
     const prompt = await promptFor(pi)
     expect(prompt).toContain("BASE")
     expect(prompt).not.toContain(PERSONA_SENTINEL)
+    expect(prompt).not.toContain(SOUL_SENTINEL)
     expect(prompt).not.toContain("<self>")
+    expect(prompt).not.toContain("<external_projection>")
+    expect(prompt).not.toContain("Reminder:")
+    expect(prompt).toContain("- AGENT_ID: ")
   }, 30_000)
 
-  test("#given root projection true #when a real session compiles #then the persona is projected", async () => {
-    const pi = await boundPi(memorySettings({ projection: true }))
-    expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
+  test("#given a listed system file #when a real session compiles #then only that file is projected", async () => {
+    const pi = await boundPi(memorySettings({ project: ["system/soul.md"] }))
+    const prompt = await promptFor(pi)
+    expect(prompt).toContain(SOUL_SENTINEL)
+    expect(prompt).not.toContain(PERSONA_SENTINEL)
+    expect(prompt).not.toContain("<external_projection>")
   }, 30_000)
 
-  test("#given a per-agent false override under a true root #when compiled #then the override wins", async () => {
+  test("#given a per-agent empty override under a listed root #when compiled #then the override wins", async () => {
     const pi = await boundPi(memorySettings({
-      projection: true,
-      agents: { [IDENTITY]: { projection: false } },
+      project: ["system/persona.md"],
+      agents: { [IDENTITY]: { project: [] } },
     }))
     expect(await promptFor(pi)).not.toContain(PERSONA_SENTINEL)
   }, 30_000)
 
-  test("#given a per-agent true override under a false root #when compiled #then the override wins", async () => {
+  test("#given a per-agent listed override under an empty root #when compiled #then the override wins", async () => {
     const pi = await boundPi(memorySettings({
-      projection: false,
-      agents: { [IDENTITY]: { projection: true } },
+      project: [],
+      agents: { [IDENTITY]: { project: ["system/persona.md"] } },
     }))
     expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
   }, 30_000)
 
   test("#given another agent's override #when this agent compiles #then it is unaffected", async () => {
     const pi = await boundPi(memorySettings({
-      projection: true,
-      agents: { "someone-else": { projection: false } },
+      project: ["system/persona.md"],
+      agents: { "someone-else": { project: [] } },
     }))
     expect(await promptFor(pi)).toContain(PERSONA_SENTINEL)
   }, 30_000)
 
-  test("#given config loading throws #when a real session compiles #then the prompt survives with projection on", async () => {
+  test("#given config loading throws #when a real session compiles #then the prompt survives with nothing projected", async () => {
     // Telemetry-shaped rule: an unreadable config must not take prompt assembly down with it.
-    const pi = await boundPi(memorySettings(), () => {
+    const pi = await boundPi(memorySettings({ project: ["system/persona.md"] }), () => {
       throw new Error("config is unreadable")
     })
     const prompt = await promptFor(pi)
     expect(prompt).toContain("BASE")
-    expect(prompt).toContain(PERSONA_SENTINEL)
+    expect(prompt).not.toContain(PERSONA_SENTINEL)
+    expect(prompt).toContain("- AGENT_ID: ")
   }, 30_000)
 })
 

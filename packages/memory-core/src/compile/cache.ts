@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 import type { GitMemoryRepo } from "../git"
 import {
   compileMemoryBlockAtRevision,
+  normalizeProject,
   type CompileMemoryBlockOptions,
 } from "./compile"
 
@@ -37,7 +38,7 @@ export class MemoryBlockCache {
     // The variant must cover every input that changes the compiled output, not just HEAD.
     // Options that alter the result belong here rather than in the caller's template string:
     // a caller that forgot to encode one would silently be served the other variant's block.
-    const variant = `${revision ?? "no-head"}:projection=${options.projection !== false}`
+    const variant = `${revision ?? "no-head"}:project=${normalizeProject(options.project).join(",")}`
     const existing = this.entries.get(key)
     if (existing?.variant === variant) return existing.pending
 

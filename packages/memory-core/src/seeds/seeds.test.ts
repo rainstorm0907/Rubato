@@ -35,20 +35,19 @@ async function gitLog(dir: string, format: string): Promise<string> {
 
 describe("default memory seeds", () => {
   describe("#given the default block label constants", () => {
-    it("#then they are persona and human in order", () => {
-      expect(DEFAULT_MEMORY_BLOCK_LABELS).toEqual(["persona", "human"])
+    it("#then they are empty: persona and human are no longer seeded", () => {
+      expect(DEFAULT_MEMORY_BLOCK_LABELS).toEqual([])
     })
   })
 
   describe("#given buildDefaultSeedFiles", () => {
-    it("#then it produces three files with expected paths and frontmatter", () => {
+    it("#then it produces only the memory-discipline skill", () => {
       const files = buildDefaultSeedFiles()
 
-      expect(files).toHaveLength(3)
-      const paths = files.map((f) => f.relativePath)
-      expect(paths).toContain("system/persona.md")
-      expect(paths).toContain("system/human.md")
-      expect(paths).toContain("skills/memory-discipline/SKILL.md")
+      expect(files).toHaveLength(1)
+      expect(files[0]?.relativePath).toBe("skills/memory-discipline/SKILL.md")
+      expect(files.map((f) => f.relativePath)).not.toContain("system/persona.md")
+      expect(files.map((f) => f.relativePath)).not.toContain("system/human.md")
     })
 
     it("#then the memory-discipline skill seed path is skills/memory-discipline/SKILL.md", () => {
@@ -62,18 +61,9 @@ describe("default memory seeds", () => {
         expect(() => parseMemoryFile(file.content)).not.toThrow()
       }
     })
-
-    it("#then the human seed frontmatter has kind: person and aliases", () => {
-      const files = buildDefaultSeedFiles()
-      const human = files.find((f) => f.relativePath === "system/human.md")!
-      const parsed = parseMemoryFile(human.content)
-
-      expect(parsed.frontmatter.kind).toBe("person")
-      expect(parsed.frontmatter.aliases).toEqual([])
-    })
   })
 
-  describe("#given a fresh repository #when initMemoryWithSeeds runs #then it commits two seeded files in one initial commit", async () => {
+  it("#given a fresh repository #when initMemoryWithSeeds runs #then it commits the discipline skill in one initial commit", async () => {
     // given
     const { dir, repo } = await createRepo()
 
@@ -84,10 +74,9 @@ describe("default memory seeds", () => {
     expect(sha).toMatch(/^[0-9a-f]{40,64}$/)
 
     const tree = await repo.lsTree()
-    expect(tree).toContain("system/persona.md")
-    expect(tree).toContain("system/human.md")
-    expect(tree).toContain("skills/memory-discipline/SKILL.md")
-    expect(tree).toHaveLength(3)
+    expect(tree).toEqual(["skills/memory-discipline/SKILL.md"])
+    expect(tree).not.toContain("system/persona.md")
+    expect(tree).not.toContain("system/human.md")
 
     const commitSubject = await gitLog(dir, "%s")
     expect(commitSubject).toBe("chore: initialize local memory")
@@ -96,7 +85,7 @@ describe("default memory seeds", () => {
     expect(commitLines).toHaveLength(1)
   })
 
-  describe("#given a fresh repository #when initMemoryWithSeeds runs without authorName #then it uses the default agent name", async () => {
+  it("#given a fresh repository #when initMemoryWithSeeds runs without authorName #then it uses the default agent name", async () => {
     // given
     const { repo } = await createRepo()
 
@@ -107,12 +96,12 @@ describe("default memory seeds", () => {
     expect(sha).toMatch(/^[0-9a-f]{40,64}$/)
   })
 
-  describe("#given an existing repo with commits #when initMemoryWithSeeds runs #then it is a no-op (HEAD unchanged)", async () => {
+  it("#given an existing repo with commits #when initMemoryWithSeeds runs #then it is a no-op (HEAD unchanged)", async () => {
     // given
     const { dir, repo } = await createRepo()
     const originalHead = await initMemoryWithSeeds(repo, { authorName: "First Agent" })
-    await writeFile(join(dir, "system/persona.md"), "---\ndescription: x\n---\nCustom\n")
-    await repo.commitWrite(["system/persona.md"], "user edit", {
+    await writeFile(join(dir, "notes.md"), "---\ndescription: x\n---\nCustom\n")
+    await repo.commitWrite(["notes.md"], "user edit", {
       agentId: "seed-agent",
       authorName: "User",
     })
@@ -126,13 +115,12 @@ describe("default memory seeds", () => {
     expect(await repo.head()).toBe(result)
     expect(result).not.toBe(originalHead)
 
-    // The tree should still reflect the user's edit, not re-seeded content.
-    const personaContent = await repo.show("HEAD", "system/persona.md")
-    expect(personaContent).toContain("Custom")
+    const notes = await repo.show("HEAD", "notes.md")
+    expect(notes).toContain("Custom")
   })
 
-  describe("#given seeded content #when compiled via the memory compiler #then the persona body is visible in the compiled block", async () => {
-    // given
+  it("#given seeded content #when compiled via the memory compiler #then nothing from the seed is projected", async () => {
+    // given: the discipline skill lives under skills/ and is never inlined.
     const { repo } = await createRepo()
 
     // when
@@ -140,8 +128,9 @@ describe("default memory seeds", () => {
     const block = await compileMemoryBlock(repo, { agentId: "seed-agent" })
 
     // then
-    expect(block).toContain("<self>")
-    expect(block).toContain("$MEMORY_DIR/system/persona.md</projection>")
+    expect(block).not.toContain("<self>")
+    expect(block).not.toContain("<memory>")
     expect(block).toContain("<memory_metadata>")
+    expect(block).toContain("- AGENT_ID: seed-agent")
   })
 })

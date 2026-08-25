@@ -153,6 +153,7 @@ describe("person routing alias resolution", () => {
   test("#given the primary human card carries an alias #when a fact names it #then it routes to the human ledger without a new card", async () => {
     // given
     const { dir, repo } = await fixture()
+    await mkdir(join(dir, "system"), { recursive: true })
     await writeFile(
       join(dir, "system", "human.md"),
       renderMemoryFile({ description: "Person - Human", kind: "person", aliases: ["Lo"] }, ""),

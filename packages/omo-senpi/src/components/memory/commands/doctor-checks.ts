@@ -1,13 +1,12 @@
 // Deterministic /doctor checks. Every check is read-only except the skill
 // frontmatter repair, which is the one documented auto-fix (letta parity).
 
-import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
 import { readdir, readFile } from "node:fs/promises"
 import { hostname } from "node:os"
 import { join } from "node:path"
 
-import { V1_PERSONA_SEED_SHA256, parseLockRecord, parseMemoryFile } from "@oh-my-opencode/memory-core"
+import { parseLockRecord, parseMemoryFile } from "@oh-my-opencode/memory-core"
 
 import { readReflectionHealth, reflectionRemediation } from "../worker"
 import { runGit } from "./repo"
@@ -21,8 +20,6 @@ export interface DoctorCheck {
   readonly level: CheckLevel
   readonly detail: string
 }
-
-const PERSONA_PATH = "system/persona.md"
 
 async function listMarkdown(root: string, prefix: string): Promise<string[]> {
   let entries
@@ -74,34 +71,7 @@ export async function checkFrontmatter(repoDir: string): Promise<DoctorCheck[]> 
         detail: `${failures.length} invalid file${failures.length === 1 ? "" : "s"}: ${failures.join("; ")}; fix the frontmatter or remove the file`,
       }
 
-  const persona: DoctorCheck = paths.includes(PERSONA_PATH)
-    ? { name: "persona", level: "ok", detail: `${PERSONA_PATH} present` }
-    : { name: "persona", level: "warn", detail: `${PERSONA_PATH} is missing; create it with /init or the memory tools` }
-
-  return [frontmatter, persona]
-}
-
-/**
- * v1 persona detection (advisory only, never an auto-rewrite): fires when
- * system/persona.md is byte-identical to the v1 seed, meaning the repo never
- * received the v2 soul seed.
- */
-export async function checkSoulSeed(repoDir: string): Promise<DoctorCheck> {
-  let content: Buffer
-  try {
-    content = await readFile(join(repoDir, PERSONA_PATH))
-  } catch {
-    return { name: "soul-seed", level: "ok", detail: "no persona file to compare" }
-  }
-  const hash = createHash("sha256").update(content).digest("hex")
-  if (hash === V1_PERSONA_SEED_SHA256) {
-    return {
-      name: "soul-seed",
-      level: "warn",
-      detail: `${PERSONA_PATH} is still the v1 seed; review it against the v2 soul seed and rewrite it with the memory tools when ready`,
-    }
-  }
-  return { name: "soul-seed", level: "ok", detail: "persona differs from the v1 seed" }
+  return [frontmatter]
 }
 
 export async function checkLocks(deps: MemoryCommandDeps, locksDir: string): Promise<DoctorCheck> {

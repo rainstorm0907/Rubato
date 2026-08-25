@@ -56,23 +56,6 @@ async function writeLock(locksDir: string, pid: number): Promise<string> {
   return path
 }
 
-// Byte-exact v1 persona seed (commit 02a7d562e): historical fixture data used to prove the
-// v1 detection advisory fires on content identity, not on wording. Em dashes are part of the
-// frozen bytes and must never be normalized; they are written as \u2014 escapes so the
-// source stays dash-free while the rendered bytes stay identical.
-const V1_PERSONA_BODY = `You are a coding agent that maintains its own memory.
-
-Your persistent context lives in a version-controlled memory filesystem rooted at $MEMORY_DIR. Files committed to HEAD are projected into your system prompt on the next run:
-
-- system/persona.md (this file) \u2014 who you are and how you operate. Edit it to refine your own working identity.
-- system/human.md \u2014 what you have learned about the person you work with. Update it as you discover durable preferences, context, and constraints.
-- system/*.md \u2014 any other memory blocks you create under system/ are projected as nested XML.
-- Non-system paths (for example reference/ or notes/) appear as names in <external_projection> only; their bodies are never injected.
-
-Changes to these files only take effect after a git commit. Use the memory tools to edit, never hand-write raw git commands during a session. The system/ directory is your self-model; keep it accurate and minimal.`
-
-const V1_PERSONA_SEED = `---\ndescription: Persona - who I am\n---\n${V1_PERSONA_BODY}`
-
 describe("/doctor", () => {
   test("#given a healthy repository #when doctor runs #then every deterministic check passes", async () => {
     // given
@@ -90,28 +73,6 @@ describe("/doctor", () => {
     expect(ctx.ui.notifications.at(-1)?.level).toBe("info")
   })
 
-  test("#given a persona still equal to the v1 seed #when doctor runs #then a soul-seed advisory is reported", async () => {
-    // given
-    const { identity, pi, ctx } = await harness({ seeded: false })
-    await seededRepo(identity, [{ relativePath: "system/persona.md", content: V1_PERSONA_SEED }])
-
-    // when
-    const text = await invoke(pi, "doctor", "", ctx)
-
-    // then
-    expect(text).toContain("[warn] soul-seed")
-  })
-
-  test("#given a persona that diverged from the v1 seed #when doctor runs #then no soul-seed advisory fires", async () => {
-    // given (the default harness seeds a non-v1 persona)
-    const { pi, ctx } = await harness()
-
-    // when
-    const text = await invoke(pi, "doctor", "", ctx)
-
-    // then
-    expect(text).toContain("[ok] soul-seed")
-  })
 
   test("#given no repository #when doctor runs #then the repository check fails with an actionable hint", async () => {
     // given
@@ -140,22 +101,6 @@ describe("/doctor", () => {
     expect(ctx.ui.notifications.at(-1)?.level).toBe("error")
   })
 
-  test("#given a missing persona file #when doctor runs #then a persona warning is reported", async () => {
-    // given
-    const { root, identity } = await tempIdentity()
-    tempDirs.push(root)
-    await seededRepo(identity, [{ relativePath: "external/notes.md", content: "notes\n" }])
-    const pi = new MemoryFakeExtensionAPI()
-    registerDoctorCommand(pi, fakeDeps(identity))
-    const ctx = fakeCommandContext()
-
-    // when
-    const text = await invoke(pi, "doctor", "", ctx)
-
-    // then
-    expect(text).toContain("[warn] persona")
-    expect(text).toContain("system/persona.md")
-  })
 
   test("#given a lock owned by a dead pid #when doctor runs #then the stale lock is reported with its path", async () => {
     // given

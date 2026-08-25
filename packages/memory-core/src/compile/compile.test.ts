@@ -16,14 +16,17 @@ describe("compileMemoryBlock", () => {
     ])
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "agent-golden" })
+    const block = await compileMemoryBlock(repo, {
+      agentId: "agent-golden",
+      project: ["system/persona.md", "system/facts.md", "system/human/prefs/coding.md"],
+    })
     const structure = parseCompiledBlock(block)
 
     // then
     expect(structure).toEqual({
       sections: ["self", "memory", "memory_metadata"],
       projectionPaths: ["system/persona.md", "system/facts.md", "system/human/prefs/coding.md"],
-      memoryOpenTags: ["facts", "human", "prefs", "coding", "external_projection"],
+      memoryOpenTags: ["facts", "human", "prefs", "coding"],
       metadata: { agentId: "agent-golden" },
     })
     expect(block).toContain("PERSONA_BODY")
@@ -45,7 +48,10 @@ describe("compileMemoryBlock", () => {
     ])
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "persona-identity-agent" })
+    const block = await compileMemoryBlock(repo, {
+      agentId: "persona-identity-agent",
+      project: ["system/persona.md", "system/identity.md", "system/facts.md"],
+    })
     const structure = parseCompiledBlock(block)
 
     // then
@@ -64,7 +70,10 @@ describe("compileMemoryBlock", () => {
     ])
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "identity-agent" })
+    const block = await compileMemoryBlock(repo, {
+      agentId: "identity-agent",
+      project: ["system/identity.md"],
+    })
     const structure = parseCompiledBlock(block)
 
     // then
@@ -96,7 +105,10 @@ describe("compileMemoryBlock", () => {
     ])
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "persona-agent" })
+    const block = await compileMemoryBlock(repo, {
+      agentId: "persona-agent",
+      project: ["system/persona.md"],
+    })
     const structure = parseCompiledBlock(block)
 
     // then

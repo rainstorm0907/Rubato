@@ -60,7 +60,7 @@ async function compactionFixture(): Promise<CompactionFixture> {
   roots.push(root)
   const cwd = join(root, "project")
   const env = { OMO_MEMORY_HOME: join(root, "memory") }
-  const settings = memorySettings()
+  const settings = memorySettings({ project: ["system/persona.md"] })
   const identity = resolveMemoryIdentity(settings.agent, cwd, env)
 
   // Memory content committed to the identity repo BEFORE the session binds.

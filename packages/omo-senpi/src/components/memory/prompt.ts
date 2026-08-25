@@ -3,6 +3,7 @@ import {
   GitMemoryRepo,
   MemoryBlockCache,
   markMemoryBlock,
+  normalizeProject,
   replaceMemoryBlock,
 } from "@oh-my-opencode/memory-core"
 
@@ -46,10 +47,10 @@ export interface MemoryPromptInjectionOptions {
     identity: string,
   ) => Promise<{ readonly sha: string } | undefined>
   /**
-   * Whether the compiled memory block rides in the system prompt for this identity.
-   * Defaults to true when absent, so hosts that never wire it keep the old behaviour.
+   * Whitelist of system/*.md paths to project for this identity.
+   * Absent or empty means metadata only — hosts that never wire it land on the safe default.
    */
-  readonly resolveProjection?: (identity: string) => boolean | undefined
+  readonly resolveProject?: (identity: string) => readonly string[] | undefined
 }
 
 /**
@@ -77,16 +78,16 @@ export function createMemoryPromptHandler(
     const repo = createRepo(context)
     const nudgeTurns = await options.resolveNudgeTurns?.(repo, session.id, context.identity)
     const soulNotice = await options.resolveSoulNotice?.(repo, session.id, context.identity)
-    const projection = options.resolveProjection?.(context.identity) !== false
+    const project = normalizeProject(options.resolveProject?.(context.identity))
     // The template stays a pure template id; the cache folds output-affecting options
-    // (projection) into its own variant, so callers cannot forget to encode one.
+    // (the project whitelist) into its own variant, so callers cannot forget to encode one.
     const block = await cache.compile(repo, `${MEMORY_PROMPT_TEMPLATE}:${context.identity}`, {
       agentId: context.identity,
-      projection,
+      project,
     })
-    // Pressure advises trimming system/ because it is expensive every turn. With projection off
-    // it is not in the prompt at all, so the advice would be noise about a cost nobody pays.
-    const pressureBlock = projection
+    // Pressure advises trimming system/ because it is expensive every turn. With an empty
+    // whitelist it is not in the prompt at all, so the advice would be noise about a cost nobody pays.
+    const pressureBlock = project.length > 0
       ? await addMemoryPressureMetadata(
         block,
         repo,

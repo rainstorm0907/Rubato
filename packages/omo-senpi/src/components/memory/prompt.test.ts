@@ -104,7 +104,11 @@ async function dispatchEvent(
 }
 
 function boundHandler(repo: CountingRepo, context: MemoryIdentityContext) {
-  return createMemoryPromptHandler({ resolveContext: () => context, createRepo: () => repo })
+  return createMemoryPromptHandler({
+    resolveContext: () => context,
+    createRepo: () => repo,
+    resolveProject: () => ["system/persona.md"],
+  })
 }
 
 describe("MEMORY_PROMPT_TEMPLATE", () => {
@@ -264,6 +268,7 @@ describe("createMemoryPromptHandler", () => {
       resolveContext: () => context,
       createRepo: () => repo,
       resolveCompileWarnTokens: () => 30_000,
+      resolveProject: () => ["system/persona.md"],
     }))
 
     // when
@@ -299,6 +304,7 @@ describe("createMemoryPromptHandler", () => {
       resolveContext: () => context,
       createRepo: () => repo,
       resolveCompileWarnTokens: () => advisory,
+      resolveProject: () => ["system/persona.md"],
     }))
 
     // when
@@ -462,7 +468,7 @@ describe("createMemoryPromptHandler", () => {
     expect(second?.systemPrompt).toContain("BASE PROMPT")
   }, 30_000)
 
-  test("#given projection disabled #when before_agent_start dispatches #then the sentinel block carries metadata only and no persona body", async () => {
+  test("#given an empty project whitelist #when before_agent_start dispatches #then the sentinel block carries metadata only and no persona body", async () => {
     // given
     const { repo, context } = await fixture("PERSONA_BODY_SENTINEL")
     const pi = new FakeExtensionAPI()
@@ -471,7 +477,7 @@ describe("createMemoryPromptHandler", () => {
       createMemoryPromptHandler({
         resolveContext: () => context,
         createRepo: () => repo,
-        resolveProjection: () => false,
+        resolveProject: () => [],
       }),
     )
 
@@ -488,9 +494,9 @@ describe("createMemoryPromptHandler", () => {
     expect(prompt).not.toContain("Reminder:")
   }, 30_000)
 
-  test("#given projection disabled on a repository over the pressure advisory #when dispatched #then no pressure line is emitted", async () => {
-    // given: pressure advises trimming system/ because it is expensive every turn; with projection
-    // off that cost is not paid, so the advice would point at a bill nobody receives.
+  test("#given an empty whitelist on a repository over the pressure advisory #when dispatched #then no pressure line is emitted", async () => {
+    // given: pressure advises trimming system/ because it is expensive every turn; with nothing
+    // projected that cost is not paid, so the advice would point at a bill nobody receives.
     const warnTokens = 100
     const { repo, context } = await fixtureAtSystemTokens(Math.ceil(warnTokens * MEMORY_PRESSURE_SOFT_RATIO) + 10)
     const pi = new FakeExtensionAPI()
@@ -500,7 +506,7 @@ describe("createMemoryPromptHandler", () => {
         resolveContext: () => context,
         createRepo: () => repo,
         resolveCompileWarnTokens: () => warnTokens,
-        resolveProjection: () => false,
+        resolveProject: () => [],
       }),
     )
 
@@ -511,24 +517,24 @@ describe("createMemoryPromptHandler", () => {
     expect(result?.systemPrompt ?? "").not.toContain(MEMORY_PRESSURE_METADATA_TOKEN)
   }, 30_000)
 
-  test("#given projection toggled between runs #when dispatched twice #then the cache does not serve the other variant", async () => {
-    // given: one cache instance, one identity, one HEAD - only the flag differs, so a cache key
+  test("#given the project whitelist changed between runs #when dispatched twice #then the cache does not serve the other variant", async () => {
+    // given: one cache instance, one identity, one HEAD - only the whitelist differs, so a cache key
     // that ignored it would hand the second run the first run's block.
     const { repo, context } = await fixture("PERSONA_BODY_SENTINEL")
-    let projection = true
+    let project: readonly string[] = ["system/persona.md"]
     const handler = createMemoryPromptHandler({
       resolveContext: () => context,
       createRepo: () => repo,
-      resolveProjection: () => projection,
+      resolveProject: () => project,
     })
     const pi = new FakeExtensionAPI()
     pi.on("before_agent_start", handler)
 
     // when
     const on = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-1", 2))
-    projection = false
+    project = []
     const off = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-2", 2))
-    projection = true
+    project = ["system/persona.md"]
     const backOn = await dispatchEvent(pi, beforeAgentStart("BASE PROMPT"), eventContext("session-3", 2))
 
     // then

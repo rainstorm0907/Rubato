@@ -1,7 +1,6 @@
 import type { GitMemoryRepo } from "../git"
 import { parseMemoryFile } from "../memfs/frontmatter"
 import {
-  renderExternalProjection,
   renderSystemTree,
   type CompiledSystemFile,
 } from "./render"
@@ -14,16 +13,28 @@ const REMINDER =
 export interface CompileMemoryBlockOptions {
   agentId: string
   /**
-   * Project memory file contents into the system prompt. Default true.
-   *
-   * When false the compiled block is metadata only: no reminder, no <self>,
-   * no <memory>, no <external_projection>. The repository is untouched and the
-   * memory tools still read and write it — this governs what rides in the
-   * prompt every turn, not what the agent can reach. Deployments that retrieve
-   * memory on demand (msearch) pay ~30KB per turn for a projection they do not
-   * read; this turns that off without disabling the component.
+   * Whitelist of `system/*.md` paths to inline into the system prompt.
+   * Empty or omitted means nothing from the memory repository is projected —
+   * metadata only. Non-system paths, skills, and unlisted system files stay
+   * reachable through the memory tools and are never listed as a names-only
+   * tree. Adding a future `system/soul.md` is a config change, not a code change.
    */
-  projection?: boolean
+  project?: readonly string[]
+}
+
+export function normalizeProject(project: readonly string[] | undefined): string[] {
+  if (project === undefined || project.length === 0) return []
+  const out = new Set<string>()
+  for (const raw of project) {
+    const path = raw.trim().replace(/^\.?\//, "")
+    if (!isProjectableSystemPath(path)) continue
+    out.add(path)
+  }
+  return [...out].sort()
+}
+
+export function isProjectableSystemPath(path: string): boolean {
+  return path.startsWith("system/") && path.endsWith(".md") && !path.includes("..") && !path.includes("\0")
 }
 
 export async function compileMemoryBlock(
@@ -38,19 +49,22 @@ export async function compileMemoryBlockAtRevision(
   revision: string | null,
   options: CompileMemoryBlockOptions,
 ): Promise<string> {
-  if (options.projection === false) return renderMetadata(options)
+  const project = normalizeProject(options.project)
+  if (project.length === 0) return renderMetadata(options)
   const paths = revision ? await repo.lsTree(revision) : []
-  const persona = revision && paths.includes(PERSONA_PATH)
+  const available = new Set(paths)
+  const listed = project.filter((path) => available.has(path))
+  const persona = revision && listed.includes(PERSONA_PATH)
     ? await readSystemFile(repo, revision, PERSONA_PATH)
     : undefined
-  const identity = revision && paths.includes(IDENTITY_PATH)
+  const identity = revision && listed.includes(IDENTITY_PATH)
     ? await readSystemFile(repo, revision, IDENTITY_PATH)
     : undefined
+  const otherListed = listed.filter((path) => path !== PERSONA_PATH && path !== IDENTITY_PATH)
   const systemFiles = revision
-    ? await readSystemFiles(repo, revision, paths.filter(isOtherSystemMarkdown))
+    ? await readSystemFiles(repo, revision, otherListed)
     : []
-  const externalPaths = paths.filter(isExternalPath)
-  const projection = renderProjection(persona, identity, systemFiles, externalPaths)
+  const projection = renderProjection(persona, identity, systemFiles)
   const metadata = renderMetadata(options)
   return [projection, metadata].filter((part) => part.length > 0).join("\n\n")
 }
@@ -86,9 +100,8 @@ function renderProjection(
   persona: CompiledSystemFile | undefined,
   identity: CompiledSystemFile | undefined,
   systemFiles: readonly CompiledSystemFile[],
-  externalPaths: readonly string[],
 ): string {
-  if (!persona && !identity && systemFiles.length === 0 && externalPaths.length === 0) return ""
+  if (!persona && !identity && systemFiles.length === 0) return ""
   const lines = [REMINDER]
   if (persona || identity) {
     lines.push("", "<self>")
@@ -106,21 +119,12 @@ function renderProjection(
     }
     lines.push("</self>")
   }
-  if (systemFiles.length > 0 || externalPaths.length > 0) {
+  if (systemFiles.length > 0) {
     lines.push("", "<memory>")
-    if (systemFiles.length > 0) lines.push(renderSystemTree(systemFiles))
-    if (externalPaths.length > 0) lines.push(renderExternalProjection(externalPaths))
+    lines.push(renderSystemTree(systemFiles))
     lines.push("</memory>")
   }
   return lines.join("\n")
-}
-
-function isOtherSystemMarkdown(path: string): boolean {
-  return path.startsWith("system/") && path !== PERSONA_PATH && path !== IDENTITY_PATH && path.endsWith(".md")
-}
-
-function isExternalPath(path: string): boolean {
-  return !path.startsWith("system/") && !path.startsWith("skills/")
 }
 
 function renderMetadata(options: CompileMemoryBlockOptions): string {

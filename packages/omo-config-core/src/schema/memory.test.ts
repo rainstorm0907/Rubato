@@ -34,7 +34,7 @@ const FULL_DEFAULTS: OmoMemorySettings = {
   sync: { enabled: true },
   search: { enabled: true },
   compile_warn_tokens: 30000,
-  projection: true,
+  project: [],
   agents: {},
 }
 
@@ -80,7 +80,7 @@ describe("OmoMemorySettingsSchema defaults", () => {
       sync: { remote: "file:///tmp/memory-mirror.git", enabled: true },
       search: { enabled: false },
       compile_warn_tokens: 50000,
-      projection: false,
+      project: ["system/soul.md"],
       agents: {
         "backend-lead": {
           enabled: true,
@@ -187,6 +187,19 @@ describe("OmoMemorySettingsSchema defaults", () => {
 
     // then
     expect(parsed).toEqual(input)
+  })
+
+  test("#given a legacy projection boolean #when parsed #then it is dropped and the whitelist defaults empty", () => {
+    // given: machines that pull this change without editing omo.jsonc still had
+    // `projection: false`. That key is gone; dropping it lands them on the safe empty whitelist.
+    const input = { projection: false }
+
+    // when
+    const parsed = OmoMemorySettingsSchema.parse(input)
+
+    // then
+    expect(parsed.project).toEqual([])
+    expect("projection" in parsed).toBe(false)
   })
 
   test("#given unknown keys inside the memory block #when parsed #then the strict schema rejects them", () => {

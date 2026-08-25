@@ -1,8 +1,8 @@
 // /doctor — deterministic memory health checks plus the skill frontmatter repair.
 //
-// Checks: repository presence, frontmatter validity sweep, persona presence,
-// stale locks, orphaned reflection worktrees, and the compile-warn token
-// advisory. Output is read-only and never enters model context.
+// Checks: repository presence, frontmatter validity sweep, stale locks,
+// orphaned reflection worktrees, and the compile-warn token advisory.
+// Output is read-only and never enters model context.
 
 import type { SenpiExtensionAPI } from "../../../extension/types"
 import {
@@ -11,7 +11,6 @@ import {
   checkLocks,
   checkRepository,
   checkReflectionHealth,
-  checkSoulSeed,
   checkTokens,
   checkWorktrees,
   type CheckLevel,
@@ -79,7 +78,6 @@ export function registerDoctorCommand(pi: SenpiExtensionAPI, deps: MemoryCommand
         const warnTokens = deps.loadSettings().settings.compile_warn_tokens
         checks.push(
           ...(await checkFrontmatter(repoDir)),
-          await checkSoulSeed(repoDir),
           await checkLocks(deps, identity.identityPaths.locks),
           await checkWorktrees(deps, identity),
           await checkAbandonedRuns(identity.identityPaths.reflection),

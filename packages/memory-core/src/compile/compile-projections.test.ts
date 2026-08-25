@@ -13,7 +13,7 @@ describe("compileMemoryBlock", () => {
     await writeFile(join(dir, "system/persona.md"), memory("PERSONA", "DIRTY_BODY_SENTINEL\n"))
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "persona-agent" })
+    const block = await compileMemoryBlock(repo, { agentId: "persona-agent", project: ["system/persona.md"] })
 
     // then
     expect(block).toContain("COMMITTED_BODY_SENTINEL")
@@ -30,13 +30,14 @@ describe("compileMemoryBlock", () => {
     }
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "binary-agent" })
+    const block = await compileMemoryBlock(repo, { agentId: "binary-agent", project: ["system/persona.md"] })
     const structure = parseCompiledBlock(block)
 
-    // then
-    expect(structure.sections).toEqual(["memory", "memory_metadata"])
-    expect(structure.memoryOpenTags).toEqual(["external_projection"])
-    expect(block).toContain("logo.png")
+    // then: binaries and other non-system paths never ride in the prompt, even as names.
+    expect(structure.sections).toEqual(["memory_metadata"])
+    expect(structure.memoryOpenTags).toEqual([])
+    expect(block).not.toContain("logo.png")
+    expect(block).not.toContain("<external_projection>")
     expect(block).not.toContain("BINARY_BODY_SENTINEL")
   })
 
@@ -48,7 +49,10 @@ describe("compileMemoryBlock", () => {
     ])
 
     // when
-    const block = await compileMemoryBlock(repo, { agentId: "skip-agent" })
+    const block = await compileMemoryBlock(repo, {
+      agentId: "skip-agent",
+      project: ["system/persona.md", "system/broken.md"],
+    })
     const structure = parseCompiledBlock(block)
 
     // then

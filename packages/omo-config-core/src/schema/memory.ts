@@ -152,7 +152,16 @@ export const OmoMemoryWriteNoticeLayerSchema = z.object({
 // Per-agent overrides (layer-shaped)
 // ---------------------------------------------------------------------------
 
-export const OmoMemoryAgentOverridesSchema = z.object({
+function dropLegacyProjection(value: unknown): unknown {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value
+  if (!("projection" in value)) return value
+  const { projection: _dropped, ...rest } = value as Record<string, unknown>
+  return rest
+}
+
+export const OmoMemoryAgentOverridesSchema = z.preprocess(
+  dropLegacyProjection,
+  z.object({
   enabled: z.boolean().optional(),
   agent: z.string().min(1).optional(),
   reflection: OmoMemoryReflectionLayerSchema.optional(),
@@ -165,14 +174,17 @@ export const OmoMemoryAgentOverridesSchema = z.object({
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
-  projection: z.boolean().optional(),
-}).strict()
+  project: z.array(z.string().min(1)).optional(),
+}).strict(),
+)
 
 // ---------------------------------------------------------------------------
 // Root settings schema
 // ---------------------------------------------------------------------------
 
-export const OmoMemorySettingsSchema = z.object({
+export const OmoMemorySettingsSchema = z.preprocess(
+  dropLegacyProjection,
+  z.object({
   enabled: z.boolean().default(true),
   agent: z.string().min(1).default("auto"),
   // "direct" registers the memory tools as always-on ToolDefinitions; "search" opts in to the
@@ -202,15 +214,18 @@ export const OmoMemorySettingsSchema = z.object({
   sync: OmoMemorySyncSchema.default({ enabled: true }),
   search: OmoMemorySearchSchema.default({ enabled: true }),
   compile_warn_tokens: z.number().int().positive().default(30000),
-  // Project committed memory into the system prompt every turn. Turning this off leaves the
-  // repository, the memory tools, and every slash command intact; only the compiled block stops
-  // riding in the prompt, so memory is reached on demand (for example through an external index)
-  // instead of costing its full size on every request.
-  projection: z.boolean().default(true),
+  // Whitelist of system/*.md paths inlined into the system prompt every turn. Empty (the default)
+  // projects nothing: the repository, the memory tools, and every slash command stay intact, and
+  // memory is reached on demand. Listing a path (for example system/soul.md) is a config change,
+  // not a code change. Non-system paths are never projected.
+  project: z.array(z.string().min(1)).default([]),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).default({}),
-}).strict()
+}).strict(),
+)
 
-export const OmoMemorySettingsLayerSchema = z.object({
+export const OmoMemorySettingsLayerSchema = z.preprocess(
+  dropLegacyProjection,
+  z.object({
   enabled: z.boolean().optional(),
   agent: z.string().min(1).optional(),
   tool_exposure: z.enum(["direct", "search"]).optional(),
@@ -224,9 +239,10 @@ export const OmoMemorySettingsLayerSchema = z.object({
   sync: OmoMemorySyncLayerSchema.optional(),
   search: OmoMemorySearchLayerSchema.optional(),
   compile_warn_tokens: z.number().int().positive().optional(),
-  projection: z.boolean().optional(),
+  project: z.array(z.string().min(1)).optional(),
   agents: z.record(z.string(), OmoMemoryAgentOverridesSchema).optional(),
-}).strict()
+}).strict(),
+)
 
 // ---------------------------------------------------------------------------
 // Inferred types
