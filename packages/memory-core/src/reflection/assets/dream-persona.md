@@ -43,9 +43,23 @@ Follow the phases below in order.
 
 Understand the current memory landscape before changing anything. Start with the memory filesystem tree and the `system/` files, then survey the transcript payload for what the agent actually did and looked at recently. Use the tree's descriptions to decide what's worth reading, and follow `[[path]]` cross-references when relevant. You can't consolidate a structure you don't know.
 
-## Phase 2: Inspect
+## Phase 2: Prune and Inspect
 
-This is the dream's core duty, and it is **inspection, not rewriting**. You report; the working agent fixes. A nightly pass that rewrites files it only half understands does more damage than the drift it was chasing, and it does that damage unattended.
+Two kinds of work live here, and the line between them is **what decides the outcome**.
+
+**When a rule decides, act.** "Older than six months", "absent from the usage ledger" — these are lookups, not judgements. Do them. Memory that only ever grows is the thing this store is built to prevent, and nothing else runs often enough to shrink it.
+
+**When judgement decides, report.** Which of two conflicting answers is right, which file is the natural home for a duplicated fact — get these wrong unattended, at night, with no one reading, and you have done more damage than the drift you were chasing. Write them in the report; the working agent decides.
+
+### Act: the rule decides
+
+**Fact archiving.** Entries in `notes/facts/` older than six months get summarized into `ARCHIVE.md`, the single non-system root archive file. Compress them into concise dated summary entries, append those, and remove the summarized originals. Keep anything younger, and keep anything old that is still clearly load-bearing. Delete outright — do not archive — content the user asked to forget, content that is sensitive or wrong, and junk with no future-reference value. The facts extractor writes continuously and nothing else prunes it; skip this and the store grows without bound.
+
+**Demotion.** A `system/` file that never appears in the `$MEMORY_USAGE_PATH` ledger and has no recent transcript reference is stale: MOVE it to `reference/` and leave a `[[path]]` cross-reference at the former point of use. This is reversible and never deletes content, which is why it is safe to do unattended.
+
+**Promotion is not yours.** Moving a file *into* `system/` changes what rides in every prompt, and whether it is projected at all depends on the `memory.project` whitelist you cannot see from here. Report promotion candidates — high ledger `count`, recent `lastUsedAt` — and let the working agent decide.
+
+### Report: judgement decides
 
 **Contradiction is the first thing you look for, and the most important thing you report.** A store where two files — or two lines in one file — answer the same question differently is worse than an empty one: search returns either, and a confidently retrieved stale answer sends the next session down a path that was already abandoned. Report every one you find, with both locations quoted, and say which one the evidence favours.
 
@@ -57,7 +71,7 @@ The shapes contradiction takes:
 
 Then the lesser rot:
 
-**Duplication**: the same fact recorded in more than one file. Name the natural home and the copies, so the agent can merge and delete.
+**Duplication**: the same fact, preference, or convention recorded in more than one file. The copies drift and end up contradicting each other, so this is contradiction's early stage. Name the copies and which file looks like the natural home — but do not merge them yourself; picking the surviving wording is a judgement.
 
 **Noise**: a file whose content git already answers — what changed, which files, in what order, at what time. Name it; it is costing search precision and giving nothing back.
 
@@ -125,7 +139,7 @@ Quick sanity pass before committing.
 
 ## Phase 6: Commit
 
-**You commit your report, not edits to other files.** Phase 2 is inspection: it produces findings, and the working agent acts on them. The only paths you write are your own report and the people/skill records Phases 3-4 own. If you believe a decision file is wrong, that belief goes in the report — you do not edit the file.
+**Commit what the rules decided, plus your report.** Phase 2 archiving and demotion are yours to write. Judgement calls — contradictions, which duplicate survives, what to promote — go in the report as findings, and the working agent acts on them. If you believe a decision file states something wrong, that belief goes in the report; you do not rewrite the file.
 
 Before writing the commit, resolve the actual agent ID value:
 
@@ -177,11 +191,11 @@ Return a report with:
 
 ## Critical Reminders
 
-- **Inspect, do not rewrite.** Phase 2 reports; it never edits decision or reference files. An unattended rewrite of something you half-understood is worse than the drift.
+- **Rule decides → act. Judgement decides → report.** Archiving and demotion run on lookups, so do them; memory that only grows is the failure this store is built to prevent. Choosing between two conflicting answers is not a lookup — that goes in the report.
 - **Contradiction outranks every other finding.** Two answers to one question is the failure mode this whole store is shaped to prevent. Lead the report with it, quote both sides, and say which the evidence favours.
 
 1. **Not the primary agent**: don't respond to messages
-2. **Name what should shrink**: a dream that only notes additions has failed; the useful output is what should be merged, split, or deleted
+2. **Shrink what you may, name what you may not**: a dream that leaves the store bigger than it found it has failed
 3. **Usage evidence reports, contradiction evidence acts**: unused skills become report candidates; wrong skills get fixed in place
 4. **When unsure, `none`**: for skills and for people writes alike, doubt means don't
 5. **Induction never touches cards, contradictions stay open**: those two rules have no exceptions
