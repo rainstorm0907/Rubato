@@ -47,7 +47,7 @@ test("broker url stays on the rubato loopback relay", () => {
 test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(catalogId({ provider: "anthropic", id: "claude-opus-5" }), "anthropic/claude-opus-5");
   const grouped = groupCatalog(FALLBACK_CATALOG);
-  assert.deepEqual(Object.keys(grouped).sort(), ["anthropic", "openai-codex", "xai"]);
+  assert.deepEqual(Object.keys(grouped).sort(), ["anthropic", "kiro", "openai-codex", "xai"]);
   assert.ok(grouped.anthropic.some((model) => model.id === "claude-opus-5"));
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").name, "Opus 5");
   assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol-fast").name, "GPT-5.6 Sol Fast");
@@ -104,6 +104,21 @@ test("an unknown model falls back to text instead of claiming vision", () => {
 
 // 앞 테스트는 FALLBACK_CATALOG 만 돌아서 Antigravity 를 구조적으로 비켜갔다.
 // 그래서 모달리티가 깎인 채 초록으로 나갔다 — 라이브 카탈로그에만 있는 id 로 막는다.
+// kiro 는 pi-ai 가 모르는 prefix 라 둘 다 손으로 넣어 준 값이다.
+// 이미지를 잃으면 read 도구가 첨부를 조용히 버리고, 1M 을 잃으면 kiro.rs 가
+// usage 를 pct × window 로 역산할 때 5배 축소된다.
+test("kiro models keep vision and the 1M window the relay assumes", () => {
+  const grouped = groupCatalog(FALLBACK_CATALOG);
+  const opus = grouped.kiro.find((model) => model.id === "claude-opus-5");
+  const sol = grouped.kiro.find((model) => model.id === "gpt-5.6-sol");
+  assert.ok(opus.input.includes("image"), "kiro opus-5 lost the image modality");
+  assert.ok(sol.input.includes("image"), "kiro sol lost the image modality");
+  assert.equal(opus.contextWindow, 1_000_000);
+  assert.equal(sol.contextWindow, 272_000);
+  // 캐시는 Kiro 에 없고 credit 과금이다. anthropic 전용 필드가 새면 안 된다.
+  assert.equal(opus.cacheRetention, undefined);
+});
+
 test("antigravity gemini keeps vision even though pi-ai does not know the prefix", () => {
   const grouped = groupCatalog([
     { id: "google-antigravity/gemini-3.1-pro", name: "Gemini 3.1 Pro" },

@@ -14,6 +14,10 @@ import { CACHE_RETENTION } from "./defaults.mjs";
 export const DEFAULT_BROKER_URL = "http://127.0.0.1:8788";
 
 const CONTEXT_WINDOW_OVERRIDES = Object.freeze({
+  // Kiro 는 usage 를 퍼센트로만 주고 kiro.rs 가 `pct × window / 100` 으로 토큰을
+  // 역산한다. 1M 모델을 200K 로 놓치면 usage 가 5배 축소돼 컨텍스트 진행바와
+  // 자동 압축 임계값이 전부 어긋난다 (kiro.rs converter.rs:301-304 의 경고).
+  "claude-opus-5": 1_000_000,
   "gpt-5.6-sol": 272_000,
   "gpt-5.6-sol-fast": 272_000,
   "gpt-5.6-terra": 272_000,
@@ -34,6 +38,8 @@ export const FALLBACK_CATALOG = Object.freeze([
   { id: "openai-codex/gpt-5.6-terra-fast", name: "GPT-5.6 Terra Fast" },
   { id: "openai-codex/gpt-5.6-luna", name: "GPT-5.6 Luna" },
   { id: "openai-codex/gpt-5.6-luna-fast", name: "GPT-5.6 Luna Fast" },
+  { id: "kiro/claude-opus-5", name: "Opus 5 (Kiro)" },
+  { id: "kiro/gpt-5.6-sol", name: "GPT-5.6 Sol (Kiro)" },
 ]);
 
 const FALLBACK_MODEL_NAMES = new Map(FALLBACK_CATALOG.map(({ id, name }) => [id, name]));
@@ -70,6 +76,9 @@ export function splitCatalogId(id) {
 // 새 프로바이더를 붙일 때 pi-ai 가 그 prefix 를 모르면 여기에 같이 적어라.
 const PROVIDER_INPUT_FALLBACK = Object.freeze({
   "google-antigravity": Object.freeze(["text", "image"]),
+  // kiro 도 우리가 지어낸 prefix 다. 상류 Kiro 는 이미지를 받고
+  // kiro.rs 는 입력 이미지를 리사이즈해 올려보낸다(README “图像处理”).
+  kiro: Object.freeze(["text", "image"]),
 });
 
 export function catalogLimits(provider, id) {

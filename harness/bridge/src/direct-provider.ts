@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { readFile, readlink, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { createModels } from "@earendil-works/pi-ai";
+import { createModels, createProvider } from "@earendil-works/pi-ai";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
@@ -19,17 +21,111 @@ const DEFAULT_XAI_AUTH_PATH = join(homedir(), ".senpi", "agent", "auth.json");
 
 export function isDirectModel(model: string): boolean {
   return model.startsWith("xai/") || model.startsWith("anthropic/") || model.startsWith("claude-")
-    || model.startsWith("openai-codex/") || model.startsWith("google-antigravity/");
+    || model.startsWith("openai-codex/") || model.startsWith("google-antigravity/")
+    || model.startsWith("kiro/");
 }
 
-type DirectProvider = "xai" | "anthropic" | "openai-codex";
+type DirectProvider = "xai" | "anthropic" | "openai-codex" | "kiro";
 
 export function providerModel(model: string): { provider: DirectProvider; modelId: string } {
   if (model.startsWith("xai/")) return { provider: "xai", modelId: model.slice(4) };
   if (model.startsWith("anthropic/")) return { provider: "anthropic", modelId: model.slice("anthropic/".length) };
   if (model.startsWith("claude-")) return { provider: "anthropic", modelId: model };
   if (model.startsWith("openai-codex/")) return { provider: "openai-codex", modelId: model.slice("openai-codex/".length) };
+  if (model.startsWith("kiro/")) return { provider: "kiro", modelId: model.slice("kiro/".length) };
   throw new Error(`not a direct provider model: ${model}`);
+}
+
+// Kiro 구독은 kiro.rs 사이드카가 Anthropic Messages 로 번역해 준다. 그래서
+// 새 트랜스포트를 짜지 않고 같은 anthropic-messages API 를 loopback 으로 돌린다.
+//
+// 인증은 Anthropic OAuth 가 아니라 kiro.rs 가 발급한 로컬 API 키다. 그 키는
+// 우리 것이 아니라 사용자 파일에 있으므로 여기서 만들지 않는다.
+export const DEFAULT_KIRO_BASE_URL = "http://127.0.0.1:8990";
+
+export function kiroBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return (env.KIRO_BASE_URL ?? DEFAULT_KIRO_BASE_URL).replace(/\/$/, "");
+}
+
+// 키를 환경변수로만 받으면 사용자가 셔하금마다 export 해야 하고, 그러면
+// "내 기기에서만 도는 고침"이 된다. kiro-setup.sh 가 써 둔 config 를 직접 읽어
+// 한 번 설정하면 재기동 뒤에도 그대로 붙게 한다. 환경변수가 있으면 그쪽이 이긴다.
+const DEFAULT_KIRO_CONFIG_PATH = join(homedir(), ".rubato-pi", "kiro", "config.json");
+
+let cachedKiroKey: { path: string; key: string | undefined } | undefined;
+
+export function kiroApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env.KIRO_API_KEY) return env.KIRO_API_KEY;
+  const path = env.KIRO_CONFIG_PATH ?? DEFAULT_KIRO_CONFIG_PATH;
+  if (cachedKiroKey?.path === path) return cachedKiroKey.key;
+  let key: string | undefined;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (isObject(parsed)) key = asString(parsed.apiKey);
+  } catch {
+    // 설정이 없으면 kiro 를 안 쓰는 사용자다. 다른 프로바이더를 막지 않는다.
+  }
+  cachedKiroKey = { path, key };
+  return key;
+}
+
+// Kiro 가 여는 모델 중 우리가 쓰는 둘. 컨텍스트 창은 kiro.rs 가 usage 를 역산할 때
+// 쓰는 값과 같아야 한다 — gpt 계열 272K, opus-5 1M (kiro.rs converter.rs:315/323).
+// 두 값은 broker.mjs 의 CONTEXT_WINDOW_OVERRIDES 와 함께 고쳐라.
+const KIRO_MODELS = [
+  {
+    id: "claude-opus-5",
+    name: "Opus 5 (Kiro)",
+    reasoning: true,
+    input: ["text", "image"] as const,
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+  },
+  {
+    id: "gpt-5.6-sol",
+    name: "GPT-5.6 Sol (Kiro)",
+    reasoning: true,
+    input: ["text", "image"] as const,
+    contextWindow: 272_000,
+    maxTokens: 64_000,
+  },
+];
+
+// 모델 스펙은 provider/baseUrl 을 스스로 들고 있다. anthropicProvider() 를
+// spread 로 덮으면 그 안의 모델이 여전히 anthropic 을 가리켜
+// "Unknown provider: anthropic" 으로 죽는다 — 프로바이더를 새로 만든다.
+function kiroProvider(env: NodeJS.ProcessEnv = process.env) {
+  const baseUrl = kiroBaseUrl(env);
+  return createProvider({
+    id: "kiro",
+    name: "Kiro",
+    baseUrl,
+    auth: { apiKey: kiroApiKeyAuth() },
+    models: KIRO_MODELS.map((model) => ({
+      ...model,
+      api: "anthropic-messages" as const,
+      provider: "kiro",
+      baseUrl,
+      input: [...model.input],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      compat: { supportsTemperature: false, supportsStrictTools: true },
+    })),
+    api: anthropicMessagesApi(),
+  });
+}
+
+// kiro.rs 는 x-api-key 를 그대로 받는다. 로컬 루프백이라 OAuth 흐름이 없다.
+function kiroApiKeyAuth() {
+  return {
+    name: "Kiro (kiro.rs local)",
+    login: async () => {
+      throw new Error("kiro 는 harness/scripts/kiro-setup.sh 로 설정한다");
+    },
+    resolve: async ({ ctx }: { ctx: { env: (name: string) => Promise<string | undefined> } }) => {
+      const key = await ctx.env("KIRO_API_KEY");
+      return key ? { auth: { apiKey: key }, source: "KIRO_API_KEY" } : undefined;
+    },
+  };
 }
 
 // xai 와 openai-codex 는 같은 senpi auth.json 에서 OAuth 를 읽는다(각각 "xai",
@@ -52,6 +148,8 @@ export const DIRECT_CATALOG = [
   { id: "openai-codex/gpt-5.6-terra-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "google-antigravity/gemini-3.7-flash", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "google-antigravity/gemini-3.1-pro", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
+  { id: "kiro/claude-opus-5", type: "language", owned_by: "kiro", tags: ["tool-use", "reasoning"] },
+  { id: "kiro/gpt-5.6-sol", type: "language", owned_by: "kiro", tags: ["tool-use", "reasoning"] },
 ];
 
 export function claudeCodeUserAgentFromTarget(target: string): string {
@@ -331,8 +429,12 @@ export async function* directProviderToFxSse(args: {
     return;
   }
   const selected = providerModel(args.model);
+  // kiro 는 로컬 사이드카의 API 키로 붙는다. Claude setup-token 을 태우면
+  // 엉뚱한 자격증명이 나가므로 분기를 anthropic 과 갈라 둔다.
   const authContext = selected.provider === "anthropic"
     ? { env: async (name: string) => name === "ANTHROPIC_OAUTH_TOKEN" ? await readClaudeSetupToken() : undefined, fileExists: async () => false }
+    : selected.provider === "kiro"
+    ? { env: async (name: string) => name === "KIRO_API_KEY" ? kiroApiKey(args.env) : undefined, fileExists: async () => false }
     : undefined;
   const models = createModels({
     ...(usesSenpiCredentials(selected.provider) ? { credentials: new SenpiCredentialStore(args.xaiAuthPath ?? process.env.SENPI_AUTH_PATH ?? DEFAULT_XAI_AUTH_PATH) } : {}),
@@ -341,12 +443,15 @@ export async function* directProviderToFxSse(args: {
   models.setProvider(
     selected.provider === "xai" ? xaiProvider()
     : selected.provider === "openai-codex" ? openaiCodexProvider()
+    : selected.provider === "kiro" ? kiroProvider(args.env)
     : anthropicProvider(),
   );
   const model = models.getModel(selected.provider, selected.modelId);
   if (!model) throw new Error(`unknown ${selected.provider} model: ${args.model}`);
   const requestModel = model.upstreamModelId ? { ...model, id: model.upstreamModelId } : model;
-  const context = fxPromptToPiContext(args.body.prompt, args.body.tools, selected.provider, selected.modelId);
+  // kiro 는 Anthropic Messages 형식으로 번역되므로 프롬프트 변환도 anthropic 규칙을 따른다.
+  const promptProvider = selected.provider === "kiro" ? "anthropic" : selected.provider;
+  const context = fxPromptToPiContext(args.body.prompt, args.body.tools, promptProvider, selected.modelId);
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;
   const stream = models.streamSimple(requestModel, context, {
     fetch: args.upstreamFetch ?? upstreamFetch,

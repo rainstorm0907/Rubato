@@ -11,6 +11,7 @@ fx
   → 127.0.0.1:8788 fx-v3-bridge
        ├─ xai/*       → senpi-ai xAI transport → api.x.ai
        ├─ anthropic/* → senpi-ai Anthropic Messages transport → Anthropic
+       ├─ kiro/*      → Anthropic Messages transport → kiro.rs 127.0.0.1:8990 → AWS Kiro
        └─ 나머지      → OpenCodex 127.0.0.1:10100
                         ├─ Codex
                         └─ Cursor (보류)
@@ -26,6 +27,7 @@ fx
 | Claude | `anthropic/claude-opus-5` | Anthropic Messages + Claude setup-token | PASS | cold `cacheWrite=45037`, 후속 `cacheRead=45037` | canary |
 | Codex | `gpt-5.6-*` | OpenCodex | Responses 변환 및 실제 fx 응답 PASS | 53KB prefix T2–T6 모두 `cacheRead=13056/13879` | 유지 |
 | Cursor | `cursor/*` | OpenCodex Cursor Connect | 단일 턴 기준선만 있음 | 멀티턴 캐시 실패/미검증 | 보류 |
+| Kiro | `kiro/claude-opus-5`, `kiro/gpt-5.6-sol` | kiro.rs 사이드카 + Anthropic Messages | 단일 턴 텍스트·이미지 PASS, tool loop 미검증 | 캐시 없음(상류가 필드를 안 준다) | 실험 |
 
 Grok과 Claude도 평가 계약의 `주력 채택` 조건을 전부 통과한 것은 아니다. 현재 live evidence는 실제 fx tool loop와 cache telemetry까지다. 6턴·2 tool call·abort·bridge 재시작·OAuth refresh를 모두 묶은 soak가 남아 있어 판정은 `canary`다.
 
@@ -34,6 +36,72 @@ Codex는 OpenCodex 경로를 유지한다. 최초 측정에서 캐시가 간헐�
 Cursor는 기본 경로로 배치하지 않는다. 공식 Cursor CLI의 resume/cache 기준선은 있지만 OpenCodex Cursor route가 같은 수준으로 prefix cache를 보존한다는 증거가 없으며 이전 멀티턴 측정에서 정상 판정을 받지 못했다.
 
 공개 조사에서도 CLIProxyAPI + `cliproxy-cursor-plugin`과 `oh-my-pi`에는 Cursor prefix-cache hit 수치가 없었다. 현재 가장 가까운 증거는 `senpi` native Cursor transport의 2턴 probe(T1 `cacheWrite=21354`, T2 `cacheRead=17575`)다. 이것도 n=2이고 OpenAI-compatible proxy가 아니므로 바로 채택하지 않는다. 다음 세션에는 cache usage가 없는 경로를 `0`이 아니라 `unavailable`로 기록하는 공통 계측부터 추가하고, 공식 Cursor CLI·현재 OpenCodex·senpi native 후보를 같은 53KB/6턴 fixture로 비교한다. 상세 근거와 필드는 `case-studies/2026-08-20-cursor-cache-public-evidence-and-next-steps.md`에 있다.
+
+## Kiro
+
+`kiro/*`는 `zyphrzero/kiro-rs` 컨테이너를 loopback 사이드카로 띄우고 그 앞에
+Anthropic Messages transport를 그대로 붙인다. 새 transport를 짜지 않는다 — kiro.rs가
+이미 Anthropic 호환 프록시다. kiro.rs 소스는 레포에 넣지 않는다(52k줄 Rust,
+업스트림이 활발하다). 자격증명은 `~/.rubato-pi/kiro`에만 둔다.
+
+키는 환경변수로 받지 않는다. 브리지가 `~/.rubato-pi/kiro/config.json`을 직접 읽는다 —
+셔하금마다 export 해야 하면 “내 기기에서만 도는 고침”이 된다. `KIRO_API_KEY` /
+`KIRO_BASE_URL`이 있으면 그쪽이 이긴다.
+
+### 설정 경로 셋
+
+```
+kiro-setup.sh                  # 이 기기의 Kiro IDE 토큰으로 붙는다
+kiro-setup.sh export [파일]    # 자격증명을 뽑는다(남에게 줄 때)
+kiro-setup.sh import <파일>    # 받은 파일로 붙는다 — 로그인 불필요
+```
+
+세 경로 모두 같은 정규화를 탄다(`normalize_credential`). 그래야 받는 기기에서
+`endpoint`나 `profileArn`이 빠져 아래 표의 실패로 떨어지지 않는다. `import`는
+Kiro IDE 도 `kiro-cli` 도 요구하지 않는다 — 빈 기기에서 파일 하나로 모델 19개와
+두 모델의 실응답까지 확인했다.
+
+자격증명 파일은 그 자체가 계정 접근권이다(refreshToken). 넘기면 회수 수단이
+비밀번호 변경뿐이고, 크레딧도 공유된다.
+
+공유 자체는 위험 신호가 아니다. `machineId` 는 export 에 실리지 않아 받는 기기가
+자기 것을 생성하고(`kiro/machine_id.rs`, 상류로 나가는 식별자다), 같은 망이면
+공인 IP 도 같다 — AWS 입장에선 한 사람이 기기 둘을 쓰는 모양이다. Kiro 는 IDE 와
+CLI 병행을 전제하므로 이 정도는 정상 범위다.
+
+`429 suspicious activity` 와 계정 단위 쿨다운(kiro.rs 기본 1800초)은 장소가 멀리 떨어진
+접속이 겹칠 때가 가깝다. 같은 집에서 돌리는 경우라면 실질 제약은 크레딧 공유다.
+
+지금까지의 evidence는 **단일 턴 텍스트와 이미지까지**다. 브리지 경유로
+`kiro/claude-opus-5`(`in=6790 out=7`)와 `kiro/gpt-5.6-sol`(`in=1596 out=11`)이 fx SSE로
+정상 종료했고, 64x64 빨간 PNG 를 붙인 요청에 둘 다 "Red" 를 돌려줘
+모달리티 배선이 살아 있음을 확인했다. tool loop, thinking effort, abort, 멀티턴은
+아직 측정하지 않았으므로 `canary`가 아니라 `실험`이다.
+
+이미지를 시험할 때는 **진짜 사진 크기를 쓴다**. 1x1·8x8 같은 생성 PNG 는 상류가
+`IMAGE_FORMAT_UNSUPPORTED` 로 거부해서, 배선이 멀지만 안 보이는 것처럼 오독하기 쉽다.
+kiro.rs 로그의 `image_count=1` 이 이미지 도달 여부를 가른다.
+
+캐시 열은 비워 두지 않고 "없음"으로 적는다. kiro.rs 주석이 실측을 밝힌다 — Kiro 상류
+`meteringEvent`는 credit 계량만 주고 `cache_creation` / `cache_read` 필드를 내려주지
+않는다(`src/anthropic/cache_metering.rs`). kiro.rs가 보고하는 캐시 수치는 중계층
+시뮬레이션이다. 다만 Kiro는 토큰이 아니라 credit 과금이라(관측: opus-5 `0.028`,
+sol `0.015` credit) 캐시 부재가 비용 손해로 이어지지 않는다. `broker.mjs`는
+`provider === "anthropic"`일 때만 `cacheRetention`을 붙이므로 `kiro`는 자동으로 빠진다.
+
+자격증명에서 두 값을 반드시 같이 줘야 한다. 하나만으로는 전부 실패한다.
+
+| endpoint | profileArn | 결과 |
+|---|---|---|
+| `ide` | 없음 | 400 `INVALID_MODEL_ID` |
+| `cli` | 없음 | 400 `profileArn is required` |
+| `cli` | 있음 | 400 `profileArn is required` (origin이 `KIRO_CLI`로 나간다) |
+| **`ide`** | **있음** | **성공** |
+
+Builder ID 계정은 `ListAvailableProfiles`가 403(`AWS Builder ID is not supported for this
+operation`)이라 kiro.rs가 ARN을 스스로 못 구한다. Kiro IDE가 실제로 200을 받는 값을
+그대로 쓴다. 계정 등급도 갈린다 — 무료(`KIRO FREE`)는 모델 9개뿐이고 `claude-opus-5`와
+`gpt-5.6-sol`이 아예 없다. 목록은 AWS `ListAvailableModels` 응답이라 설정으로 못 뚫는다.
 
 ## OpenCodex 유지와 교체 기준
 

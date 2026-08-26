@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# Kiro 구독을 rubato 에 붙인다.
+#
+# kiro.rs(Anthropic Messages 호환 프록시)를 사이드카로 띄우고, 자격증명을 그
+# 형식으로 옮긴다. kiro.rs 소스는 레포에 넣지 않는다 — 52k 줄 Rust 이고
+# 업스트림이 활발해서, 도커 이미지로 받는 쪽이 유지보수가 싸다.
+#
+# 사용법:
+#   kiro-setup.sh                      IDE 토큰으로 설정하고 사이드카를 띄운다
+#   kiro-setup.sh export [파일]        자격증명을 파일로 뽑는다(남에게 줄 때)
+#   kiro-setup.sh import <파일>        받은 파일로 설정하고 사이드카를 띄운다
+#
+# 자격증명은 레포 밖(기본 ~/.rubato-pi/kiro)에만 쓴다. 절대 커밋하지 마라.
+set -euo pipefail
+
+KIRO_IMAGE="${KIRO_IMAGE:-zyphrzero/kiro-rs:latest}"
+KIRO_PORT="${KIRO_PORT:-8990}"
+KIRO_DIR="${KIRO_DIR:-$HOME/.rubato-pi/kiro}"
+KIRO_CONTAINER="${KIRO_CONTAINER:-kiro-rs}"
+TOKEN_PATH="${KIRO_TOKEN_PATH:-$HOME/.aws/sso/cache/kiro-auth-token.json}"
+
+# Builder ID 계정은 ListAvailableProfiles 가 403 이라 kiro.rs 가 ARN 을 스스로
+# 구하지 못한다. Kiro IDE 가 실제로 200 을 받는 값과 같다.
+BUILDER_ID_PROFILE_ARN="arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX"
+SOCIAL_PROFILE_ARN="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+
+die() { printf 'kiro-setup: %s\n' "$1" >&2; exit 1; }
+info() { printf 'kiro-setup: %s\n' "$1"; }
+
+# IDE 토큰(또는 이미 있는 credentials.json)을 kiro.rs 형식 한 건으로 바꾼다.
+# 두 경로가 같은 규칙을 타야 "내 기기에서만 되는" 차이가 안 생긴다.
+normalize_credential() {
+  python3 - "$1" "$2" "$BUILDER_ID_PROFILE_ARN" "$SOCIAL_PROFILE_ARN" <<'PY'
+import json, sys, os
+src, out_path, builder_arn, social_arn = sys.argv[1:5]
+raw = json.load(open(src))
+
+# export 로 받은 파일은 이미 배열이다. IDE 토큰은 객체 하나다.
+d = raw[0] if isinstance(raw, list) and raw else raw
+if not isinstance(d, dict):
+    sys.exit("자격증명 형식을 알 수 없다")
+if not d.get("refreshToken"):
+    sys.exit("refreshToken 이 없다 — 잘못된 파일이다")
+
+method = (d.get("authMethod") or "").lower()
+provider = d.get("provider") or ("BuilderId" if method == "idc" else "Github")
+# 토큰에 진짜 ARN 이 있으면 그것이 최우선. 없으면 로그인 방식별 기본값.
+arn = d.get("profileArn") or (social_arn if method == "social" else builder_arn)
+
+cred = {
+    "id": 1,
+    "authMethod": "social" if method == "social" else "idc",
+    "provider": provider,
+    "profileArn": arn,
+    # endpoint=ide 여야 origin 이 AI_EDITOR 로 나간다. cli 로 두면 상류가
+    # "profileArn is required" 로 거부한다(같은 ARN 을 줘도).
+    "endpoint": "ide",
+    "region": d.get("region", "us-east-1"),
+    "refreshToken": d["refreshToken"],
+    "expiresAt": d.get("expiresAt", "1970-01-01T00:00:00Z"),
+    "priority": 0,
+}
+# accessToken 은 만료돼도 무방하다(refreshToken 으로 갱신된다). 있으면 첫 호출이 빠르다.
+if d.get("accessToken"):
+    cred["accessToken"] = d["accessToken"]
+for k in ("clientId", "clientSecret", "startUrl"):
+    if d.get(k):
+        cred[k] = d[k]
+
+with open(out_path, "w") as fh:
+    json.dump([cred], fh, indent=2)
+os.chmod(out_path, 0o600)
+print(f"  authMethod={cred['authMethod']} provider={cred['provider']} endpoint=ide")
+PY
+}
+
+# 사이드카를 띄우고 두 모델이 실제로 보이는지 확인한다.
+start_and_verify() {
+  local config="$KIRO_DIR/config.json"
+  if [ ! -f "$config" ]; then
+    local api_key
+    api_key="sk-kiro-local-$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    python3 - "$config" "$api_key" "$KIRO_PORT" <<'PY'
+import json, sys, os
+path, api_key, port = sys.argv[1], sys.argv[2], int(sys.argv[3])
+json.dump({
+    "host": "0.0.0.0",       # 컨테이너 내부. 아래 -p 로 loopback 에만 노출한다.
+    "port": port,
+    "apiKey": api_key,
+    "region": "us-east-1",
+    "tlsBackend": "rustls",
+    "defaultEndpoint": "ide",
+    "loadBalancingMode": "priority",
+}, open(path, "w"), indent=2)
+os.chmod(path, 0o600)
+PY
+    info "config.json 생성"
+  else
+    info "config.json 유지(기존 API 키 보존)"
+  fi
+
+  local api_key
+  api_key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["apiKey"])' "$config")"
+
+  info "이미지 확인: $KIRO_IMAGE"
+  docker pull "$KIRO_IMAGE" >/dev/null
+
+  docker rm -f "$KIRO_CONTAINER" >/dev/null 2>&1 || true
+  docker run -d --name "$KIRO_CONTAINER" --restart unless-stopped \
+    -p "127.0.0.1:${KIRO_PORT}:${KIRO_PORT}" \
+    -v "$KIRO_DIR:/app/config" \
+    "$KIRO_IMAGE" >/dev/null
+  info "컨테이너 기동: $KIRO_CONTAINER (127.0.0.1:$KIRO_PORT)"
+
+  # 토큰 갱신과 모델 캐시 예열에 몇 초 걸린다.
+  local i
+  for i in $(seq 1 30); do
+    if curl -sf -m 3 "http://127.0.0.1:${KIRO_PORT}/v1/models" -H "x-api-key: $api_key" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  local models
+  models="$(curl -sf -m 5 "http://127.0.0.1:${KIRO_PORT}/v1/models" -H "x-api-key: $api_key" 2>/dev/null || true)"
+  [ -n "$models" ] || die "kiro.rs 가 응답하지 않는다. docker logs $KIRO_CONTAINER 를 봐라."
+
+  printf '%s' "$models" | python3 -c '
+import json, sys
+ids = [m.get("id") or m.get("model_id") for m in json.load(sys.stdin).get("data", [])]
+print(f"kiro-setup: 모델 {len(ids)}개")
+missing = [w for w in ("claude-opus-5", "gpt-5.6-sol") if w not in ids]
+if missing:
+    print("kiro-setup: 없음 -> " + ", ".join(missing))
+    print("kiro-setup: 무료 등급이면 이 둘은 안 나온다. 유료 구독 계정이어야 한다.")
+    sys.exit(1)
+print("kiro-setup: claude-opus-5, gpt-5.6-sol 확인")
+'
+
+  cat <<EOF
+
+붙었다. rubato 를 다시 띄운다:  rubato restart
+
+모델 id 는 kiro/claude-opus-5 와 kiro/gpt-5.6-sol 이다.
+브리지가 ${KIRO_DIR}/config.json 에서 키를 직접 읽으므로 환경변수는 필요 없다.
+EOF
+}
+
+require_docker() {
+  command -v docker >/dev/null 2>&1 || die "docker 가 없다. OrbStack 이나 Docker Desktop 을 설치해라."
+  docker info >/dev/null 2>&1 || die "docker 데몬이 꺼져 있다. OrbStack/Docker Desktop 을 켜라."
+}
+
+case "${1:-setup}" in
+  export)
+    # 자격증명을 남에게 주기 위해 뽑는다. 받는 쪽은 로그인이 필요 없다.
+    OUT="${2:-$HOME/kiro-credentials.json}"
+    SRC="$KIRO_DIR/credentials.json"
+    [ -f "$SRC" ] || SRC="$TOKEN_PATH"
+    [ -f "$SRC" ] || die "내보낼 자격증명이 없다. 먼저 kiro-setup.sh 를 돌려라."
+
+    normalize_credential "$SRC" "$OUT" >/dev/null
+    chmod 600 "$OUT"
+
+    python3 - "$OUT" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))[0]
+print(f"kiro-setup: 내보냄 -> {sys.argv[1]}")
+print(f"  authMethod={c['authMethod']} provider={c['provider']}")
+PY
+    cat <<EOF
+
+이 파일 하나면 받는 쪽은 로그인 없이 붙는다:
+
+  kiro-setup.sh import kiro-credentials.json
+
+경고 — 이 파일은 계정 접근권 그 자체다(refreshToken).
+  · 받은 사람은 네 Kiro 계정을 그대로 쓸 수 있다. 회수하려면 비밀번호를 바꿔야 한다.
+  · 크레딧은 공유된다. 한쪽이 쓰면 다른 쪽 몫이 준다 — 이게 실질 제약이다.
+  · 메신저나 메일로 보내면 그 서버에도 남는다. 전달 뒤 원본을 지워라:
+      rm $OUT
+
+같은 집·같은 망에서 기기만 다른 경우라면 계정 차단을 걱정할 일은 거의 없다.
+machineId 는 이 파일에 실리지 않아 받는 기기가 자기 것을 따로 만든다.
+EOF
+    ;;
+
+  import)
+    # 받은 자격증명으로 붙는다. IDE 도 kiro-cli 도 필요 없다.
+    IN="${2:-}"
+    [ -n "$IN" ] || die "받은 파일 경로를 줘라: kiro-setup.sh import kiro-credentials.json"
+    [ -f "$IN" ] || die "파일이 없다: $IN"
+    require_docker
+
+    mkdir -p "$KIRO_DIR"
+    chmod 700 "$KIRO_DIR"
+    normalize_credential "$IN" "$KIRO_DIR/credentials.json"
+    info "자격증명 등록: $KIRO_DIR/credentials.json"
+    start_and_verify
+    ;;
+
+  setup|"")
+    # 이 기기의 Kiro IDE 토큰으로 설정한다.
+    require_docker
+    [ -f "$TOKEN_PATH" ] || die "토큰이 없다: $TOKEN_PATH
+  Kiro IDE 로 로그인해라. (kiro-cli login 은 OAuth 콜백이 자주 타임아웃한다.)
+  자격증명 파일을 받았다면:  kiro-setup.sh import <파일>"
+
+    mkdir -p "$KIRO_DIR"
+    chmod 700 "$KIRO_DIR"
+    normalize_credential "$TOKEN_PATH" "$KIRO_DIR/credentials.json"
+    start_and_verify
+    ;;
+
+  *)
+    die "모르는 명령: $1 (setup | export | import)"
+    ;;
+esac

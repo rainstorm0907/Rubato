@@ -41,6 +41,11 @@ yarn.lock
 # Environment
 .env
 .env.local
+
+# Kiro 자격증명. 정상 경로는 ~/.rubato-pi/kiro 라 레포에 올 일이 없지만,
+# KIRO_DIR 를 레포 안으로 돌린 실수가 refreshToken 을 커밋시키지 못하게 막는다.
+credentials.json
+kiro-auth-token.json
 test-injection/
 notepad.md
 oauth-success.html
