@@ -22,7 +22,8 @@ test("실행 중 숫자가 1 tool → 2 tools 로 올라간다", () => {
   const t1 = mk("ls", { path: "." });
   g.addTool(t1);
   seen.push(line());
-  expect(line()).toContain("1 tool");
+  expect(line()).toContain("• 1 tool");
+  expect(line()).not.toContain("⋯");
   expect(line()).not.toContain("1 tools");
 
   // 끝남 -> 줄 수 붙음

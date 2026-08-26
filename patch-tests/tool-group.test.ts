@@ -26,7 +26,8 @@ describe("도구 뭉치기", () => {
     const lines = g.render(92);
     expect(lines).toHaveLength(1);
     const text = stripAnsi(lines.join(""));
-    expect(text).toContain("3 tools");
+    expect(text).toContain("• 3 tools");
+    expect(text).not.toContain("⋯");
     expect(text).toContain("ls");
     expect(text).toContain("read");
     expect(text).toContain("bash");

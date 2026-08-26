@@ -192,6 +192,14 @@ function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function thinkingSignatureFromEvent(event: { partial?: unknown; contentIndex?: number }): string | undefined {
+  const partial = isObject(event.partial) ? event.partial : undefined;
+  const content = Array.isArray(partial?.content) ? partial.content : undefined;
+  const block = content && typeof event.contentIndex === "number" ? content[event.contentIndex] : undefined;
+  const signature = isObject(block) ? asString(block.thinkingSignature) : undefined;
+  return signature && signature.length > 0 ? signature : undefined;
+}
+
 const FX_TO_CLAUDE_TOOL = new Map<string, string>([
   ["read_file", "Read"],
   ["write_file", "Write"],
@@ -495,9 +503,15 @@ export async function* directProviderToFxSse(args: {
     if (event.type === "text_start") yield encodeSseData({ type: "text-start", id: `x${event.contentIndex}`, providerMetadata });
     else if (event.type === "text_delta") yield encodeSseData({ type: "text-delta", id: `x${event.contentIndex}`, delta: event.delta });
     else if (event.type === "text_end") yield encodeSseData({ type: "text-end", id: `x${event.contentIndex}` });
-    else if (event.type === "thinking_start") yield encodeSseData({ type: "reasoning-start", id: `x${event.contentIndex}` });
+    else if (event.type === "thinking_start") {
+      const signature = thinkingSignatureFromEvent(event);
+      yield encodeSseData({ type: "reasoning-start", id: `x${event.contentIndex}`, ...(signature ? { signature } : {}) });
+    }
     else if (event.type === "thinking_delta") yield encodeSseData({ type: "reasoning-delta", id: `x${event.contentIndex}`, delta: event.delta });
-    else if (event.type === "thinking_end") yield encodeSseData({ type: "reasoning-end", id: `x${event.contentIndex}` });
+    else if (event.type === "thinking_end") {
+      const signature = thinkingSignatureFromEvent(event);
+      yield encodeSseData({ type: "reasoning-end", id: `x${event.contentIndex}`, ...(signature ? { signature } : {}) });
+    }
     else if (event.type === "toolcall_start") {
       const partial = event.partial.content[event.contentIndex];
       yield encodeSseData({ type: "tool-input-start", id: isObject(partial) ? asString(partial.id) ?? `x${event.contentIndex}` : `x${event.contentIndex}`, toolName: isObject(partial) ? selected.provider === "anthropic" ? claudeToolToFx(asString(partial.name) ?? "unknown") : asString(partial.name) ?? "unknown" : "unknown" });

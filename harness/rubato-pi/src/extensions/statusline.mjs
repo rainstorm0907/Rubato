@@ -1,5 +1,4 @@
 import {
-  appendBrandMark,
   cacheStatus,
   formatBackgroundLine,
   formatCacheSegment,
@@ -8,6 +7,7 @@ import {
   formatModelWithEffort,
   formatTokensPerSecond,
   currentTurnTiming,
+  layoutStatusLines,
   remainingPercent,
   resolveCachePolicy,
   repoBasename,
@@ -89,33 +89,33 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
           const tps = formatTokensPerSecond(timing?.tokensPerSecond);
           const cacheText = formatCacheSegment(cache, cacheLifetime);
           const latency = formatLatency(timing);
-          const parts = [
+          const paint = (parts) => parts
+            .map((part) => (theme?.fg ? theme.fg(part.color, part.text) : part.text))
+            .join(" · ");
+          const identity = [
             {
               text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
               color: "accent",
             },
             { text: formatContext(remaining, window), color: remainingColor(remaining) },
           ];
-          if (tps) parts.push({ text: tps, color: "dim" });
           if (cacheText) {
-            parts.push({
+            identity.push({
               text: cacheLifetime?.expired
                 ? `${MUTED_RED}${cacheText}${RESET}`
                 : cacheText,
               color: "dim",
             });
           }
-          if (latency) parts.push({ text: latency, color: "dim" });
           const branch = footerData.getGitBranch?.();
-          if (branch) parts.push({ text: branch, color: "dim" });
+          if (branch) identity.push({ text: branch, color: "dim" });
           const repo = repoBasename(ctx.cwd);
-          if (repo) parts.push({ text: repo, color: "text" });
-
-          const painted = parts
-            .map((part) => (theme?.fg ? theme.fg(part.color, part.text) : part.text))
-            .join(" · ");
+          if (repo) identity.push({ text: repo, color: "text" });
+          const metrics = [];
+          if (tps) metrics.push({ text: tps, color: "dim" });
+          if (latency) metrics.push({ text: latency, color: "dim" });
           const mark = theme?.fg ? theme.fg("dim", BRAND_NAME) : BRAND_NAME;
-          const lines = [appendBrandMark(painted, width, mark)];
+          const lines = layoutStatusLines(paint(identity), paint(metrics), width, mark);
 
           syncTimer();
           const background = formatBackgroundLine(tracker.groups(), Date.now(), width);

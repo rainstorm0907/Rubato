@@ -27,6 +27,9 @@ import {
   formatBackgroundEntry,
   formatBackgroundLine,
   backgroundEntriesFromEvent,
+  layoutStatusLines,
+  stripAnsi,
+  truncateToWidth,
 } from "../../src/statusline.mjs";
 import { BRAND_NAME } from "../../src/brand.mjs";
 import { installStatusline, extensionStatusLine } from "../../src/extensions/statusline.mjs";
@@ -339,7 +342,7 @@ test("installStatusline paints effort and the model context window", () => {
     },
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
-  // Metrics sit before branch/repo so a tight width clips identity first.
+  // Cache stays with identity. tok/s·delay·think 만 좁으면 둘째 줄로 내린다.
   // No timing on this branch, so no tok/s or latency segment appears.
   const left = "✦ Opus 5 high · 60% (1M) · Cache 80% · main · agent-taskforce";
   assert.deepEqual(footer.render(120), [appendBrandMark(left, 120)]);
@@ -347,7 +350,9 @@ test("installStatusline paints effort and the model context window", () => {
   assert.equal(visibleColumns(footer.render(120)[0]), 120);
   assert.equal(footer.render(70)[0], left);
   assert.ok(!footer.render(70)[0].includes(BRAND_NAME));
-  assert.equal(colors.at(-1), "dim");
+  assert.ok(colors.includes("accent"));
+  assert.ok(colors.includes("text"));
+  assert.ok(colors.includes("dim"));
 });
 
 test("the footer merges cache percent and remaining lifetime into one segment", () => {
@@ -427,7 +432,8 @@ test("the footer averages wait and thinking across the current turn's model call
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
   const rendered = footer.render(160)[0];
-  assert.equal(rendered.includes("Cache 80% · delay 1s · think 4s"), true, rendered);
+  assert.match(rendered, /Cache 80%/);
+  assert.match(rendered, /delay 1s · think 4s/);
 });
 
 test("the footer shows current-process ttft without rendering raw turn duration", () => {
@@ -467,9 +473,9 @@ test("the footer shows current-process ttft without rendering raw turn duration"
     { fg: (_color, text) => text },
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
-  const left = "✦ Opus 5 high · 60% (1M) · Cache 80% · delay 420ms · main · agent-taskforce";
   const rendered = footer.render(140)[0];
-  assert.equal(rendered.startsWith(left), true);
+  assert.match(rendered, /^✦ Opus 5 high · 60% \(1M\) · Cache 80% · main · agent-taskforce/);
+  assert.match(rendered, /delay 420ms/);
   assert.equal(rendered.includes("turn"), false);
 });
 
@@ -637,6 +643,29 @@ test("negative output is ignored and missing usage still leaves latency visible"
   assert.equal(formatFooterMetrics({ timing }), "delay 300ms · think 2s");
 });
 
+test("truncation keeps ANSI so a tight width does not bleach the line", () => {
+  const painted = `\x1b[38;2;122;162;247m✦ Opus 5\x1b[0m · 60% (1M) · main`;
+  const clipped = truncateToWidth(painted, 12);
+  assert.match(clipped, /\x1b\[38;2;122;162;247m/);
+  assert.equal(visibleColumns(clipped), 12);
+  assert.ok(clipped.endsWith("\x1b[0m"));
+  assert.notEqual(stripAnsi(clipped), clipped);
+});
+
+test("a tight width moves tok/s and delay onto a second line", () => {
+  const identity = "✦ Opus 5 high · 60% (1M) · Cache 80% · main · agent-taskforce";
+  const metrics = "17 tok/s · delay 4s · think 10s";
+  const wide = layoutStatusLines(identity, metrics, 160);
+  assert.equal(wide.length, 1);
+  assert.match(wide[0], /17 tok\/s · delay 4s · think 10s/);
+  const tight = layoutStatusLines(identity, metrics, 80);
+  assert.equal(tight.length, 2);
+  assert.equal(stripAnsi(tight[0]).includes("17 tok/s"), false, tight[0]);
+  assert.match(tight[1], /17 tok\/s/);
+  assert.match(tight[1], /delay 4s/);
+  assert.match(tight[1], /think 10s/);
+});
+
 test("metrics stay visible when a tight width clips branch and repo", () => {
   let factory;
   const ctx = {
@@ -681,15 +710,19 @@ test("metrics stay visible when a tight width clips branch and repo", () => {
     { fg: (_color, text) => text },
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
-  const wide = footer.render(160)[0];
-  assert.match(wide, /17 tok\/s · Cache 80% · delay 4s · think 10s/);
-  assert.match(wide, /main · agent-taskforce/);
-  const tight = footer.render(80)[0];
-  assert.match(tight, /17 tok\/s/);
-  assert.match(tight, /Cache 80%/);
-  assert.match(tight, /delay 4s/);
-  assert.match(tight, /think 10s/);
-  assert.equal(tight.includes("agent-taskforce"), false, tight);
+  const wide = footer.render(160);
+  assert.equal(wide.length, 1);
+  assert.match(wide[0], /Cache 80%/);
+  assert.match(wide[0], /17 tok\/s · delay 4s · think 10s/);
+  assert.match(wide[0], /main · agent-taskforce/);
+  const tight = footer.render(80);
+  assert.equal(tight.length, 2, tight.join("\n"));
+  assert.match(tight[0], /Cache 80%/);
+  assert.match(tight[0], /agent-taskforce/);
+  assert.equal(tight[0].includes("17 tok/s"), false, tight[0]);
+  assert.match(tight[1], /17 tok\/s/);
+  assert.match(tight[1], /delay 4s/);
+  assert.match(tight[1], /think 10s/);
 });
 
 test("the brand mark sits on the right only when the terminal is wide", () => {

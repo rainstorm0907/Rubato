@@ -130,7 +130,8 @@ export function applyFxEvent(output, event) {
   }
   if (event.type === "reasoning-start") {
     const contentIndex = output.content.length;
-    output.content.push({ type: "thinking", thinking: "" });
+    const signature = typeof event.signature === "string" && event.signature.length > 0 ? event.signature : undefined;
+    output.content.push({ type: "thinking", thinking: "", ...(signature ? { thinkingSignature: signature } : {}) });
     return { events: [{ type: "thinking_start", contentIndex, partial: output }] };
   }
   if (event.type === "reasoning-delta") {
@@ -141,7 +142,11 @@ export function applyFxEvent(output, event) {
   }
   if (event.type === "reasoning-end") {
     const contentIndex = lastIndex(output, "thinking");
-    return contentIndex < 0 ? { events: [] } : { events: [{ type: "thinking_end", contentIndex, content: output.content[contentIndex].thinking, partial: output }] };
+    if (contentIndex < 0) return { events: [] };
+    if (typeof event.signature === "string" && event.signature.length > 0) {
+      output.content[contentIndex].thinkingSignature = event.signature;
+    }
+    return { events: [{ type: "thinking_end", contentIndex, content: output.content[contentIndex].thinking, partial: output }] };
   }
   if (event.type === "tool-input-start") {
     const contentIndex = output.content.length;

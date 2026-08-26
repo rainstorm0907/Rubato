@@ -416,6 +416,26 @@ export function formatStatusline(input) {
   return input.width == null ? left : appendBrandMark(left, input.width);
 }
 
+/** 워터마크를 붙인 뒤 본문이 쓸 수 있는 칸. */
+export function statuslineContentBudget(width, mark = BRAND_NAME) {
+  if (width < BRAND_MARK_MIN_WIDTH) return width;
+  const markCols = visibleColumns(mark);
+  if (width - markCols <= 1) return width;
+  return width - markCols - 1;
+}
+
+/**
+ * 한 줄에 안 들어가면 tok/s·delay·think 를 둘째 줄로 내린다.
+ * 잘린 줄은 ANSI를 유지한다 — 접는 순간 색이 빠지면 흑백처럼 보인다.
+ */
+export function layoutStatusLines(identity, metrics, width, mark = BRAND_NAME) {
+  const full = metrics ? `${identity} · ${metrics}` : identity;
+  if (!metrics || visibleColumns(full) <= statuslineContentBudget(width, mark)) {
+    return [appendBrandMark(full, width, mark)];
+  }
+  return [appendBrandMark(identity, width, mark), truncateToWidth(metrics, width)];
+}
+
 // ── 배경 작업 요약 ─────────────────────────────────────────────────
 //
 // 셸과 모니터는 엔진의 `wake_source_state` 이벤트로 온다.
@@ -507,9 +527,27 @@ function renderChunks(chunks, keep) {
 }
 
 export function truncateToWidth(text, width) {
-  const plain = stripAnsi(text);
   if (width <= 0) return "";
-  if (plain.length <= width) return text;
+  if (visibleColumns(text) <= width) return text;
   if (width === 1) return "…";
-  return `${plain.slice(0, width - 1)}…`;
+  const budget = width - 1;
+  const source = String(text);
+  let visible = 0;
+  let out = "";
+  let i = 0;
+  while (i < source.length && visible < budget) {
+    if (source[i] === "\x1b") {
+      const ansi = /^\x1b\[[0-9;]*m/.exec(source.slice(i));
+      if (ansi) {
+        out += ansi[0];
+        i += ansi[0].length;
+        continue;
+      }
+    }
+    const cp = [...source.slice(i)][0];
+    out += cp;
+    i += cp.length;
+    visible += 1;
+  }
+  return `${out}…\x1b[0m`;
 }

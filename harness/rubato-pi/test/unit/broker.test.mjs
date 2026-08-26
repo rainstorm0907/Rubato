@@ -594,6 +594,23 @@ test("tool-input-delta becomes a senpi toolcall_delta", () => {
   assert.deepEqual(output.content[0].arguments, { command: "echo" });
 });
 
+test("reasoning-end keeps the thinking signature for Claude replay", () => {
+  const output = {
+    role: "assistant",
+    content: [],
+    stopReason: "pending",
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: {} },
+  };
+  applyFxEvent(output, { type: "reasoning-start", id: "r1" });
+  applyFxEvent(output, { type: "reasoning-delta", id: "r1", delta: "plan" });
+  applyFxEvent(output, { type: "reasoning-end", id: "r1", signature: "sig-1" });
+  assert.deepEqual(output.content[0], {
+    type: "thinking",
+    thinking: "plan",
+    thinkingSignature: "sig-1",
+  });
+});
+
 test("thinking signatures and user images survive the fx request body", () => {
   const body = contextToFxRequest({
     messages: [

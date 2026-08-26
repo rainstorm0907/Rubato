@@ -36,6 +36,10 @@ describe("턴 작업 요약", () => {
     const tracked = source.match(/trackAssistant\(this\.streamingComponent, assistantStreamingHeadMessage\(event\.message\)\)/g) ?? [];
     expect(tracked).toHaveLength(2);
     expect(source).not.toContain("trackAssistant(this.streamingComponent, event.message)");
+    expect(source).toContain("this.startTurnWorkSummary();\n                    this.streamingComponent");
+    const agentEnd = source.slice(source.indexOf('case "agent_end"'), source.indexOf('case "agent_settled"'));
+    expect(agentEnd).toContain("this.closeToolGroup()");
+    expect(agentEnd).not.toContain("this.turnWorkSummary = undefined");
   });
 
   test("진행 중에도 사고와 도구를 한 줄로 접고 클릭할 때만 펼친다", () => {
