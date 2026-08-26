@@ -27,7 +27,7 @@ fx
 | Claude | `anthropic/claude-opus-5` | Anthropic Messages + Claude setup-token | PASS | cold `cacheWrite=45037`, 후속 `cacheRead=45037` | canary |
 | Codex | `gpt-5.6-*` | OpenCodex | Responses 변환 및 실제 fx 응답 PASS | 53KB prefix T2–T6 모두 `cacheRead=13056/13879` | 유지 |
 | Cursor | `cursor/*` | OpenCodex Cursor Connect | 단일 턴 기준선만 있음 | 멀티턴 캐시 실패/미검증 | 보류 |
-| Kiro | `kiro/claude-opus-5`, `kiro/gpt-5.6-sol` | kiro.rs 사이드카 + Anthropic Messages | 단일 턴 텍스트·이미지 PASS, tool loop 미검증 | 캐시 없음(상류가 필드를 안 준다) | 실험 |
+| Kiro | `kiro/claude-opus-5`, `kiro/gpt-5.6-sol` | kiro.rs 사이드카 + Anthropic Messages | 텍스트·이미지·tool loop·3턴 멀티턴 PASS | 캐시 없음(상류가 필드를 안 준다) | canary |
 
 Grok과 Claude도 평가 계약의 `주력 채택` 조건을 전부 통과한 것은 아니다. 현재 live evidence는 실제 fx tool loop와 cache telemetry까지다. 6턴·2 tool call·abort·bridge 재시작·OAuth refresh를 모두 묶은 soak가 남아 있어 판정은 `canary`다.
 
@@ -72,11 +72,25 @@ CLI 병행을 전제하므로 이 정도는 정상 범위다.
 `429 suspicious activity` 와 계정 단위 쿨다운(kiro.rs 기본 1800초)은 장소가 멀리 떨어진
 접속이 겹칠 때가 가깝다. 같은 집에서 돌리는 경우라면 실질 제약은 크레딧 공유다.
 
-지금까지의 evidence는 **단일 턴 텍스트와 이미지까지**다. 브리지 경유로
-`kiro/claude-opus-5`(`in=6790 out=7`)와 `kiro/gpt-5.6-sol`(`in=1596 out=11`)이 fx SSE로
-정상 종료했고, 64x64 빨간 PNG 를 붙인 요청에 둘 다 "Red" 를 돌려줘
-모달리티 배선이 살아 있음을 확인했다. tool loop, thinking effort, abort, 멀티턴은
-아직 측정하지 않았으므로 `canary`가 아니라 `실험`이다.
+브리지 경유로 `kiro/claude-opus-5`(`in=6790 out=7`)와 `kiro/gpt-5.6-sol`(`in=1596
+out=11`)이 fx SSE 로 정상 종료했고, 64x64 빨간 PNG 에 둘 다 "Red" 를 돌려줘
+모달리티 배선도 확인했다.
+
+**tool loop 은 3턴으로 완주했다**: 도구 호출(`get_weather({city:"Seoul"})`) → 결과
+주입(`17C, light rain`) → 모델이 그 값을 반영한 답 → 다음 턴에서 앞 맥락을
+호출("17"). 두 모델 모두 PASS. 그래서 판정을 `실험`에서 `canary` 로 올렸다.
+thinking effort, abort, bridge 재시작을 묶은 soak 는 아직이라 Grok·Claude 와 같은
+`canary` 단계다.
+
+tool loop 을 넘기기 전에 **도구 이름 비대칭 버그**가 있었다. `read_file` 을 보냈는데
+`Read` 가 돌아왔다 — kiro 를 anthropic 규칙으로 보내면 `fxToolToClaude` 로 바뀜서
+나가지만, 역변환 `claudeToolToFx` 는 `provider === "anthropic"` 에만 걸려 있어
+돌아오지 않는다. fx 가 `Read` 를 못 찾으니 loop 이 그자리서 끊긴다.
+
+Claude Code 이름 규칙은 Anthropic 직결 전용이다. kiro 는 메시지 모양만 Anthropic 이고
+상대는 AWS 라 바꿀 이유가 없다. 그래서 api 축(`anthropic-messages`)과 이름 축
+(`ToolNaming`)을 분리했다. `direct-provider.test.ts` 의
+"kiro keeps fx tool names..." 가 이 비대칭을 지킨다.
 
 이미지를 시험할 때는 **진짜 사진 크기를 쓴다**. 1x1·8x8 같은 생성 PNG 는 상류가
 `IMAGE_FORMAT_UNSUPPORTED` 로 거부해서, 배선이 멀지만 안 보이는 것처럼 오독하기 쉽다.

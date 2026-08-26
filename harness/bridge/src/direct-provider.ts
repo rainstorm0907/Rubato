@@ -213,8 +213,18 @@ export function claudeToolToFx(name: string): string {
   return CLAUDE_TO_FX_TOOL.get(name) ?? (name.startsWith("mcp__fx__") ? name.slice("mcp__fx__".length) : name);
 }
 
-function providerToolName(name: string, provider: "xai" | "anthropic"): string {
-  return provider === "anthropic" ? fxToolToClaude(name) : name;
+// Claude Code 이름 규칙(`read_file` → `Read`)은 Anthropic 직결에만 쓴다.
+// kiro 는 메시지 모양만 Anthropic 이고 상대는 AWS 라 바꿀 이유가 없다.
+// 더구나 역변환은 anthropic 에만 걸려 있어서, kiro 에 쓰면 나갈 때만
+// 바뀌고 들어올 때는 그대로라 fx 가 `Read` 를 못 찾고 tool loop 이 끊긴다.
+type ToolNaming = "claude-code" | "passthrough";
+
+function toolNaming(provider: DirectProvider): ToolNaming {
+  return provider === "anthropic" ? "claude-code" : "passthrough";
+}
+
+function providerToolName(name: string, naming: ToolNaming): string {
+  return naming === "claude-code" ? fxToolToClaude(name) : name;
 }
 
 type UserPart = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
@@ -270,7 +280,7 @@ function outputImages(output: unknown): UserPart[] {
   );
 }
 
-export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "xai" | "anthropic" = "xai", model = "grok-4.6"): JsonObject {
+export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "xai" | "anthropic" = "xai", model = "grok-4.6", naming: ToolNaming = toolNaming(provider)): JsonObject {
   const messages: JsonObject[] = [];
   const system: string[] = [];
   for (const message of Array.isArray(prompt) ? prompt : []) {
@@ -299,7 +309,7 @@ export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "
           blocks.push({
             type: "toolCall",
             id: asString(part.toolCallId) ?? "",
-            name: providerToolName(asString(part.toolName) ?? "unknown", provider),
+            name: providerToolName(asString(part.toolName) ?? "unknown", naming),
             arguments: isObject(part.input) ? part.input : {},
           });
         }
@@ -321,7 +331,7 @@ export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "
         messages.push({
           role: "toolResult",
           toolCallId: asString(part.toolCallId) ?? "",
-          toolName: providerToolName(asString(part.toolName) ?? "unknown", provider),
+          toolName: providerToolName(asString(part.toolName) ?? "unknown", naming),
           content: [{ type: "text", text: outputText(part.output) }, ...images],
           isError: Boolean(part.isError),
           timestamp: Date.now(),
@@ -334,7 +344,7 @@ export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "
     const name = asString(tool.name);
     if (!name) return [];
     const parameters = isObject(tool.inputSchema) ? tool.inputSchema : isObject(tool.parameters) ? tool.parameters : { type: "object", properties: {} };
-    return [{ name: providerToolName(name, provider), description: asString(tool.description) ?? "", parameters }];
+    return [{ name: providerToolName(name, naming), description: asString(tool.description) ?? "", parameters }];
   }) : [];
 
   return {
@@ -449,9 +459,15 @@ export async function* directProviderToFxSse(args: {
   const model = models.getModel(selected.provider, selected.modelId);
   if (!model) throw new Error(`unknown ${selected.provider} model: ${args.model}`);
   const requestModel = model.upstreamModelId ? { ...model, id: model.upstreamModelId } : model;
-  // kiro 는 Anthropic Messages 형식으로 번역되므로 프롬프트 변환도 anthropic 규칙을 따른다.
-  const promptProvider = selected.provider === "kiro" ? "anthropic" : selected.provider;
-  const context = fxPromptToPiContext(args.body.prompt, args.body.tools, promptProvider, selected.modelId);
+  // kiro 는 메시지 모양이 Anthropic 이라 그 api 로 보내지만, 도구 이름은
+  // 바꾸지 않는다. 두 축이 다르므로 따로 넘긴다.
+  const context = fxPromptToPiContext(
+    args.body.prompt,
+    args.body.tools,
+    selected.provider === "kiro" ? "anthropic" : selected.provider,
+    selected.modelId,
+    toolNaming(selected.provider),
+  );
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;
   const stream = models.streamSimple(requestModel, context, {
     fetch: args.upstreamFetch ?? upstreamFetch,

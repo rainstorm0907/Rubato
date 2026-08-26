@@ -167,6 +167,19 @@ test("Claude direct presents fx tools with Claude Code-compatible names", () => 
   assert.equal(context.messages[2].toolName, "Read");
 });
 
+// kiro 는 메시지 모양만 Anthropic 이고 상대는 AWS 다. 도구 이름을 Claude Code
+// 규칙으로 바꾸면 나갈 때만 `Read` 가 되고 들어올 때는 안 돌아온다 — 역변환이
+// anthropic 에만 걸려 있기 때문이다. 그러면 fx 가 `Read` 를 못 찾아 tool loop 이
+// 끊긴다. 실제로 그렇게 깨졌고, 이 테스트가 그 비대칭을 지킨다.
+test("kiro keeps fx tool names so the tool loop can match them on the way back", () => {
+  const body = fixtureJson("fx-tool-request.json");
+  // kiro 는 api 는 anthropic 이지만 naming 은 passthrough 로 넘긴다.
+  const context = fxPromptToPiContext(body.prompt, body.tools, "anthropic", "claude-opus-5", "passthrough");
+  assert.equal(context.tools[0].name, "read_file");
+  assert.equal(context.messages[1].content[0].name, "read_file");
+  assert.equal(context.messages[2].toolName, "read_file");
+});
+
 // 사용자가 Opus 에서 이미지를 못 본다고 한 자리다. tool-result 안의 이미지를
 // 버리면 모델은 치수만 적힌 텍스트 메모만 받고 픽셀은 못 받는다.
 for (const provider of ["anthropic", "xai"] as const) {
