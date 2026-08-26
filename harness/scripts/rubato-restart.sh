@@ -5,18 +5,17 @@
 # graceful shutdown is an authenticated POST /admin/drain. This script is the
 # owner of that request. SIGTERM/SIGINT are ignored by the bridge, so a stray
 # kill from a child session is a no-op. SIGKILL cannot be caught; supervisor
-# KeepAlive/Restart brings that crash back. This script therefore:
+# KeepAlive/Restart brings every exit back. This script therefore:
 #   1. preflights the replacement (node, deps) while the old listener is up
 #   2. asks the live bridge to drain, if one is listening
 #   3. waits until the old listener is gone
 #   4. starts the supervised service (or start.sh if none is loaded)
 #   5. waits until /health answers
 #
-# Drain exits 0. Supervisor is configured to recover crashes, not successful
-# exits, so an intentional restart will not race a KeepAlive relaunch. We only
-# start the replacement after the port is free. If we had to SIGKILL a stuck
-# process and a supervisor is loaded, we let that supervisor bring it back
-# instead of starting a second copy.
+# Drain exits 0 and the supervisor may relaunch immediately. The supervisor owns
+# one job, so an explicit start remains idempotent; we still wait for the old pid
+# to disappear before asking it to start. If we had to SIGKILL a stuck process,
+# we let the supervisor bring it back instead of starting a second copy.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"

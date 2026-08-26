@@ -129,8 +129,8 @@ if [ -z "${RUBATO_NO_VAULT-}" ] && [ -f "$HOME/.config/cmux/cmux.json" ]; then
   "$NODE" "$HERE/cmux-vault.mjs" --apply >/dev/null 2>&1 || true
 fi
 
-# 브리지 supervisor 를 심는다. 없으면 로그인 때 브리지가 안 뜨고, 크래시나
-# SIGKILL 뒤에 아무도 되살리지 않는다 — rubato-restart.sh 는 "supervisor 가
+# 브리지 supervisor 를 심는다. 없으면 로그인 때 브리지가 안 뜨고, 어떤 이유로든
+# 프로세스가 끝난 뒤 아무도 되살리지 않는다 — rubato-restart.sh 는 "supervisor 가
 # 되살린다" 를 전제로 SIGKILL 뒤 재기동을 건너뛰는 분기가 있어서, supervisor 가
 # 없는 머신에서는 그 자리가 그대로 정전이 된다.
 #

@@ -52,6 +52,15 @@ export const THINKING_LEVEL_MAPS = Object.freeze({
     xhigh: "xhigh",
     max: "max",
   }),
+  "gpt-daybreak-blue-latest": Object.freeze({
+    off: "none",
+    minimal: "low",
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  }),
   "claude-opus-5": Object.freeze({ xhigh: "xhigh", max: "max" }),
   "claude-sonnet-5": Object.freeze({ xhigh: "xhigh", max: "max" }),
 });
@@ -129,8 +138,8 @@ export function brokerProviders(catalog = FALLBACK_CATALOG) {
   );
 }
 
-export default async function brokerOverlay(pi) {
-  const catalog = await loadCatalog();
+export default async function brokerOverlay(pi, { catalogLoader = loadCatalog } = {}) {
+  const catalog = await catalogLoader();
   for (const provider of brokerProviders(catalog)) {
     pi.registerProvider(provider);
   }

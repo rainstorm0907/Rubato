@@ -6,6 +6,16 @@ export FX_BRIDGE_PORT="${FX_BRIDGE_PORT:-8788}"
 export OPENCODEX_BASE_URL="${OPENCODEX_BASE_URL:-http://127.0.0.1:10100}"
 cd "$ROOT"
 
+# supervisor 를 새로 심을 때 이미 직접 실행한 브리지가 포트를 잡고 있을 수 있다.
+# 그 경우 KeepAlive=true 가 EADDRINUSE 종료를 매초 되풀이하지 않도록, supervisor
+# 프로세스 자체가 살아서 포트가 비기를 기다린다. 기존 브리지가 끝나는 순간 같은
+# 잡이 이어받으므로 별도 watchdog 없이도 자동복구가 된다.
+if [ "${RUBATO_SUPERVISED:-0}" = "1" ]; then
+  while (exec 3<>"/dev/tcp/127.0.0.1/${FX_BRIDGE_PORT}") 2>/dev/null; do
+    sleep 1
+  done
+fi
+
 # node_modules 는 추적되지 않아서 clean 한 번에 통째로 사라진다. 그러면 브리지는
 # ERR_MODULE_NOT_FOUND 로 즉시 죽고, 밖에서는 "브리지가 안 뜬다" 로만 보여서
 # 로그를 열기 전까지 원인이 안 보인다. 없으면 여기서 깔고 간다.

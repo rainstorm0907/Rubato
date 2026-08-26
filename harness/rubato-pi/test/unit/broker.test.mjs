@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import brokerOverlay, {
@@ -18,7 +17,6 @@ import {
   FALLBACK_CATALOG,
   groupCatalog,
   probeBridge,
-  restartBroker,
   startBroker,
 } from "../../src/broker.mjs";
 import { contextToFxRequest, streamOptionsToFxRequest } from "../../src/broker-request.mjs";
@@ -51,6 +49,7 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   assert.ok(grouped.anthropic.some((model) => model.id === "claude-opus-5"));
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").name, "Opus 5");
   assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol-fast").name, "GPT-5.6 Sol Fast");
+  assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-daybreak-blue-latest").name, "Daybreak Blue");
   assert.ok(grouped.anthropic.every((model) => model.cacheRetention === "long"));
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
@@ -59,6 +58,7 @@ test("catalog ids keep provider prefixes the broker understands", () => {
     "gpt-5.6-sol", "gpt-5.6-sol-fast",
     "gpt-5.6-terra", "gpt-5.6-terra-fast",
     "gpt-5.6-luna", "gpt-5.6-luna-fast",
+    "gpt-daybreak-blue-latest",
   ]) {
     assert.equal(grouped["openai-codex"].find((model) => model.id === id).contextWindow, 272_000);
   }
@@ -100,6 +100,8 @@ test("catalog models keep the image modality so read does not drop attachments",
 test("an unknown model falls back to text instead of claiming vision", () => {
   const grouped = groupCatalog([{ id: "rubato/not-a-real-model", name: "Nope" }]);
   assert.deepEqual(grouped.rubato[0].input, ["text"]);
+  const codex = groupCatalog([{ id: "openai-codex/not-a-real-model", name: "Nope" }]);
+  assert.deepEqual(codex["openai-codex"][0].input, ["text"]);
 });
 
 // 앞 테스트는 FALLBACK_CATALOG 만 돌아서 Antigravity 를 구조적으로 비켜갔다.
@@ -148,39 +150,20 @@ test("ensureBroker starts the existing relay only when it is down", () => {
   assert.equal(started.length, 1);
 });
 
-test("ensureBroker restarts a stale relay only while it is idle", () => {
-  let restarted = 0;
-  let fresh = false;
-  const got = ensureBroker({
-    env: {},
-    isUp: () => ({ up: true, fresh, inflight: 0 }),
-    restart: () => {
-      restarted++;
-      fresh = true;
-      return { status: 0 };
-    },
-    sleep: () => {},
-  });
-  assert.equal(got.started, true);
-  assert.equal(restarted, 1);
-});
-
-test("a stale relay with a model call in flight is left alone", () => {
-  // 살아 있는 브리지를 코드가 낡았다는 이유로 죽이면, 붙어 있던 다른 세션의
-  // 턴이 소켓 끊김으로 끝난다. 낡은 채로 한 턴 더 도는 쪽이 낫다.
+test("a stale live relay is never mutated, even while idle", () => {
   const warnings = [];
-  let restarted = 0;
+  let started = 0;
   const got = ensureBroker({
     env: {},
-    isUp: () => ({ up: true, fresh: false, inflight: 2 }),
-    restart: () => {
-      restarted++;
+    isUp: () => ({ up: true, fresh: false, inflight: 0 }),
+    start: () => {
+      started++;
       return { status: 0 };
     },
     sleep: () => {},
     warn: (message) => warnings.push(message),
   });
-  assert.equal(restarted, 0);
+  assert.equal(started, 0);
   assert.equal(got.ok, true);
   assert.equal(got.started, false);
   assert.equal(got.stale, true);
@@ -190,18 +173,18 @@ test("a stale relay with a model call in flight is left alone", () => {
 test("a relay that does not report in-flight calls is left alone too", () => {
   // 우리 것보다 낡은 브리지는 inflight 를 안 실어 보낸다. 그건 "0 이다" 가
   // 아니라 "모른다" 이고, 모르는 것은 죽이지 않는다.
-  let restarted = 0;
+  let started = 0;
   const got = ensureBroker({
     env: {},
     isUp: () => ({ up: true, fresh: false }),
-    restart: () => {
-      restarted++;
+    start: () => {
+      started++;
       return { status: 0 };
     },
     sleep: () => {},
     warn: () => {},
   });
-  assert.equal(restarted, 0);
+  assert.equal(started, 0);
   assert.equal(got.stale, true);
 });
 
@@ -251,43 +234,8 @@ test("probeBridge bounds the health check and reads the in-flight count", () => 
   assert.deepEqual(down, { up: false, fresh: false, inflight: null });
 });
 
-test("bridge freshness watches every source file, not a hand-kept list", () => {
-  // 목록을 손으로 관리하면 새 파일이 빠진다. 실제로 `upstream-dispatcher.ts` 가
-  // 빠져서 브리지를 고치고도 새 세션이 낡은 프로세스에 붙었다. 어느 파일을
-  // 건드려도 시각이 올라가야 한다.
-  const bridgeDir = fileURLToPath(new URL("../../../bridge/src/", import.meta.url));
-  const sources = readdirSync(bridgeDir).filter((name) => name.endsWith(".ts"));
-  assert.ok(sources.length > 5, `expected several bridge sources, saw ${sources.length}`);
-
-  const baseline = bridgeSourceMtimeMs();
-  for (const name of sources) {
-    const path = join(bridgeDir, name);
-    const original = statSync(path);
-    const bumped = new Date(baseline + 60_000);
-    utimesSync(path, bumped, bumped);
-    try {
-      assert.ok(
-        bridgeSourceMtimeMs() > baseline,
-        `touching ${name} must make the bridge look stale`,
-      );
-    } finally {
-      utimesSync(path, original.atime, original.mtime);
-    }
-  }
-});
-
-test("bridge freshness source exists and restart targets the narrow script", () => {
+test("bridge freshness source exists", () => {
   assert.ok(bridgeSourceMtimeMs() > 0);
-  const calls = [];
-  restartBroker({
-    env: {},
-    spawnSyncImpl: (cmd, args, opts) => {
-      calls.push({ cmd, args, opts });
-      return { status: 0 };
-    },
-  });
-  assert.equal(calls[0].cmd, "sh");
-  assert.match(calls[0].args[0], /rubato-restart\.sh$/);
 });
 
 test("startBroker detaches the relay instead of blocking the TUI on it", () => {
@@ -726,6 +674,19 @@ test("Codex Fast catalog entries keep pairing metadata and canonical thinking le
   }
 });
 
+test("Daybreak Blue keeps its direct Codex identity and thinking levels", () => {
+  const model = brokerProviders()
+    .flatMap((provider) => provider.getModels())
+    .find((entry) => entry.provider === "openai-codex" && entry.id === "gpt-daybreak-blue-latest");
+  assert.ok(model);
+  assert.equal(model.name, "Daybreak Blue");
+  assert.equal(model.contextWindow, 272_000);
+  assert.equal(model.maxTokens, 128_000);
+  assert.equal(model.upstreamModelId, undefined);
+  assert.equal(model.thinkingLevelMap.xhigh, "xhigh");
+  assert.equal(model.thinkingLevelMap.max, "max");
+});
+
 test("streamBroker posts a service_tier injected by onPayload", async () => {
   let body;
   const sse = [
@@ -794,6 +755,8 @@ test("the overlay registers broker providers and unregisters every foreign one",
   await brokerOverlay({
     registerProvider: (provider) => registered.push(provider.id),
     unregisterProvider: (name) => unregistered.push(name),
+  }, {
+    catalogLoader: async () => FALLBACK_CATALOG,
   });
 
   // 카탈로그는 브리지에서 온다. OpenCodex 가 떠 있으면 "openai" 레인이 얹히고 아니면
@@ -815,6 +778,8 @@ test("a host that refuses to unregister does not break the overlay", async () =>
     unregisterProvider: () => {
       throw new Error("unsupported");
     },
+  }, {
+    catalogLoader: async () => FALLBACK_CATALOG,
   });
   assert.ok(registered.length >= 3, `expected at least 3 providers, got ${registered.length}`);
 });

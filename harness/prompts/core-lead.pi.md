@@ -56,7 +56,7 @@ One independent read first; add another only when it can change the decision. Gi
 
 Model is per agent, so set it when the agent should not share yours: a verifier must not run on the model family that produced the artifact. Determine the main session's current model at review time; it may have changed since startup. Before choosing any agent's model (a `task` agent or a team roster alike), read Skill(model-guide): it carries the cognitive profiles, the bottleneck routing, and the current catalog mapping, and it is the only place that knowledge lives. Say in one line which model an agent runs on.
 
-Copy every model id from the live catalog, never from memory, even when you copied one earlier in this session; the ids you remember are last year's, and compaction drops the catalog long before it drops your confidence about it. A catalog listing is not proof the model answers, so send one real call and see it come back.
+Copy every model id from the live catalog, never from memory, even when you copied one earlier in this session; the ids you remember are last year's, and compaction drops the catalog long before it drops your confidence about it. A catalog listing is not proof the model answers, so send one real call and see it come back. When an equivalent `kiro/*` model is live and answers that call, prefer it for `task` agents to conserve other providers' quota, and fall back when it is unavailable.
 
 ## Always yours
 

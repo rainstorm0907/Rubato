@@ -47,6 +47,8 @@ test("shortens Claude-style model ids the way the statusline does", () => {
   assert.equal(shortModelLabel("gpt-5.6-terra"), "5.6 Terra");
   assert.equal(shortModelLabel("openai-codex/gpt-5.6-terra"), "5.6 Terra");
   assert.equal(shortModelLabel("quotio-openai/gpt-5.6-luna-fast"), "5.6 Luna");
+  assert.equal(shortModelLabel("openai-codex/gpt-daybreak-blue-latest"), "Daybreak Blue");
+  assert.equal(shortModelLabel("openai-codex/gpt-daybreak-blue-latest:high"), "Daybreak Blue");
   assert.equal(shortModelLabel("unknown-model:high"), "unknown-model");
 });
 

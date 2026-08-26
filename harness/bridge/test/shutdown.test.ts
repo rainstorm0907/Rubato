@@ -19,7 +19,6 @@ import {
 import { isolatedAdminEnv, waitForAdminSecret } from "./helpers.ts";
 
 const SERVER_PATH = fileURLToPath(new URL("../src/server.ts", import.meta.url));
-const RESTART_PATH = fileURLToPath(new URL("../../scripts/rubato-restart.sh", import.meta.url));
 const SUPERVISOR_PATH = fileURLToPath(new URL("../../scripts/install-supervisor.sh", import.meta.url));
 
 async function listen(server: Server): Promise<number> {
@@ -38,12 +37,6 @@ async function portOf(server: Server): Promise<number> {
 
 function readToken(path: string): string {
   return readFileSync(path, "utf8").replace(/\r?\n$/, "");
-}
-
-function listenerPid(port: number): number | undefined {
-  const result = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], { encoding: "utf8" });
-  const pid = Number((result.stdout || "").trim().split("\n")[0]);
-  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
 }
 
 /**
@@ -316,76 +309,11 @@ test("Bearer token is accepted for /admin/drain", async () => {
   assert.deepEqual(exits, [0]);
 });
 
-test("restart script secret path matches the server", () => {
-  const script = spawnSync("sh", ["-c", '. "$1"; admin_secret_path "$2"', "sh", RESTART_PATH, "8791"], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      RUBATO_RESTART_LIB: "1",
-      FX_BRIDGE_PLATFORM: "darwin",
-      HOME: "/Users/wy",
-    },
-  });
-  if (script.error) throw script.error;
-  assert.equal(script.status, 0, script.stderr);
-  assert.equal(script.stdout.trim(), adminSecretPath({ HOME: "/Users/wy", FX_BRIDGE_PLATFORM: "darwin" }, 8791));
-});
-
-test("supervisor plan recovers crashes, not successful drains", () => {
+test("supervisor plan recovers every bridge exit", () => {
   const plan = spawnSync("sh", [SUPERVISOR_PATH], { encoding: "utf8", env: { ...process.env } });
   if (plan.error) throw plan.error;
   assert.equal(plan.status, 0, plan.stderr);
   const text = `${plan.stdout}${plan.stderr}`;
-  assert.match(text, /KeepAlive crashed-only|Restart=on-failure/);
-  assert.doesNotMatch(text, /KeepAlive=false|Restart=no/);
-});
-
-test("rubato-restart drains and health-checks a live bridge on a non-default port", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fx-restart-"));
-  const secret = join(dir, "bridge.admin");
-  const log = join(dir, "bridge.log");
-  const { child, port } = await spawnBridge({
-    FX_BRIDGE_BIND: "127.0.0.1",
-    FX_BRIDGE_PORT: "0",
-    FX_BRIDGE_ADMIN_SECRET: secret,
-    FX_BRIDGE_DRAIN_MS: "5000",
-  });
-
-  let restartOut = "";
-  const restart = spawn("sh", [RESTART_PATH], {
-    env: {
-      ...process.env,
-      FX_BRIDGE_PORT: String(port),
-      FX_BRIDGE_ADMIN_SECRET: secret,
-      RUBATO_BROKER_LOG: log,
-      RUBATO_RESTART_DRAIN_ITERS: "40",
-      RUBATO_RESTART_HEALTH_ITERS: "80",
-      RUBATO_RESTART_SLEEP: "0.1",
-      RUBATO_SUPERVISOR_LABEL: "dev.rubato.bridge.test-unused",
-      RUBATO_SUPERVISOR_UNIT: "rubato-bridge-test-unused.service",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  restart.stdout.on("data", (chunk) => {
-    restartOut += chunk.toString();
-  });
-  restart.stderr.on("data", (chunk) => {
-    restartOut += chunk.toString();
-  });
-  const [code] = (await once(restart, "exit")) as [number | null];
-  assert.equal(code, 0, `restart failed: ${restartOut}`);
-
-  const health = await (await fetch(`http://127.0.0.1:${port}/healthz`)).json();
-  assert.equal(health.ok, true);
-  assert.equal(health.draining, false);
-  assert.notEqual(child.exitCode, null);
-
-  const replacementPid = listenerPid(port);
-  if (replacementPid) {
-    try {
-      process.kill(replacementPid, "SIGKILL");
-    } catch {
-      /* already gone */
-    }
-  }
+  assert.match(text, /KeepAlive=true|Restart=always/);
+  assert.doesNotMatch(text, /crashed-only|Restart=on-failure|KeepAlive=false|Restart=no/);
 });

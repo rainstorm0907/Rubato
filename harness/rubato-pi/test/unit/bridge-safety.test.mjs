@@ -134,26 +134,19 @@ test("restart waits long enough for the replacement to answer", () => {
   assert.ok(attempts * interval >= 15, `replacement wait is only ${attempts * interval}s`);
 });
 
-test("restart refuses to kill anything when it cannot start a replacement", (t) => {
-  // 실제로 돌려 본다. node 가 없는 PATH 에서는 포트를 건드리기 전에 물러나야 한다.
-  const bareNode = ["/usr/bin/node", "/bin/node"].some((path) => existsSync(path));
-  if (bareNode) {
-    t.skip("this machine has node outside the managed PATH");
-    return;
-  }
-  const run = spawnSync("sh", [script("rubato-restart.sh")], {
-    env: {
-      PATH: "/usr/bin:/bin",
-      HOME: process.env.HOME,
-      FX_BRIDGE_PORT: "59787",
-      RUBATO_BROKER_LOG: "/dev/null",
-      RUBATO_RESTART_REASON: "unit test",
-    },
-    encoding: "utf8",
-  });
-  assert.equal(run.status, 1);
-  assert.match(run.stderr, /leaving the live bridge alone/);
-  assert.doesNotMatch(run.stderr, /stopping bridge/);
+test("the supervisor recovers every bridge exit without booting out a live job", () => {
+  const source = read("install-supervisor.sh");
+  assert.match(source, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(source, /Restart=always/);
+  assert.match(source, /RUBATO_SUPERVISED/);
+  assert.doesNotMatch(source, /Restart=on-failure|SuccessfulExit<\/key><false\/>/);
+  const updateStart = source.indexOf("darwin_write_plist >\"$target\"");
+  const bootstrap = source.indexOf("launchctl bootstrap", updateStart);
+  assert.ok(updateStart > 0 && bootstrap > updateStart);
+  assert.doesNotMatch(source.slice(updateStart, bootstrap), /launchctl bootout/);
+  const start = read("start.sh");
+  assert.match(start, /RUBATO_SUPERVISED/);
+  assert.match(start, /dev\/tcp\/127\.0\.0\.1/);
 });
 
 test("the bridge ignores ordinary signals and drains only through admin auth", () => {

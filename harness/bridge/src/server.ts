@@ -1,8 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.ts";
 import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
@@ -19,41 +18,6 @@ const STARTED_AT = Date.now();
 const DEFAULT_DRAIN_MS = 30_000;
 const ADMIN_TOKEN_BYTES = 32;
 const DEFAULT_ADMIN_TOKEN_HEADER = "x-rubato-admin";
-
-/**
- * 낡은 코드로 뜬 브리지가 스스로 물러나는 자리.
- *
- * 판정은 세션이 시작될 때 `ensureBroker` 도 한다. 그런데 그 순간 다른 세션이
- * 호출 중이면 건너뛰고, 그다음 누가 새 세션을 열기 전까지는 아무도 다시 보지
- * 않는다 — 낡은 채로 계속 도는 창이 그렇게 열렸다. 바쁠 때를 피하는 것이
- * 목적이었지 영영 미루는 것이 목적이 아니었으므로, 한가해지는 순간에 여기서
- * 이어받는다.
- *
- * 기준은 `ensureBroker` 와 같아야 한다: 소스가 내 시작 시각보다 새로우면 낡은
- * 것이고, 진행 중인 호출이 0 일 때만 간다. 규칙을 고치면 broker.mjs 도 같이.
- */
-const IDLE_RETIRE_DELAY_MS = 2_000;
-
-function bridgeSourceMtimeMs(): number {
-  try {
-    const dir = fileURLToPath(new URL(".", import.meta.url));
-    const times = readdirSync(dir)
-      .filter((name) => name.endsWith(".ts"))
-      .map((name) => statSync(join(dir, name)).mtimeMs);
-    return times.length > 0 ? Math.max(...times) : 0;
-  } catch {
-    // 소스를 못 읽는 것은 "낡았다"가 아니라 "판단 불가"다. 0 을 주면 아래
-    // 비교가 항상 거짓이 되어 살아 있는 브리지를 건드리지 않는다.
-    return 0;
-  }
-}
-
-export function isStaleAgainstSource(
-  startedAt: number,
-  sourceMtime: number = bridgeSourceMtimeMs(),
-): boolean {
-  return sourceMtime > 0 && sourceMtime > startedAt;
-}
 
 export type AdminSecret = {
   path: string;
@@ -394,34 +358,6 @@ export function startBridge(
   const config = loadConfig(env);
   // 값이 잘못됐으면 종료할 때가 아니라 지금 안다.
   drainTimeoutMs(env);
-  let retiring = false;
-  /**
-   * 마지막 호출이 끝난 자리에서 한 번 본다. 낡았고 한가하면 스스로 drain 하고
-   * exit 0 으로 나간다 — supervisor 는 정상 종료를 되살리지 않으므로, 다음 세션의
-   * `ensureBroker` 가 리스너 없음을 보고 새 코드로 띄운다.
-   *
-   * 곧바로 나가지 않고 잠깐 두는 이유: 도구 루프는 호출과 호출 사이가 붙어 있어서
-   * inflight 가 0 을 스치는 순간이 턴 중에도 생긴다. 그 틈에 나가면 사용자가
-   * 체감하는 것은 "업데이트"가 아니라 "턴이 끊겼다"이다. 유예 뒤 다시 0 인지 본다.
-   */
-  const maybeRetireWhenIdle = () => {
-    if (retiring || env.RUBATO_NO_IDLE_RETIRE) return;
-    const state = bridgeState(server);
-    if (state.draining || state.inflight > 0) return;
-    if (!isStaleAgainstSource(STARTED_AT)) return;
-    retiring = true;
-    const timer = setTimeout(() => {
-      const now = bridgeState(server);
-      if (now.draining || now.inflight > 0) {
-        retiring = false;
-        return;
-      }
-      log("fx-v3-bridge: 코드가 낡았고 한가하다. 스스로 물러난다 (다음 세션이 새 코드로 띄운다)\n");
-      void drainAndClose(server, { timeoutMs: drainTimeoutMs(env), log }).then(() => exit(0));
-    }, IDLE_RETIRE_DELAY_MS);
-    // 이 타이머 하나 때문에 프로세스가 살아 있을 이유는 없다.
-    timer.unref?.();
-  };
   const server: Server = createServer((req, res) => {
     void (async () => {
       const state = bridgeState(server);
@@ -476,7 +412,6 @@ export function startBridge(
           await proxyChat(config, req, res, env);
         } finally {
           state.inflight -= 1;
-          maybeRetireWhenIdle();
         }
         return;
       }

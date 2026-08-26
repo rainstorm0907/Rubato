@@ -1,13 +1,13 @@
 #!/bin/sh
-# 브리지를 로그인 때 띄우고, 크래시(SIGKILL 포함) 뒤에는 되살리는 supervisor 를 심는다.
+# 브리지를 로그인 때 띄우고, 종료 원인과 무관하게 되살리는 supervisor 를 심는다.
 #
 #   install-supervisor.sh            계획만 출력한다
 #   install-supervisor.sh --apply    심고 지금 띄운다
 #   install-supervisor.sh --uninstall [--apply]
 #
-# 정상 종료(인증된 /admin/drain, exit 0)는 되살리지 않는다. `rubato restart` 가
-# drain 한 뒤 포트를 비우고 나서 새로 띄우기 때문이다. 크래시만 되살린다 —
-# SIGKILL 은 브리지가 잡을 수 없으니 여기가 유일한 복구다.
+# 인증된 drain 뒤에도 되살린다. `rubato restart` 는 옛 프로세스가 완전히 나간 뒤
+# supervisor 를 명시적으로 깨우므로 자동복구와 경합하지 않는다. SIGKILL뿐 아니라
+# 예기치 않은 exit 0 도 여기서 복구한다.
 #
 # supervisor 가 있든 없든 코드는 같다. `ensureBroker` 가 "살아 있으면 아무것도
 # 안 한다"로 시작하므로 lazy start 경로는 자연히 no-op 이 된다. 분기도 플래그도
@@ -64,13 +64,10 @@ darwin_write_plist() {
     <string>/bin/bash</string>
     <string>${ROOT}/scripts/start.sh</string>
   </array>
-  <!-- 로그인 때 띄우고, 크래시만 되살린다. exit 0(인증 drain)은 그대로 둔다. -->
+  <!-- 로그인 때 띄우고, 종료 원인과 무관하게 되살린다. -->
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key><false/>
-    <key>Crashed</key><true/>
-  </dict>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>1</integer>
   <key>ProcessType</key><string>Background</string>
   <key>WorkingDirectory</key><string>${ROOT}</string>
   <key>StandardOutPath</key><string>${LOG}</string>
@@ -79,6 +76,7 @@ darwin_write_plist() {
   <dict>
     <key>HOME</key><string>${HOME}</string>
     <key>FX_BRIDGE_PORT</key><string>${PORT}</string>
+    <key>RUBATO_SUPERVISED</key><string>1</string>
   </dict>
 </dict>
 </plist>
@@ -99,9 +97,10 @@ Type=simple
 WorkingDirectory=${ROOT}
 ExecStart=/bin/bash ${ROOT}/scripts/start.sh
 Environment=FX_BRIDGE_PORT=${PORT}
-# 크래시(SIGKILL 포함, 비정상 종료)만 되살린다. 인증 drain 은 exit 0 이라 그대로 둔다.
-# rubato-restart.sh 가 포트를 비운 뒤에 start 하므로 겹치지 않는다.
-Restart=on-failure
+Environment=RUBATO_SUPERVISED=1
+# 종료 원인과 무관하게 되살린다. rubato-restart.sh 는 옛 프로세스가 완전히
+# 나간 뒤 start 하므로 자동복구와 경합해도 같은 unit 하나만 남는다.
+Restart=always
 RestartSec=1
 StandardOutput=append:${LOG}
 StandardError=append:${LOG}
@@ -122,14 +121,21 @@ install_darwin() {
   fi
   if [ "$APPLY" -eq 0 ]; then
     plan "쓴다: ${target}"
-    plan "launchctl bootstrap gui/$(id -u) ${target}  (RunAtLoad=true, KeepAlive crashed-only)"
+    plan "launchctl bootstrap gui/$(id -u) ${target}  (RunAtLoad=true, KeepAlive=true)"
     plan "로그: ${LOG}"
     return 0
   fi
   mkdir -p "$(dirname "$target")" "$(dirname "$LOG")"
   darwin_write_plist >"$target"
-  # 이미 등록돼 있으면 새 plist 를 읽게 다시 올린다. bootout 은 없을 때도 조용하다.
-  launchctl bootout "gui/$(id -u)/${LABEL}" 2>/dev/null || true
+  # 이미 등록된 잡을 bootout 하면 그 순간 공유 브리지가 끊긴다. 설정 파일만
+  # 갱신하고 현재 잡은 그대로 둔다. 새 정책은 다음 로그인 또는 명시적 재등록 때
+  # 읽히며, 기존 잡도 그동안 크래시 복구는 계속 맡는다.
+  if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
+    say "설정을 갱신했다(실행 중인 브리지는 건드리지 않았다): ${target}"
+    say "새 KeepAlive 정책은 다음 로그인부터 적용된다."
+    say "로그: ${LOG}"
+    return 0
+  fi
   if launchctl bootstrap "gui/$(id -u)" "$target"; then
     say "등록했다: ${target}"
     say "로그: ${LOG}"
@@ -157,7 +163,7 @@ install_linux() {
   fi
   if [ "$APPLY" -eq 0 ]; then
     plan "쓴다: ${target}"
-    plan "systemctl --user enable --now ${UNIT_NAME}  (Restart=on-failure)"
+    plan "systemctl --user enable --now ${UNIT_NAME}  (Restart=always)"
     plan "로그: ${LOG}"
     return 0
   fi

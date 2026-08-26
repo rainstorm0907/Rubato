@@ -4,7 +4,7 @@ import { zstdDecompressSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, piUsageToFx, providerModel, readClaudeSetupToken } from "../src/direct-provider.ts";
+import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, openaiCodexProviderWithDaybreak, piUsageToFx, providerModel, readClaudeSetupToken } from "../src/direct-provider.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("fx history and tools become pi-ai context without executing tools", () => {
@@ -68,6 +68,54 @@ test("Codex fast catalog ids reach pi-ai without losing their model metadata", (
     provider: "openai-codex",
     modelId: "gpt-5.6-terra-fast",
   });
+});
+
+test("Daybreak Blue is a first-class Codex model instead of an alias", () => {
+  const model = openaiCodexProviderWithDaybreak().getModels()
+    .find((entry) => entry.id === "gpt-daybreak-blue-latest");
+  assert.ok(model);
+  assert.equal(model.name, "Daybreak Blue");
+  assert.equal(model.contextWindow, 272_000);
+  assert.deepEqual(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+  assert.equal(model.upstreamModelId, undefined);
+  assert.deepEqual(providerModel("openai-codex/gpt-daybreak-blue-latest"), {
+    provider: "openai-codex",
+    modelId: "gpt-daybreak-blue-latest",
+  });
+});
+
+test("Daybreak Blue keeps its model id on the upstream wire", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fx-codex-daybreak-"));
+  const authPath = join(directory, "auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  writeFileSync(authPath, JSON.stringify({
+    "openai-codex": { type: "oauth", access: `header.${payload}.signature`, refresh: "refresh", expires: Date.now() + 3_600_000 },
+  }));
+  let wireBody;
+  const frames = [];
+  const upstreamFetch = async (_url, init) => {
+    const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
+    const encoded = new Headers(init?.headers).get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    wireBody = JSON.parse(encoded.toString("utf8"));
+    return new Response([
+      'data: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}',
+      'data: {"type":"response.completed","response":{"id":"r1","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[]}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  for await (const _frame of directProviderToFxSse({
+    model: "openai-codex/gpt-daybreak-blue-latest",
+    body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }], reasoning: "max" },
+    xaiAuthPath: authPath,
+    upstreamFetch,
+    transport: "sse",
+  })) {
+    frames.push(_frame);
+  }
+  assert.ok(wireBody, `upstream fetch was not called: ${frames.join("")}`);
+  assert.equal(wireBody.model, "gpt-daybreak-blue-latest");
+  assert.deepEqual(wireBody.reasoning, { effort: "max", summary: "auto" });
 });
 
 test("Codex fast alias sends canonical model, reasoning, and priority on the upstream wire", async () => {

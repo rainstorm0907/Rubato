@@ -27,6 +27,27 @@ export function isDirectModel(model: string): boolean {
 
 type DirectProvider = "xai" | "anthropic" | "openai-codex" | "kiro";
 
+const DAYBREAK_MODEL_ID = "gpt-daybreak-blue-latest";
+
+export function openaiCodexProviderWithDaybreak() {
+  const provider = openaiCodexProvider();
+  const models = provider.getModels();
+  if (models.some((model) => model.id === DAYBREAK_MODEL_ID)) return provider;
+  const template = models.find((model) => model.id === "gpt-5.6-luna");
+  if (!template) throw new Error("openai-codex provider is missing the Daybreak template model");
+  const daybreak = {
+    ...template,
+    id: DAYBREAK_MODEL_ID,
+    name: "Daybreak Blue",
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 272_000,
+  };
+  return {
+    ...provider,
+    getModels: () => [...models, daybreak],
+  };
+}
+
 export function providerModel(model: string): { provider: DirectProvider; modelId: string } {
   if (model.startsWith("xai/")) return { provider: "xai", modelId: model.slice(4) };
   if (model.startsWith("anthropic/")) return { provider: "anthropic", modelId: model.slice("anthropic/".length) };
@@ -146,6 +167,7 @@ export const DIRECT_CATALOG = [
   { id: "openai-codex/gpt-5.6-luna-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "openai-codex/gpt-5.6-terra", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
   { id: "openai-codex/gpt-5.6-terra-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
+  { id: `openai-codex/${DAYBREAK_MODEL_ID}`, type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
   { id: "google-antigravity/gemini-3.7-flash", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "google-antigravity/gemini-3.1-pro", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "kiro/claude-opus-5", type: "language", owned_by: "kiro", tags: ["tool-use", "reasoning"] },
@@ -460,7 +482,7 @@ export async function* directProviderToFxSse(args: {
   });
   models.setProvider(
     selected.provider === "xai" ? xaiProvider()
-    : selected.provider === "openai-codex" ? openaiCodexProvider()
+    : selected.provider === "openai-codex" ? openaiCodexProviderWithDaybreak()
     : selected.provider === "kiro" ? kiroProvider(args.env)
     : anthropicProvider(),
   );

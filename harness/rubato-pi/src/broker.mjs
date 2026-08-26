@@ -38,6 +38,7 @@ export const FALLBACK_CATALOG = Object.freeze([
   { id: "openai-codex/gpt-5.6-terra-fast", name: "GPT-5.6 Terra Fast" },
   { id: "openai-codex/gpt-5.6-luna", name: "GPT-5.6 Luna" },
   { id: "openai-codex/gpt-5.6-luna-fast", name: "GPT-5.6 Luna Fast" },
+  { id: "openai-codex/gpt-daybreak-blue-latest", name: "Daybreak Blue" },
   { id: "kiro/claude-opus-5", name: "Opus 5 (Kiro)" },
   { id: "kiro/gpt-5.6-sol", name: "GPT-5.6 Sol (Kiro)" },
 ]);
@@ -74,6 +75,14 @@ export function splitCatalogId(id) {
 // image inputs are supported." — ai.google.dev/gemini-api/docs/antigravity-agent
 //
 // 새 프로바이더를 붙일 때 pi-ai 가 그 prefix 를 모르면 여기에 같이 적어라.
+const MODEL_FALLBACKS = Object.freeze({
+  "openai-codex/gpt-daybreak-blue-latest": Object.freeze({
+    contextWindow: 272_000,
+    maxTokens: 128_000,
+    input: Object.freeze(["text", "image"]),
+  }),
+});
+
 const PROVIDER_INPUT_FALLBACK = Object.freeze({
   "google-antigravity": Object.freeze(["text", "image"]),
   // kiro 도 우리가 지어낸 prefix 다. 상류 Kiro 는 이미지를 받고
@@ -83,13 +92,17 @@ const PROVIDER_INPUT_FALLBACK = Object.freeze({
 
 export function catalogLimits(provider, id) {
   const builtin = getBuiltinModel(provider, id);
+  const modelKey = `${provider}/${id}`;
+  const modelFallback = !builtin && Object.hasOwn(MODEL_FALLBACKS, modelKey)
+    ? MODEL_FALLBACKS[modelKey]
+    : undefined;
   const fallbackInput = PROVIDER_INPUT_FALLBACK[provider];
   return {
-    contextWindow: CONTEXT_WINDOW_OVERRIDES[id] ?? builtin?.contextWindow ?? 200_000,
-    maxTokens: builtin?.maxTokens || 16_384,
+    contextWindow: modelFallback?.contextWindow ?? CONTEXT_WINDOW_OVERRIDES[id] ?? builtin?.contextWindow ?? 200_000,
+    maxTokens: modelFallback?.maxTokens ?? builtin?.maxTokens ?? 16_384,
     // 이미지 첨부는 이 배열로 판정된다. builtin 이 아는 모달리티를 그대로 쓴다.
     // 여기서 ["text"] 로 깎으면 read 도구가 이미지를 조용히 버린다.
-    input: builtin?.input?.length ? [...builtin.input] : [...(fallbackInput ?? ["text"])],
+    input: builtin?.input?.length ? [...builtin.input] : [...(modelFallback?.input ?? fallbackInput ?? ["text"])],
     ...(builtin?.upstreamModelId ? { upstreamModelId: builtin.upstreamModelId } : {}),
     ...(builtin?.serviceTier ? { serviceTier: builtin.serviceTier } : {}),
   };
@@ -138,7 +151,14 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function refuseLiveBrokerMutationFromTests(action, implementation, defaultImplementation) {
+  if ((process.env.NODE_TEST_CONTEXT || process.execArgv.includes("--test")) && implementation === defaultImplementation) {
+    throw new Error(`tests must inject ${action}; refusing to mutate the live rubato broker`);
+  }
+}
+
 export function startBroker({ env = process.env, spawn: spawnImpl = spawn } = {}) {
+  refuseLiveBrokerMutationFromTests("startBroker.spawn", spawnImpl, spawn);
   const logPath = brokerLogPath(env);
   // 로그 디렉터리는 처음 한 번 만들어야 한다. 없으면 openSync 가 던지고 브리지가
   // 뜨지 않는다 — 로그 자리를 옮긴 대가로 세션이 안 뜨는 것은 말이 안 된다.
@@ -177,13 +197,6 @@ export function bridgeSourceMtimeMs() {
   return times.length > 0 ? Math.max(...times) : 0;
 }
 
-export function restartBroker({ env = process.env, spawnSyncImpl = spawnSync } = {}) {
-  return spawnSyncImpl("sh", [fileURLToPath(new URL("../../scripts/rubato-restart.sh", import.meta.url))], {
-    env,
-    stdio: "ignore",
-  });
-}
-
 // 브리지 상태를 한 번 읽는다. `-m` 없이 curl 을 부르면 브리지가 응답을 못
 // 주는 동안 세션 시작이 영영 멈춘다 — 붙은 세션이 여럿이면 그게 곧 "rubato 가
 // 안 켜진다" 이다. 판정에는 상한을 둔다.
@@ -210,7 +223,6 @@ export function ensureBroker({
   env = process.env,
   isUp,
   start,
-  restart,
   sourceMtime = bridgeSourceMtimeMs,
   sleep = sleepSync,
   tries = 40,
@@ -222,6 +234,9 @@ export function ensureBroker({
   downIntervalMs = 400,
   warn = (message) => process.stderr.write(message),
 } = {}) {
+  if ((process.env.NODE_TEST_CONTEXT || process.execArgv.includes("--test")) && !isUp) {
+    throw new Error("tests must inject ensureBroker.isUp; refusing to inspect the live rubato broker");
+  }
   const url = brokerUrl(env);
   const check = isUp ?? ((target) => probeBridge(target, { sourceMtime }));
   const read = () => normalizeState(check(url));
@@ -233,24 +248,14 @@ export function ensureBroker({
   }
   if (state.up && state.fresh) return { ok: true, started: false, url };
 
-  // 낡았지만 살아 있다. 진행 중인 모델 호출이 있으면(또는 있는지 알 수 없으면)
-  // 갈아치우지 않는다 — 남의 세션의 턴이 소켓 끊김으로 끝나는 것보다 낡은
-  // 코드로 한 턴 더 도는 쪽이 낫다. 다음 한가한 순간이나 `rubato restart` 가
-  // 가져간다.
+  // 살아 있는 브리지는 절대 자동 재시작하지 않는다. 소스가 바뀌었더라도
+  // 공유 세션을 끊지 않고, 명시적인 `rubato restart` 만 새 코드를 반영한다.
   if (state.up && !state.fresh) {
-    const busy = state.inflight === null || state.inflight > 0;
-    if (busy) {
-      const detail = state.inflight === null
-        ? "진행 중인 호출 수를 알리지 않는 브리지"
-        : `진행 중인 호출 ${state.inflight}건`;
-      warn(`rubato: 브리지 코드가 낡았지만 ${detail} 때문에 재시작하지 않는다. 한가할 때 \`rubato restart\`.\n`);
-      return { ok: true, started: false, stale: true, url };
-    }
+    warn("rubato: 브리지 코드가 낡았다. 공유 세션을 보호하려고 자동 재시작하지 않는다. 한가할 때 `rubato restart`.\n");
+    return { ok: true, started: false, stale: true, url };
   }
 
-  const result = state.up
-    ? (restart ?? (() => restartBroker({ env })))()
-    : (start ?? (() => startBroker({ env })))();
+  const result = (start ?? (() => startBroker({ env })))();
   if (result && typeof result.status === "number" && result.status !== 0) {
     throw new Error(`rubato broker failed to start at ${url}`);
   }
@@ -263,6 +268,9 @@ export function ensureBroker({
 }
 
 export async function loadCatalog({ env = process.env, fetchImpl = fetch } = {}) {
+  if ((process.env.NODE_TEST_CONTEXT || process.execArgv.includes("--test")) && fetchImpl === fetch) {
+    throw new Error("tests must inject loadCatalog.fetchImpl; refusing to inspect the live rubato broker");
+  }
   const url = brokerUrl(env);
   try {
     const res = await fetchImpl(`${url}/coding-agent/v1/models`, { signal: AbortSignal.timeout(2000) });
