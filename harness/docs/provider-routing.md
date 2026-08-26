@@ -112,7 +112,7 @@ sol `0.015` credit) 캐시 부재가 비용 손해로 이어지지 않는다. `b
 | `cli` | 있음 | 400 `profileArn is required` (origin이 `KIRO_CLI`로 나간다) |
 | **`ide`** | **있음** | **성공** |
 
-IdC(Builder ID)는 여기에 `clientId`가 더 붙어야 한다. IDE 토큰(`~/.aws/sso/cache/kiro-auth-token.json`)은 `clientIdHash`만 남기고, 값은 같은 디렉터리의 `<hash>.json`에 있다. 이 둘이 빠지면 첫 시간은 `accessToken`으로 통하고, 만료 뒤 kiro.rs가 `IdC 刷新需要 clientId`로 3번 실패한 다음 자격을 끈다. 브리지는 그걸 `502 Upstream API request failed`로 포장한다. `kiro-setup.sh`가 해시 파일을 읽어 같이 싣는다.
+IdC(Builder ID)는 여기에 `clientId`가 더 붙어야 한다. IDE 토큰(`~/.aws/sso/cache/kiro-auth-token.json`)은 `clientIdHash`만 남기고, 값은 같은 디렉터리의 `<hash>.json`에 있다. 이 둘이 빠지면 첫 시간은 `accessToken`으로 통하고, 만료 뒤 kiro.rs가 `IdC 刷新需要 clientId`로 3번 실패한 다음 자격을 끈다. 브리지는 그걸 `502 Upstream API request failed`로 포장한다. `kiro-setup.sh`가 해시 파일을 읽어 같이 싣고, 이미 떠 있는 자격은 `rubato` 기동의 `heal`이 제자리에서 채운다. 갱신된 `refreshToken`은 덮지 않는다.
 
 Builder ID 계정은 `ListAvailableProfiles`가 403(`AWS Builder ID is not supported for this
 operation`)이라 kiro.rs가 ARN을 스스로 못 구한다. Kiro IDE가 실제로 200을 받는 값을

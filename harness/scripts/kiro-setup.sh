@@ -9,6 +9,7 @@
 #   kiro-setup.sh                      IDE 토큰으로 설정하고 사이드카를 띄운다
 #   kiro-setup.sh export [파일]        자격증명을 파일로 뽑는다(남에게 줄 때)
 #   kiro-setup.sh import <파일>        받은 파일로 설정하고 사이드카를 띄운다
+#   kiro-setup.sh heal                 떠 있는 자격에 clientId 만 채운다(rubato 기동이 부름)
 #
 # 자격증명은 레포 밖(기본 ~/.rubato-pi/kiro)에만 쓴다. 절대 커밋하지 마라.
 set -euo pipefail
@@ -72,7 +73,18 @@ for k in ("clientId", "clientSecret", "startUrl"):
 # kiro.rs 가 "IdC 刷新需要 clientId" 로 3번 죽고 자격을 끄는다.
 if not cred.get("clientId"):
     hid = d.get("clientIdHash")
-    if hid:
+    token_path = os.path.join(os.path.expanduser("~"), ".aws", "sso", "cache", "kiro-auth-token.json")
+    if not hid and os.path.isfile(token_path):
+        try:
+            token = json.load(open(token_path))
+        except (OSError, json.JSONDecodeError):
+            token = None
+        if isinstance(token, dict):
+            hid = token.get("clientIdHash")
+            for k in ("clientId", "clientSecret"):
+                if token.get(k):
+                    cred[k] = token[k]
+    if hid and not cred.get("clientId"):
         candidates = [
             os.path.join(os.path.expanduser("~"), ".aws", "sso", "cache", f"{hid}.json"),
             os.path.join(os.path.dirname(os.path.abspath(src)), f"{hid}.json"),
@@ -91,7 +103,7 @@ if not cred.get("clientId"):
             break
 
 if cred["authMethod"] == "idc" and not cred.get("clientId"):
-    print("kiro-setup: 경고 — IdC 인데 clientId 가 없다. 한 시간 뒤 갱신이 죽는다.", file=sys.stderr)
+    print("kiro-setup: 경고 — IdC 인데 clientId 가 없다. 해시 파일(~/.aws/sso/cache/<clientIdHash>.json)을 확인해라.", file=sys.stderr)
 
 with open(out_path, "w") as fh:
     json.dump([cred], fh, indent=2)
@@ -127,6 +139,13 @@ PY
 
   local api_key
   api_key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["apiKey"])' "$config")"
+  python3 - "$KIRO_DIR/credentials.json" <<'PY' || die "IdC 자격에 clientId 가 없다. 사이드카를 띄우지 않는다."
+import json, sys
+raw = json.load(open(sys.argv[1]))
+cred = raw[0] if isinstance(raw, list) else raw
+if (cred.get("authMethod") or "").lower() == "idc" and not cred.get("clientId"):
+    sys.exit(1)
+PY
 
   info "이미지 확인: $KIRO_IMAGE"
   docker pull "$KIRO_IMAGE" >/dev/null
@@ -177,6 +196,77 @@ require_docker() {
   docker info >/dev/null 2>&1 || die "docker 데몬이 꺼져 있다. OrbStack/Docker Desktop 을 켜라."
 }
 
+# 이미 쓴 credentials.json 을 제자리에서 고친다. refreshToken/
+# accessToken 은 건드리지 않는다 — kiro.rs 가 방금 새로 갱신한 값을
+# setup 이 IDE 토큰으로 덮어쓰면 다음 호출이 지난 토큰으로 돌아간다.
+# 사이드카를 안 쓰는 기기는 자격 파일이 없어서 여기서 바로 나간다.
+heal_credentials() {
+  local cred="$KIRO_DIR/credentials.json"
+  [ -f "$cred" ] || return 0
+
+  local out
+  out=$(python3 - "$cred" "$TOKEN_PATH" <<'PY'
+import json, os, sys
+
+cred_path, token_path = sys.argv[1:3]
+raw = json.load(open(cred_path))
+if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict):
+    sys.exit(0)
+cred = raw[0]
+changed = False
+
+def load_json(path):
+    try:
+        return json.load(open(path))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+def merge_client(extra):
+    global changed
+    if not isinstance(extra, dict):
+        return
+    for key in ("clientId", "clientSecret"):
+        if extra.get(key) and cred.get(key) != extra[key]:
+            cred[key] = extra[key]
+            changed = True
+
+if not cred.get("clientId"):
+    hid = cred.get("clientIdHash")
+    token = load_json(token_path) if os.path.isfile(token_path) else None
+    if isinstance(token, dict):
+        hid = hid or token.get("clientIdHash")
+        merge_client(token)
+    if hid and not cred.get("clientId"):
+        for cache_path in (
+            os.path.join(os.path.expanduser("~"), ".aws", "sso", "cache", f"{hid}.json"),
+            os.path.join(os.path.dirname(os.path.abspath(token_path or cred_path)), f"{hid}.json"),
+        ):
+            extra = load_json(cache_path)
+            if extra and extra.get("clientId"):
+                merge_client(extra)
+                break
+
+if cred.get("clientId") and (cred.get("disabled") or cred.get("disabledReason")):
+    cred["disabled"] = False
+    cred.pop("disabledReason", None)
+    changed = True
+
+if not changed:
+    sys.exit(0)
+json.dump(raw, open(cred_path, "w"), indent=2)
+os.chmod(cred_path, 0o600)
+print("healed")
+PY
+) || return 0
+  [ "$out" = "healed" ] || return 0
+
+  # 파일을 고치면 떠 있는 kiro.rs 는 예전 메모리를 그대로 쓴다.
+  if docker inspect -f '{{.State.Running}}' "$KIRO_CONTAINER" 2>/dev/null | grep -qx true; then
+    docker restart "$KIRO_CONTAINER" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
 case "${1:-setup}" in
   export)
     # 자격증명을 남에게 주기 위해 뽑는다. 받는 쪽은 로그인이 필요 없다.
@@ -187,10 +277,11 @@ case "${1:-setup}" in
 
     normalize_credential "$SRC" "$OUT" >/dev/null
     chmod 600 "$OUT"
-
-    python3 - "$OUT" <<'PY'
+    python3 - "$OUT" <<'PY' || die "내보낸 파일에 clientId 가 없다. 이 파일을 넘기면 받는 쪽이 한 시간 뒤 죽는다."
 import json, sys
 c = json.load(open(sys.argv[1]))[0]
+if (c.get("authMethod") or "").lower() == "idc" and not c.get("clientId"):
+    sys.exit(1)
 print(f"kiro-setup: 내보냄 -> {sys.argv[1]}")
 print(f"  authMethod={c['authMethod']} provider={c['provider']}")
 PY
@@ -225,6 +316,11 @@ EOF
     start_and_verify
     ;;
 
+  heal)
+    # rubato 기동이 부른다. 자격 파일이 없으면 그냥 나간다.
+    heal_credentials
+    ;;
+
   setup|"")
     # 이 기기의 Kiro IDE 토큰으로 설정한다.
     require_docker
@@ -239,6 +335,6 @@ EOF
     ;;
 
   *)
-    die "모르는 명령: $1 (setup | export | import)"
+    die "모르는 명령: $1 (setup | export | import | heal)"
     ;;
 esac

@@ -160,6 +160,13 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
   unset _sv_label _sv_installed _sv_unit 2>/dev/null || true
 fi
 
+# 예전 kiro 자격은 clientId 없이 떠 있어서 accessToken 이 만료되면 사이드카가
+# 자격을 끈다. 자격 파일이 있는 기기만 제자리에서 채운다. 없으면 heal 이
+# 바로 나간다. 실패해도 세션을 막지 않는다.
+if [ -z "${RUBATO_NO_KIRO_HEAL-}" ] && [ -x "$HERE/kiro-setup.sh" ]; then
+  "$HERE/kiro-setup.sh" heal >/dev/null 2>&1 || true
+fi
+
 # fetch 가 아직이면 여기서 받는다. 이미 끝났으면 wait 은 즉시 돌아온다.
 if [ -n "${UPDATE_PID-}" ]; then
   splash step "업데이트 확인"
