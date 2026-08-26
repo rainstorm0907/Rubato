@@ -80,6 +80,74 @@ describe("턴 작업 요약", () => {
     assistant.dispose();
   });
 
+  test("GPT tool-use ellipsis filler never becomes a visible assistant block", () => {
+    const message = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "사용자에게 보일 진행 설명...." },
+        { type: "toolCall", id: "gpt-tool", name: "read", arguments: { path: "file.ts" } },
+        { type: "text", text: "..." },
+      ],
+      timestamp: Date.now(),
+      stopReason: "toolUse",
+    } as any;
+    const assistant = new AssistantMessageComponent(message, true);
+    const summary = new TurnWorkSummaryComponent(ui);
+    summary.trackAssistant(assistant, message);
+
+    const visible = stripAnsi(assistant.render(100).join("\n"));
+    expect(visible).toContain("사용자에게 보일 진행 설명....");
+    expect(visible.split("\n").map((line) => line.trim())).not.toContain("...");
+    summary.dispose();
+    assistant.dispose();
+  });
+
+  test("pending ellipsis is withheld before a tool arrives and restored for a final answer", () => {
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: "..." }],
+      timestamp: Date.now(),
+      stopReason: "pending",
+    } as any;
+    const assistant = new AssistantMessageComponent(message, true);
+
+    expect(stripAnsi(assistant.render(100).join("\n")).split("\n").map((line) => line.trim())).not.toContain("...");
+
+    message.stopReason = "stop";
+    assistant.updateContent(message, false);
+    expect(stripAnsi(assistant.render(100).join("\n"))).toContain("...");
+    assistant.dispose();
+  });
+
+  test("pending ellipsis stays hidden after a tool arrives", () => {
+    const message = {
+      role: "assistant",
+      content: [
+        { type: "toolCall", id: "pending-tool", name: "read", arguments: { path: "file.ts" } },
+        { type: "text", text: "..." },
+      ],
+      timestamp: Date.now(),
+      stopReason: "pending",
+    } as any;
+    const assistant = new AssistantMessageComponent(message, true);
+
+    expect(stripAnsi(assistant.render(100).join("\n")).split("\n").map((line) => line.trim())).not.toContain("...");
+    assistant.dispose();
+  });
+
+  test("ellipsis remains visible when it is a final answer rather than tool-use filler", () => {
+    const message = {
+      role: "assistant",
+      content: [{ type: "text", text: "..." }],
+      timestamp: Date.now(),
+      stopReason: "stop",
+    } as any;
+    const assistant = new AssistantMessageComponent(message, true);
+
+    expect(stripAnsi(assistant.render(100).join("\n"))).toContain("...");
+    assistant.dispose();
+  });
+
   test("사용자에게 보일 답변은 요약 밖에 그대로 남는다", () => {
     const startedAt = Date.now() - 2_000;
     const message = {
