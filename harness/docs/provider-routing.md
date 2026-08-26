@@ -54,12 +54,22 @@ Anthropic Messages transport를 그대로 붙인다. 새 transport를 짜지 않
 kiro-setup.sh                  # 이 기기의 Kiro IDE 토큰으로 붙는다
 kiro-setup.sh export [파일]    # 자격증명을 뽑는다(남에게 줄 때)
 kiro-setup.sh import <파일>    # 받은 파일로 붙는다 — 로그인 불필요
+kiro-setup.sh ensure           # Docker와 사이드카를 현재 설정에서 복원한다
 ```
 
-세 경로 모두 같은 정규화를 탄다(`normalize_credential`). 그래야 받는 기기에서
+설정·이식 세 경로는 모두 같은 정규화를 탄다(`normalize_credential`). 그래야 받는 기기에서
 `endpoint`나 `profileArn`이 빠져 아래 표의 실패로 떨어지지 않는다. `import`는
 Kiro IDE 도 `kiro-cli` 도 요구하지 않는다 — 빈 기기에서 파일 하나로 모델 19개와
 두 모델의 실응답까지 확인했다.
+
+로그인 supervisor와 `rubato` 기동은 자격 파일이 있는 기기에서 `ensure`를 자동
+호출한다. supervisor는 브리지 기동을 늦추지 않도록 백그라운드에서 복원한다. Docker의
+`restart=unless-stopped`는 데몬이 먼저 떠야만 작동하므로, macOS에서는 현재 Docker
+context에 맞춰 OrbStack 또는 Docker Desktop을 깨운 뒤 기존 `kiro-rs`를 시작한다.
+Linux Docker Desktop은 user unit을 깨우고, 시스템 Docker는 OS supervisor에 맡긴다.
+컨테이너가 사라졌으면 같은 `config.json`과 `credentials.json`으로 다시 만들며,
+어느 경로든 인증한 `/v1/models` 응답이 돌아와야 복원이 끝난다. Kiro를 설정하지 않은
+기기에서는 Docker를 찾거나 띄우지 않는다.
 
 자격증명 파일은 그 자체가 계정 접근권이다(refreshToken). 넘기면 회수 수단이
 비밀번호 변경뿐이고, 크레딧도 공유된다.

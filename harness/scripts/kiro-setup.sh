@@ -10,6 +10,7 @@
 #   kiro-setup.sh export [파일]        자격증명을 파일로 뽑는다(남에게 줄 때)
 #   kiro-setup.sh import <파일>        받은 파일로 설정하고 사이드카를 띄운다
 #   kiro-setup.sh heal                 떠 있는 자격에 clientId 만 채운다(rubato 기동이 부름)
+#   kiro-setup.sh ensure               자격을 고치고 사이드카까지 되살린다
 #
 # 자격증명은 레포 밖(기본 ~/.rubato-pi/kiro)에만 쓴다. 절대 커밋하지 마라.
 set -euo pipefail
@@ -196,6 +197,81 @@ require_docker() {
   docker info >/dev/null 2>&1 || die "docker 데몬이 꺼져 있다. OrbStack/Docker Desktop 을 켜라."
 }
 
+kiro_ready() {
+  [ -f "$KIRO_DIR/config.json" ] || return 1
+  local api_key
+  api_key="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["apiKey"])' "$KIRO_DIR/config.json" 2>/dev/null)" || return 1
+  curl -sf -m 3 "http://127.0.0.1:${KIRO_PORT}/v1/models" -H "x-api-key: $api_key" >/dev/null 2>&1
+}
+
+# 컨테이너의 restart policy 는 Docker 데몬이 먼저 떠야만 효력이 있다. macOS
+# 데스크톱 런타임은 로그인 뒤에도 앱이 안 뜰 수 있으므로, 자격이 있는 기기에서
+# Rubato 가 시작될 때 현재 Docker context 의 런타임을 한 번 깨운다. Linux 의
+# 시스템 Docker 는 OS supervisor 소유라 여기서 sudo 로 건드리지 않는다.
+ensure_docker() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker info >/dev/null 2>&1 && return 0
+
+  if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
+    local context endpoint app=""
+    context="$(docker context show 2>/dev/null || true)"
+    endpoint="$(docker context inspect "$context" --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+    case "$context" in
+      orbstack) app="OrbStack" ;;
+      desktop-linux) app="Docker" ;;
+      *)
+        case "$endpoint" in
+          *orbstack*) app="OrbStack" ;;
+          *docker*) app="Docker" ;;
+        esac
+        # endpoint 도 모호하면 설치된 런타임이 하나뿐일 때만 고른다. 둘 다
+        # 있는 기기에서 임의로 하나를 띄우면 현재 context 와 어긋난다.
+        if [ -z "$app" ]; then
+          if [ -d /Applications/OrbStack.app ] && [ ! -d /Applications/Docker.app ]; then app="OrbStack"; fi
+          if [ -d /Applications/Docker.app ] && [ ! -d /Applications/OrbStack.app ]; then app="Docker"; fi
+        fi
+        ;;
+    esac
+    [ -n "$app" ] && open -gja "$app" >/dev/null 2>&1 || true
+  elif [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
+    # Docker Desktop for Linux 는 user unit 이다. 시스템 docker.service 는
+    # root supervisor 소유이므로 비밀번호 없는 우회 기동을 시도하지 않는다.
+    systemctl --user start docker-desktop >/dev/null 2>&1 || true
+  fi
+
+  local i
+  for i in $(seq 1 30); do
+    docker info >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+ensure_sidecar() {
+  [ -f "$KIRO_DIR/config.json" ] && [ -f "$KIRO_DIR/credentials.json" ] || return 0
+  kiro_ready && return 0
+  ensure_docker || return 1
+
+  if docker container inspect "$KIRO_CONTAINER" >/dev/null 2>&1; then
+    # 데몬이 막 뜬 직후에는 restart policy 가 컨테이너를 이미 올리는 중일 수
+    # 있다. 실행 중이면 기다리기만 한다 — 동시에 연 Rubato 세션이 서로의
+    # Kiro 호출을 restart 로 끊어서는 안 된다. 멈춘 컨테이너만 시작한다.
+    if ! docker inspect -f '{{.State.Running}}' "$KIRO_CONTAINER" 2>/dev/null | grep -qx true; then
+      docker start "$KIRO_CONTAINER" >/dev/null 2>&1 || return 1
+    fi
+    local i
+    for i in $(seq 1 30); do
+      kiro_ready && return 0
+      sleep 1
+    done
+    return 1
+  fi
+
+  # Docker 상태를 초기화했거나 다른 기기로 설정만 옮긴 경우다. 같은 설정과
+  # 자격 파일에서 컨테이너를 다시 만들고 start_and_verify 가 실응답을 확인한다.
+  start_and_verify >/dev/null
+}
+
 # 이미 쓴 credentials.json 을 제자리에서 고친다. refreshToken/
 # accessToken 은 건드리지 않는다 — kiro.rs 가 방금 새로 갱신한 값을
 # setup 이 IDE 토큰으로 덮어쓰면 다음 호출이 지난 토큰으로 돌아간다.
@@ -321,6 +397,14 @@ EOF
     heal_credentials
     ;;
 
+  ensure)
+    # rubato 기동이 부른다. 자격 파일이 있는 기기에서만 Docker와 사이드카를
+    # 복원한다. 설정하지 않은 기기에는 Docker 의존성을 만들지 않는다.
+    [ -f "$KIRO_DIR/credentials.json" ] || exit 0
+    heal_credentials
+    ensure_sidecar || die "kiro.rs 를 복원하지 못했다. Docker 런타임과 docker logs $KIRO_CONTAINER 를 확인해라."
+    ;;
+
   setup|"")
     # 이 기기의 Kiro IDE 토큰으로 설정한다.
     require_docker
@@ -335,6 +419,6 @@ EOF
     ;;
 
   *)
-    die "모르는 명령: $1 (setup | export | import | heal)"
+    die "모르는 명령: $1 (setup | export | import | heal | ensure)"
     ;;
 esac
