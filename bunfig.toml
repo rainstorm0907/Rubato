@@ -1,6 +1,32 @@
 [test]
 preload = ["./test-env.ts", "./test-setup.ts"]
-pathIgnorePatterns = ["dist/**", "packages/web/**", "packages/lsp-tools-mcp/**", "packages/lsp-daemon/**", "packages/omo-codex/plugin/**", "packages/omo-codex/scripts/**", "packages/shared-skills/upstreams/**"]
+# Rubato keeps disabled-component sources for merge cost (component-list.ts),
+# but their tests are remnant: they are not registered and only add noise.
+# `bun test packages/omo-senpi` still uses this file; CI linux/macos root
+# suite uses bunfig.root.toml and never discovers these paths anyway.
+pathIgnorePatterns = [
+  "dist/**",
+  "packages/web/**",
+  "packages/lsp-tools-mcp/**",
+  "packages/lsp-daemon/**",
+  "packages/omo-codex/plugin/**",
+  "packages/omo-codex/scripts/**",
+  "packages/shared-skills/upstreams/**",
+  "packages/omo-senpi/src/components/telemetry/**",
+  "packages/omo-senpi/src/components/ultrawork/**",
+  "packages/omo-senpi/src/components/ulw-loop/**",
+  "packages/omo-senpi/src/components/onboarding/**",
+  "packages/omo-senpi/src/components/init-deep-advisor/**",
+  "packages/omo-senpi/src/components/skill-pointers/**",
+  "packages/omo-senpi/src/components/start-work-continuation/**",
+  "packages/omo-senpi/src/components/todo-fanout-reminder/**",
+  "packages/omo-senpi/src/components/git-master/**",
+  "packages/omo-senpi/src/components/fallback-architect/**",
+  "packages/omo-senpi/src/components/comment-checker/**",
+  "packages/omo-senpi/src/components/config-startup/**",
+  "packages/omo-senpi/src/components/config-watch/**",
+  "packages/omo-senpi/src/components/native-badge/**",
+]
 
 [loader]
 ".md" = "text"
