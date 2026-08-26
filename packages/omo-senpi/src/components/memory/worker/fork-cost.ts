@@ -86,32 +86,14 @@ export type MemoryLaunchRouteInput = {
 }
 
 export function chooseMemoryLaunchRoute(input: MemoryLaunchRouteInput): MemoryLaunchRoute {
-  const { surface, quick, session } = input
+  const { quick, session } = input
   if (quick === undefined) {
     if (session === undefined) throw new Error("chooseMemoryLaunchRoute requires a quick candidate")
     return pick("fork", session, "only_candidate")
   }
-  if (surface === "facts") return pick("quick", quick, "surface_excluded")
-  if (session === undefined) return pick("quick", quick, "only_candidate")
-  if (session.cost === undefined) return pick("quick", quick, "no_pricing")
-  if (input.parentContextTokens === undefined) return pick("quick", quick, "unknown_context")
-
-  const profile = MEMORY_WORKLOAD_PROFILES[surface]
-  const forkCost = estimateForkCost({
-    pricing: session.cost,
-    parentContextTokens: input.parentContextTokens,
-    turns: input.turns,
-    outputTokens: profile.outputTokens,
-    cacheHit: input.cacheHit,
-  })
-  const quickCost = quick.cost === undefined
-    ? undefined
-    : estimateQuickCost({ pricing: quick.cost, profile })
-  if (quickCost === undefined) return pick("quick", quick, "no_pricing")
-  if (forkCost < quickCost) {
-    return { ...pick("fork", session, "cheaper"), forkCost, quickCost }
-  }
-  return { ...pick("quick", quick, "cheaper"), forkCost, quickCost }
+  // Memory jobs stay on the resolved category model. Fork+inherit would follow
+  // the parent session (opus/fable/...) and undo an explicit grok pin.
+  return pick("quick", quick, "surface_excluded")
 }
 
 function pick(

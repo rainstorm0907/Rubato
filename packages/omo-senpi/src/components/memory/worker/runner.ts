@@ -111,9 +111,8 @@ export class SenpiSubprocessRunner implements ReflectionRunner {
     return this.settle(run, execution, startedAt, resolution, false)
   }
 
-  // Fork-vs-quick is orthogonal to category resolution: even a user with a working quick chain
-  // should fork when the session model's cache reads are cheap and the job is short. The resolved
-  // quick candidate is compared against fork+inherit on measured per-turn cost; facts never forks.
+  // Memory jobs stay on the resolved category model. Fork+inherit would follow the parent
+  // session and undo an explicit pin (rubato pins reflection/dream/facts to grok).
   private chooseLaunchRoute(
     run: ReservedRun,
     resolution: Extract<ReflectionModelResolution, { readonly kind: "resolved" }>,

@@ -20,15 +20,6 @@ const LUNA = { input: 0.25, cacheRead: 0.025, output: 2.00 }
 const KIMI = { input: 0.60, cacheRead: 0.15, output: 2.50 }
 const OPUS = { input: 5.00, cacheRead: 0.50, output: 25.0 }
 
-const PREFIX_BREAKING_FLAGS = [
-  "--system-prompt",
-  "--tools",
-  "--no-extensions",
-  "--no-skills",
-  "--no-prompt-templates",
-  "--no-context-files",
-]
-
 function parentSessionFile(): string {
   const dir = mkdtempSync(join(tmpdir(), "parent-session-"))
   roots.push(dir)
@@ -39,7 +30,7 @@ function parentSessionFile(): string {
 
 describe("reflection fork-mode spawn", () => {
   describe("#given a cheap-cache session model and a small parent context", () => {
-    test("#when launched #then the spawn forks the parent session and never breaks the prefix", async () => {
+    test("#when launched #then the spawn stays on the category model instead of forking the parent", async () => {
       // given
       const parent = parentSessionFile()
       const harness = await createRunnerHarness({
@@ -61,12 +52,10 @@ describe("reflection fork-mode spawn", () => {
       // then
       const spawn = harness.spawnCalls[0]
       expect(spawn).toBeDefined()
-      expect(spawn?.fork).toEqual({ parentSessionFile: parent })
-      expect(spawn?.args).toContain("--fork")
-      expect(spawn?.args).toContain(parent)
-      for (const flag of PREFIX_BREAKING_FLAGS) {
-        expect(spawn?.args).not.toContain(flag)
-      }
+      expect(spawn?.fork).toBeUndefined()
+      expect(spawn?.args).not.toContain("--fork")
+      expect(spawn?.args).toContain("--system-prompt")
+      expect(spawn?.args).toContain("--no-extensions")
     })
   })
 

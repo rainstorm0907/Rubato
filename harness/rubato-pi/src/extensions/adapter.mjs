@@ -4,7 +4,7 @@ import { resolveRole } from "../role-contract.mjs";
 import { promptForAgentStart } from "../system-prompt.mjs";
 import { isTeamMemberProcess, parseMemberIdentity } from "../member-identity.mjs";
 import { registerMemberBoardTools, restoreMemberTaskEngine } from "../member-tools.mjs";
-import { rubatoPiTaskComponent } from "../omo-runtime.mjs";
+import { rubatoPiMemoryComponent, rubatoPiTaskComponent } from "../omo-runtime.mjs";
 import { DAG_ON_COMPONENTS } from "../policy.mjs";
 import { provisionSpecWorktrees } from "../team-worktrees.mjs";
 import { contractSkillsMessage, shouldInjectContractSkills } from "../contract-skills.mjs";
@@ -27,9 +27,11 @@ function leadOverlayLoaded(argv) {
   return false;
 }
 
-const dagOverlay = composeOmoSenpiExtension(
-  omoSenpiComponents.filter((component) => DAG_ON.has(component.name)),
-);
+const replaceMemory = rubatoPiMemoryComponent !== undefined;
+const dagOverlay = composeOmoSenpiExtension([
+  ...omoSenpiComponents.filter((component) => DAG_ON.has(component.name) && (!replaceMemory || component.name !== "memory")),
+  ...(replaceMemory ? [rubatoPiMemoryComponent] : []),
+]);
 const taskComponent = rubatoPiTaskComponent;
 
 export default async function rubatoPiAdapter(pi) {

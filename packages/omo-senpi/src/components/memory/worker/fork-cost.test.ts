@@ -50,11 +50,11 @@ describe("estimateForkCost", () => {
 
 describe("chooseMemoryLaunchRoute", () => {
   describe("#given a session model with cheap cache reads", () => {
-    test("#when the job is short #then fork wins", () => {
+    test("#when the job is short #then the category model still wins", () => {
       // when
       const decision = chooseMemoryLaunchRoute({
         surface: "reflection",
-        quick: { model: "kimi/kimi-for-coding-highspeed", cost: KIMI },
+        quick: { model: "xai/grok-4.6", cost: KIMI },
         session: { model: "openai/gpt-5.6-luna-fast", cost: LUNA },
         parentContextTokens: PARENT_P50,
         turns: 3,
@@ -62,9 +62,9 @@ describe("chooseMemoryLaunchRoute", () => {
       })
 
       // then
-      expect(decision.route).toBe("fork")
-      expect(decision.model).toBe("openai/gpt-5.6-luna-fast")
-      expect(decision.forkCost).toBeLessThan(decision.quickCost ?? Infinity)
+      expect(decision.route).toBe("quick")
+      expect(decision.model).toBe("xai/grok-4.6")
+      expect(decision.reason).toBe("surface_excluded")
     })
   })
 
@@ -119,40 +119,41 @@ describe("chooseMemoryLaunchRoute", () => {
   })
 
   describe("#given incomplete inputs", () => {
-    test("#when the session model has no pricing #then it falls back to quick deterministically", () => {
+    test("#when the session model has no pricing #then it still stays on the category model", () => {
       const decision = chooseMemoryLaunchRoute({
         surface: "reflection",
-        quick: { model: "kimi/kimi-for-coding-highspeed", cost: KIMI },
+        quick: { model: "xai/grok-4.6", cost: KIMI },
         session: { model: "mystery/model" },
         parentContextTokens: PARENT_P50,
         turns: 3,
         cacheHit: true,
       })
       expect(decision.route).toBe("quick")
-      expect(decision.reason).toBe("no_pricing")
+      expect(decision.reason).toBe("surface_excluded")
     })
 
-    test("#when there is no session model at all #then it routes to quick", () => {
+    test("#when there is no session model at all #then it routes to the category model", () => {
       const decision = chooseMemoryLaunchRoute({
         surface: "reflection",
-        quick: { model: "kimi/kimi-for-coding-highspeed", cost: KIMI },
+        quick: { model: "xai/grok-4.6", cost: KIMI },
         parentContextTokens: PARENT_P50,
         turns: 3,
         cacheHit: true,
       })
       expect(decision.route).toBe("quick")
+      expect(decision.reason).toBe("surface_excluded")
     })
 
-    test("#when the parent context is unknown #then it routes to quick rather than guessing", () => {
+    test("#when the parent context is unknown #then it still stays on the category model", () => {
       const decision = chooseMemoryLaunchRoute({
         surface: "reflection",
-        quick: { model: "kimi/kimi-for-coding-highspeed", cost: KIMI },
+        quick: { model: "xai/grok-4.6", cost: KIMI },
         session: { model: "openai/gpt-5.6-luna-fast", cost: LUNA },
         turns: 3,
         cacheHit: true,
       })
       expect(decision.route).toBe("quick")
-      expect(decision.reason).toBe("unknown_context")
+      expect(decision.reason).toBe("surface_excluded")
     })
   })
 })

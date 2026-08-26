@@ -9,11 +9,11 @@ const PARENT_P50 = 156_872
 
 describe("reflection launch route", () => {
   describe("#given a short job on a cheap-cache session model", () => {
-    test("#when routed #then fork wins and carries the session model", () => {
+    test("#when routed #then the category model still wins", () => {
       // when
       const route = chooseMemoryLaunchRoute({
         surface: "reflection",
-        quick: { model: "kimi/kimi-for-coding-highspeed", cost: KIMI },
+        quick: { model: "xai/grok-4.6", cost: KIMI },
         session: { model: "openai/gpt-5.6-luna-fast", cost: LUNA },
         parentContextTokens: PARENT_P50,
         turns: MEMORY_WORKLOAD_PROFILES.reflection.turns,
@@ -21,8 +21,9 @@ describe("reflection launch route", () => {
       })
 
       // then
-      expect(route.route).toBe("fork")
-      expect(route.model).toBe("openai/gpt-5.6-luna-fast")
+      expect(route.route).toBe("quick")
+      expect(route.model).toBe("xai/grok-4.6")
+      expect(route.reason).toBe("surface_excluded")
     })
   })
 

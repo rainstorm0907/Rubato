@@ -57,3 +57,32 @@ export function loadRubatoPiOmoConfig(options = {}) {
     diagnostics: [],
   };
 }
+
+/**
+ * Memory children still call loadConfig themselves. Task overlay disables `quick`,
+ * but facts and `/people --ask` are hardcoded to that name, so memory reopens it
+ * as grok-only and pins reflection/dream to the grok category.
+ */
+export function pinMemoryJobsToGrok(loaded) {
+  const config = loaded?.config ?? {};
+  const memory = config.memory ?? {};
+  const reflection = memory.reflection ?? {};
+  return {
+    ...loaded,
+    config: {
+      ...config,
+      categories: {
+        ...config.categories,
+        grok: { model: MODEL_CATEGORIES.grok },
+        quick: { models: [MODEL_CATEGORIES.grok] },
+      },
+      memory: {
+        ...memory,
+        reflection: {
+          ...reflection,
+          category: "grok",
+        },
+      },
+    },
+  };
+}

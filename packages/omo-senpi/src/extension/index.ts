@@ -6,4 +6,6 @@ export const omoSenpiComponents = createOmoSenpiComponents(createTaskComponent()
 
 export default composeOmoSenpiExtension(omoSenpiComponents)
 export { composeOmoSenpiExtension }
+export { createMemoryComponent } from "../components/memory"
+export { loadSenpiOmoConfig } from "../components/config-resolution"
 export type { ComponentContext, ComponentLogger, OmoSenpiComponent, SenpiExtensionAPI } from "./types"
