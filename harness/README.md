@@ -368,7 +368,7 @@ broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assis
 여는 빈 블록)는 사고 시작으로 세지 않는다 — 그러면 업스트림 대기가 think로 옮겨가 delay가 0에 가까워진다.
 `ttftMs`는 이름도 의미도 그대로 남겨 기존 로그와 `scripts/analyze-measurements.mjs`가 계속 돈다.
 
-상태줄은 모델·잔량 다음에 속도 조각을 `17 tok/s · Cache 98% · delay 4s · think 10s` 순으로 붙이고,
+상태줄은 모델·잔량 다음에 속도 조각을 `17 tok/s · Cache 98% (40m) · delay 4s · think 10s` 순으로 붙이고,
 브랜치·레포는 그 뒤에 둔다. 폭이 줄어들면 정체성(브랜치/레포)부터 잘리고 숫자 묶음은 남는다.
 없는 조각은 빼고 `think 0`은 그리지 않는다. 숫자는 정수로 반올림한다(17.5 → 18 tok/s, 98.9% → 99%,
 4.6s → 5s). 1초 미만 delay/think만 `420ms`처럼 정수 밀리초로 남긴다.
@@ -396,7 +396,7 @@ timing이 있으면 같은 계산을 쓴다. timing이 없는 옛 메시지만 �
 실측 예시(2026-08-24, anthropic/claude-opus-5, 실제 브리지 호출 — 증명 + 도구 호출 한 턴):
 
 ```
-✦ Opus 5 xhigh · 100%(1M) · Cache 2% · delay 3s · think 98s · rubato/base · Rubato ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
+✦ Opus 5 xhigh · 100% (1M) · Cache 2% · delay 3s · think 98s · rubato/base · Rubato ✝𝒓𝒖𝒃𝒂𝒕𝒐✝
 ```
 
 뒤에 있는 호출별 실제 숫자는 이렇다. 도구 결과를 받은 두 번째 호출은 사고를 하지 않았고, 그래서

@@ -4,6 +4,7 @@ import {
   appendBrandMark,
   cacheHitPercent,
   cacheStatus,
+  formatCacheSegment,
   formatContext,
   formatFooterLatencyMs,
   formatFooterMetrics,
@@ -69,9 +70,20 @@ test("context window is the active model's max, not a fixed 200K", () => {
   assert.equal(formatWindow(200_000), "200K");
   assert.equal(formatWindow(500_000), "500K");
   assert.equal(formatWindow(372_000), "372K");
-  assert.equal(formatContext(60, 1_000_000), "60%(1M)");
-  assert.equal(formatContext(100, 200_000), "100%(200K)");
-  assert.equal(formatContext(null, 1_000_000), "?(1M)");
+  assert.equal(formatContext(60, 1_000_000), "60% (1M)");
+  assert.equal(formatContext(100, 200_000), "100% (200K)");
+  assert.equal(formatContext(null, 1_000_000), "? (1M)");
+});
+
+test("cache percent and lifetime share one segment", () => {
+  assert.equal(formatCacheSegment(92, { text: "Cache 40m" }), "Cache 92% (40m)");
+  assert.equal(formatCacheSegment(92, { text: "Cache Expired" }), "Cache 92% (Expired)");
+  assert.equal(formatCacheSegment(92, { text: "Cache ≥ 29m" }), "Cache 92% (≥ 29m)");
+  assert.equal(formatCacheSegment(92, { text: "Cache Miss" }), "Cache 92% (Miss)");
+  assert.equal(formatCacheSegment(92, { text: "Cache Hit 1m ago" }), "Cache 92% (Hit 1m ago)");
+  assert.equal(formatCacheSegment(92, null), "Cache 92%");
+  assert.equal(formatCacheSegment(null, { text: "Cache 4m" }), "Cache 4m");
+  assert.equal(formatCacheSegment(null, null), "");
 });
 
 test("cache hit percent uses the last prompt, including writes", () => {
@@ -162,7 +174,7 @@ test("cache status uses cache-bearing request start and never calls opaque reten
   assert.deepEqual(cacheStatus(entries, { kind: "sliding", ttlSeconds: 300 }, 310_000), { text: "Cache Expired", ticking: false, expired: true });
   assert.deepEqual(cacheStatus(entries, { kind: "minimum", ttlSeconds: 1800 }, 70_000), { text: "Cache ≥ 29m", ticking: true, expired: false });
   assert.deepEqual(cacheStatus(entries, { kind: "minimum", ttlSeconds: 1800 }, 1_900_000), { text: "Cache Unknown", ticking: false, expired: false });
-  assert.deepEqual(cacheStatus(entries, { kind: "opaque" }, 70_000), { text: "Cache Hit 1m ago", ticking: true, expired: false });
+  assert.equal(cacheStatus(entries, { kind: "opaque" }, 70_000), null);
   assert.equal(cacheStatus([], { kind: "opaque" }, 70_000), null);
 });
 
@@ -269,7 +281,7 @@ test("statusline order is model, remaining, metrics, branch, repo", () => {
       cache: 98,
       timing: { waitMs: 4_000, thinkMs: 10_000 },
     }),
-    "✦ Opus 5 high · 60%(1M) · 17 tok/s · Cache 98% · delay 4s · think 10s · main · agent-taskforce",
+    "✦ Opus 5 high · 60% (1M) · 17 tok/s · Cache 98% · delay 4s · think 10s · main · agent-taskforce",
   );
   assert.deepEqual(
     statuslineSegments({
@@ -279,7 +291,7 @@ test("statusline order is model, remaining, metrics, branch, repo", () => {
       branch: "main",
       repo: "agent-taskforce",
     }),
-    ["✦ 5.6 Sol high", "100%(372K)", "main", "agent-taskforce"],
+    ["✦ 5.6 Sol high", "100% (372K)", "main", "agent-taskforce"],
   );
 });
 
@@ -329,13 +341,51 @@ test("installStatusline paints effort and the model context window", () => {
   );
   // Metrics sit before branch/repo so a tight width clips identity first.
   // No timing on this branch, so no tok/s or latency segment appears.
-  const left = "✦ Opus 5 high · 60%(1M) · Cache 80% · main · agent-taskforce";
+  const left = "✦ Opus 5 high · 60% (1M) · Cache 80% · main · agent-taskforce";
   assert.deepEqual(footer.render(120), [appendBrandMark(left, 120)]);
   assert.match(footer.render(120)[0], new RegExp(`${BRAND_NAME}$`));
   assert.equal(visibleColumns(footer.render(120)[0]), 120);
   assert.equal(footer.render(70)[0], left);
   assert.ok(!footer.render(70)[0].includes(BRAND_NAME));
   assert.equal(colors.at(-1), "dim");
+});
+
+test("the footer merges cache percent and remaining lifetime into one segment", () => {
+  let factory;
+  const sentAt = Date.now() - 1_000;
+  const ctx = {
+    cwd: "/Users/wy/Github-repos/agent-taskforce",
+    model: { id: "anthropic/claude-opus-5", provider: "anthropic", contextWindow: 1_000_000 },
+    thinkingLevel: "high",
+    getContextUsage: () => ({ tokens: 400_000, contextWindow: 1_000_000, percent: 40 }),
+    sessionManager: {
+      getBranch: () => [
+        {
+          type: "message",
+          message: {
+            role: "assistant",
+            usage: { input: 20, cacheRead: 80, cacheWrite: 0 },
+            timing: { sentAt, processStartedAt: 42, ttftMs: 400 },
+          },
+        },
+      ],
+    },
+    ui: { setFooter(next) { factory = next; } },
+  };
+  const pi = {
+    on(event, handler) {
+      if (event === "session_start") handler({ type: "session_start", reason: "startup" }, ctx);
+    },
+  };
+  installStatusline(pi, { processStartedAt: 42 });
+  const footer = factory(
+    { requestRender() {} },
+    { fg: (_color, text) => text },
+    { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
+  );
+  const rendered = footer.render(160)[0];
+  assert.match(rendered, /Cache 80% \(60m\)/);
+  assert.equal(rendered.includes("Cache 80% · Cache"), false, rendered);
 });
 
 test("the footer averages wait and thinking across the current turn's model calls", () => {
@@ -417,7 +467,7 @@ test("the footer shows current-process ttft without rendering raw turn duration"
     { fg: (_color, text) => text },
     { getGitBranch: () => "main", onBranchChange: () => () => {}, getExtensionStatuses: () => new Map() },
   );
-  const left = "✦ Opus 5 high · 60%(1M) · Cache 80% · delay 420ms · main · agent-taskforce";
+  const left = "✦ Opus 5 high · 60% (1M) · Cache 80% · delay 420ms · main · agent-taskforce";
   const rendered = footer.render(140)[0];
   assert.equal(rendered.startsWith(left), true);
   assert.equal(rendered.includes("turn"), false);
@@ -436,6 +486,19 @@ test("footer metrics use integer rounding and omit unavailable pieces", () => {
       timing: { waitMs: 4_600, thinkMs: 10_400 },
     }),
     "18 tok/s · Cache 99% · delay 5s · think 10s",
+  );
+  assert.equal(
+    formatFooterMetrics({
+      tokensPerSecond: 17.5,
+      cache: 92,
+      cacheLifetime: { text: "Cache 40m" },
+      timing: { waitMs: 4_600, thinkMs: 10_400 },
+    }),
+    "18 tok/s · Cache 92% (40m) · delay 5s · think 10s",
+  );
+  assert.equal(
+    formatFooterMetrics({ cache: 92, cacheLifetime: { text: "Cache Expired" } }),
+    "Cache 92% (Expired)",
   );
   assert.equal(formatFooterMetrics({ cache: 98 }), "Cache 98%");
   assert.equal(formatFooterMetrics({ timing: { waitMs: 400 } }), "delay 400ms");
@@ -630,7 +693,7 @@ test("metrics stay visible when a tight width clips branch and repo", () => {
 });
 
 test("the brand mark sits on the right only when the terminal is wide", () => {
-  const left = "✦ Opus 5 high · 60%(1M)";
+  const left = "✦ Opus 5 high · 60% (1M)";
   assert.equal(appendBrandMark(left, 40), left);
   const wide = appendBrandMark(left, 80);
   assert.match(wide, new RegExp(`${BRAND_NAME}$`));

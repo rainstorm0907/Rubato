@@ -139,8 +139,8 @@ function trim1(n) {
 
 export function formatContext(remaining, window) {
   const size = formatWindow(window);
-  if (remaining == null) return size ? `?(${size})` : "?";
-  return size ? `${remaining}%(${size})` : `${remaining}%`;
+  if (remaining == null) return size ? `? (${size})` : "?";
+  return size ? `${remaining}% (${size})` : `${remaining}%`;
 }
 
 export function cacheHitPercent(usage) {
@@ -223,10 +223,8 @@ export function cacheStatus(entries, policy, nowMs = Date.now()) {
     return { text: "Cache Miss", ticking: false, expired: false };
   }
   const ageSeconds = Math.max(0, nowMs - observation.timestamp) / 1000;
-  if (policy.kind === "opaque") {
-    const age = ageSeconds < 60 ? "just now" : `${Math.floor(ageSeconds / 60)}m ago`;
-    return { text: `Cache Hit ${age}`, ticking: true, expired: false };
-  }
+  // xAI/Codex/Gemini는 공개 TTL이 없고 언제든 evict된다. 나이나 남은 시간을 지어내지 않는다.
+  if (policy.kind === "opaque") return null;
   const remainingSeconds = Math.ceil(policy.ttlSeconds - ageSeconds);
   if (remainingSeconds <= 0) {
     return policy.kind === "minimum"
@@ -377,20 +375,36 @@ export function formatTokensPerSecond(tps) {
   return `${Math.round(tps)} tok/s`;
 }
 
-/** `17 tok/s · Cache 98% · delay 4s · think 10s`. 없는 조각은 뺀다. */
-export function formatFooterMetrics({ tokensPerSecond, cache, timing } = {}) {
+/** `Cache 4m` / `Cache Expired` 에서 접두만 떼 퍼센트 옆에 붙인다. */
+export function cacheLifetimeLabel(lifetime) {
+  const text = lifetime?.text;
+  if (!text) return "";
+  return text.startsWith("Cache ") ? text.slice("Cache ".length) : text;
+}
+
+/** `Cache 92% (40m)`, `Cache 92% (Expired)`. 있는 쪽만 그린다. */
+export function formatCacheSegment(percent, lifetime) {
+  const suffix = cacheLifetimeLabel(lifetime);
+  if (percent == null) return suffix ? (lifetime?.text ?? `Cache ${suffix}`) : "";
+  if (!suffix) return `Cache ${percent}%`;
+  return `Cache ${percent}% (${suffix})`;
+}
+
+/** `17 tok/s · Cache 98% (40m) · delay 4s · think 10s`. 없는 조각은 뺀다. */
+export function formatFooterMetrics({ tokensPerSecond, cache, cacheLifetime, timing } = {}) {
   const parts = [];
   const tps = formatTokensPerSecond(tokensPerSecond);
   if (tps) parts.push(tps);
-  if (cache != null) parts.push(`Cache ${cache}%`);
+  const cacheText = formatCacheSegment(cache, cacheLifetime);
+  if (cacheText) parts.push(cacheText);
   const latency = formatLatency(timing);
   if (latency) parts.push(latency);
   return parts.join(" · ");
 }
 
-export function statuslineSegments({ model, remaining, window, branch, repo, tokensPerSecond, cache, timing }) {
+export function statuslineSegments({ model, remaining, window, branch, repo, tokensPerSecond, cache, cacheLifetime, timing }) {
   const parts = [`✦ ${model}`, formatContext(remaining, window)];
-  const metrics = formatFooterMetrics({ tokensPerSecond, cache, timing });
+  const metrics = formatFooterMetrics({ tokensPerSecond, cache, cacheLifetime, timing });
   if (metrics) parts.push(metrics);
   if (branch) parts.push(branch);
   if (repo) parts.push(repo);

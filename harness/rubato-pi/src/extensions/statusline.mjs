@@ -2,9 +2,11 @@ import {
   appendBrandMark,
   cacheStatus,
   formatBackgroundLine,
+  formatCacheSegment,
   formatContext,
-  formatFooterMetrics,
+  formatLatency,
   formatModelWithEffort,
+  formatTokensPerSecond,
   currentTurnTiming,
   remainingPercent,
   resolveCachePolicy,
@@ -84,11 +86,9 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
           cacheClockActive = cacheLifetime?.ticking === true;
           const timing = currentTurnTiming(branchEntries, processStartedAt);
           const cache = sessionCacheHitPercent(branchEntries);
-          const metrics = formatFooterMetrics({
-            tokensPerSecond: timing?.tokensPerSecond,
-            cache,
-            timing,
-          });
+          const tps = formatTokensPerSecond(timing?.tokensPerSecond);
+          const cacheText = formatCacheSegment(cache, cacheLifetime);
+          const latency = formatLatency(timing);
           const parts = [
             {
               text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
@@ -96,15 +96,16 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
             },
             { text: formatContext(remaining, window), color: remainingColor(remaining) },
           ];
-          if (metrics) parts.push({ text: metrics, color: "dim" });
-          if (cacheLifetime) {
+          if (tps) parts.push({ text: tps, color: "dim" });
+          if (cacheText) {
             parts.push({
-              text: cacheLifetime.expired
-                ? `${MUTED_RED}${cacheLifetime.text}${RESET}`
-                : cacheLifetime.text,
+              text: cacheLifetime?.expired
+                ? `${MUTED_RED}${cacheText}${RESET}`
+                : cacheText,
               color: "dim",
             });
           }
+          if (latency) parts.push({ text: latency, color: "dim" });
           const branch = footerData.getGitBranch?.();
           if (branch) parts.push({ text: branch, color: "dim" });
           const repo = repoBasename(ctx.cwd);
