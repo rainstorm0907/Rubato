@@ -67,6 +67,32 @@ for k in ("clientId", "clientSecret", "startUrl"):
     if d.get(k):
         cred[k] = d[k]
 
+# IdC 갱신은 clientId 가 필요하다. IDE 토큰은 clientIdHash 만 남기고,
+# 값은 ~/.aws/sso/cache/<hash>.json 에 있다. 없으면 토큰이 만료된 뒤
+# kiro.rs 가 "IdC 刷新需要 clientId" 로 3번 죽고 자격을 끄는다.
+if not cred.get("clientId"):
+    hid = d.get("clientIdHash")
+    if hid:
+        candidates = [
+            os.path.join(os.path.expanduser("~"), ".aws", "sso", "cache", f"{hid}.json"),
+            os.path.join(os.path.dirname(os.path.abspath(src)), f"{hid}.json"),
+        ]
+        for cache_path in candidates:
+            if not os.path.isfile(cache_path):
+                continue
+            try:
+                extra = json.load(open(cache_path))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if extra.get("clientId"):
+                cred["clientId"] = extra["clientId"]
+            if extra.get("clientSecret"):
+                cred["clientSecret"] = extra["clientSecret"]
+            break
+
+if cred["authMethod"] == "idc" and not cred.get("clientId"):
+    print("kiro-setup: 경고 — IdC 인데 clientId 가 없다. 한 시간 뒤 갱신이 죽는다.", file=sys.stderr)
+
 with open(out_path, "w") as fh:
     json.dump([cred], fh, indent=2)
 os.chmod(out_path, 0o600)
