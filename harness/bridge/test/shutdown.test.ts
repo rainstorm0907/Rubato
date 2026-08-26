@@ -286,7 +286,7 @@ test("authenticated POST /admin/drain is the only graceful shutdown", async () =
   assert.match(body, /\[DONE\]/, "in-flight response was cut by drain");
 
   const [code] = (await once(child, "exit")) as [number | null];
-  assert.equal(code, 0);
+  assert.equal(code, 1);
   assert.match(stderr(), /ignoring SIGTERM/);
   await new Promise((resolve) => upstream.server.close(resolve));
 });
@@ -306,7 +306,7 @@ test("Bearer token is accepted for /admin/drain", async () => {
   while (exits.length === 0 && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 10));
   }
-  assert.deepEqual(exits, [0]);
+  assert.deepEqual(exits, [1]);
 });
 
 test("supervisor plan recovers every bridge exit", () => {

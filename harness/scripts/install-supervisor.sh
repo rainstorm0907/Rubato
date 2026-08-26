@@ -132,7 +132,7 @@ install_darwin() {
   # 읽히며, 기존 잡도 그동안 크래시 복구는 계속 맡는다.
   if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
     say "설정을 갱신했다(실행 중인 브리지는 건드리지 않았다): ${target}"
-    say "새 KeepAlive 정책은 다음 로그인부터 적용된다."
+    say "새 KeepAlive 정책은 다음 로그아웃/재부팅 때 적용된다. 그전에도 기존 crash 복구와 drain exit 1이 브리지를 되살린다."
     say "로그: ${LOG}"
     return 0
   fi

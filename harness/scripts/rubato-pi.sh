@@ -134,30 +134,38 @@ fi
 # 되살린다" 를 전제로 SIGKILL 뒤 재기동을 건너뛰는 분기가 있어서, supervisor 가
 # 없는 머신에서는 그 자리가 그대로 정전이 된다.
 #
-# 이미 등록돼 있으면 아무것도 안 한다. install-supervisor.sh --apply 는 매번
-# bootout→bootstrap 을 하므로(새 plist 를 읽히려고) 그대로 부르면 세션을 띄울
-# 때마다 살아 있는 브리지를 내렸다 올린다. 등록 여부를 여기서 먼저 본다.
+# 등록 여부뿐 아니라 정책 파일도 본다. 기존 crash-only 설정이면 실행 중인 잡은
+# 그대로 둔 채 KeepAlive=true/Restart=always 파일만 갱신한다. macOS는 다음
+# 로그아웃/재부팅 때 새 plist를 읽고, 그전에는 drain exit 1이 옛 정책에도 복구를
+# 요청한다. 이미 최신이면 아무 일도 하지 않는다.
 # 끄려면 RUBATO_NO_SUPERVISOR=1.
 if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; then
   _sv_label="${RUBATO_SUPERVISOR_LABEL:-dev.rubato.bridge}"
   _sv_installed=1
+  _sv_current=1
   case "$(uname -s)" in
     Darwin)
       launchctl print "gui/$(id -u)/${_sv_label}" >/dev/null 2>&1 || _sv_installed=0
+      _sv_file="$HOME/Library/LaunchAgents/${_sv_label}.plist"
+      grep -q '<key>KeepAlive</key><true/>' "$_sv_file" 2>/dev/null || _sv_current=0
+      grep -q '<key>RUBATO_SUPERVISED</key><string>1</string>' "$_sv_file" 2>/dev/null || _sv_current=0
       ;;
     Linux)
       _sv_unit="${RUBATO_SUPERVISOR_UNIT:-rubato-bridge.service}"
       if command -v systemctl >/dev/null 2>&1; then
         [ "$(systemctl --user show "$_sv_unit" -p LoadState --value 2>/dev/null)" = "loaded" ] || _sv_installed=0
+        _sv_file="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${_sv_unit}"
+        grep -q '^Restart=always$' "$_sv_file" 2>/dev/null || _sv_current=0
+        grep -q '^Environment=RUBATO_SUPERVISED=1$' "$_sv_file" 2>/dev/null || _sv_current=0
       fi
       ;;
     *) ;;
   esac
-  if [ "$_sv_installed" -eq 0 ]; then
+  if [ "$_sv_installed" -eq 0 ] || [ "$_sv_current" -eq 0 ]; then
     splash step "브리지 supervisor"
     "$HERE/install-supervisor.sh" --apply >/dev/null 2>&1 || true
   fi
-  unset _sv_label _sv_installed _sv_unit 2>/dev/null || true
+  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit 2>/dev/null || true
 fi
 
 # 예전 kiro 자격은 clientId 없이 떠 있어서 accessToken 이 만료되면 사이드카가

@@ -145,8 +145,15 @@ test("the supervisor recovers every bridge exit without booting out a live job",
   assert.ok(updateStart > 0 && bootstrap > updateStart);
   assert.doesNotMatch(source.slice(updateStart, bootstrap), /launchctl bootout/);
   const start = read("start.sh");
-  assert.match(start, /RUBATO_SUPERVISED/);
-  assert.match(start, /dev\/tcp\/127\.0\.0\.1/);
+  assert.doesNotMatch(start, /dev\/tcp/, "bind 전 probe는 검사와 listen 사이 경합을 남긴다");
+  const server = readFileSync(fileURLToPath(new URL("../../../bridge/src/server.ts", import.meta.url)), "utf8");
+  assert.match(server, /RUBATO_SUPERVISED/);
+  assert.match(server, /setTimeout\(listen, SUPERVISOR_RETRY_MS\)/);
+  assert.match(server, /exit\(SUPERVISOR_RECOVER_EXIT\)/);
+  const launcher = read("rubato-pi.sh");
+  assert.match(launcher, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(launcher, /Restart=always/);
+  assert.match(launcher, /_sv_current/);
 });
 
 test("the bridge ignores ordinary signals and drains only through admin auth", () => {

@@ -16,6 +16,10 @@ const STARTED_AT = Date.now();
 // 재기동이 그만큼 멈춰 있으면 그것대로 세션이 못 뜬다. 리스닝 소켓은 즉시
 // 놓기 때문에 새 브리지는 이 대기와 무관하게 곧바로 포트를 잡는다.
 const DEFAULT_DRAIN_MS = 30_000;
+const SUPERVISOR_RETRY_MS = 1_000;
+// 비정상 종료로 두면 기존 macOS SuccessfulExit=false와 새 KeepAlive=true,
+// 기존 Linux on-failure와 새 always가 모두 인증 drain 뒤 교체본을 올린다.
+const SUPERVISOR_RECOVER_EXIT = 1;
 const ADMIN_TOKEN_BYTES = 32;
 const DEFAULT_ADMIN_TOKEN_HEADER = "x-rubato-admin";
 
@@ -390,7 +394,7 @@ export function startBridge(
           draining: true,
           inflight: state.inflight,
         });
-        void drainAndClose(server, { timeoutMs: drainTimeoutMs(env), log }).then(() => exit(0));
+        void drainAndClose(server, { timeoutMs: drainTimeoutMs(env), log }).then(() => exit(SUPERVISOR_RECOVER_EXIT));
         return;
       }
       if (state.draining) {
@@ -429,15 +433,25 @@ export function startBridge(
     void closeUpstreamAgent();
   });
 
-  // 핸들러가 없으면 listen 실패가 unhandled 'error' 로 프로세스를 죽인다.
-  // 포트 경합은 흔한 일이라 그 죽음이 곧 크래시 루프가 된다.
+  const listen = () => {
+    server.listen(config.port, config.bind);
+  };
+
+  // supervisor가 다른 브리지와 포트 경합을 만나면 프로세스를 끝내지 않고 bind만
+  // 재시도한다. 종료하면 KeepAlive/Restart가 프로세스를 매초 새로 만들고, bind 전
+  // shell probe로 막으면 검사와 listen 사이 경합이 남는다.
   server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE" && env.RUBATO_SUPERVISED === "1") {
+      log(`fx-v3-bridge: ${config.bind}:${config.port} is already served; supervisor will retry\n`);
+      setTimeout(listen, SUPERVISOR_RETRY_MS);
+      return;
+    }
     const { exitCode, message } = listenErrorAction(error, config.bind, config.port);
     log(message);
     exit(exitCode);
   });
 
-  server.listen(config.port, config.bind, () => {
+  server.on("listening", () => {
     // 실제로 잡은 포트를 찍는다. 설정값을 찍으면 포트 0(자동 할당)일 때
     // 로그가 거짓말을 한다.
     const address = server.address();
@@ -454,6 +468,7 @@ export function startBridge(
     log(`fx-v3-bridge listening on http://${config.bind}:${port} (pid ${process.pid})\n`);
     log(`fx-v3-bridge admin secret: ${state.admin.path}\n`);
   });
+  listen();
   bridgeState(server);
   return server;
 }

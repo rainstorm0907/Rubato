@@ -62,3 +62,20 @@ test("a second bridge process on a busy port exits 0 instead of crashing", async
   assert.doesNotMatch(stderr, /EADDRINUSE[\s\S]*at Server/, "unhandled 'error' 로 죽었다");
   await new Promise((resolve) => squatter.close(resolve));
 });
+
+test("a supervised bridge waits in-process until a busy port is released", async () => {
+  const { server: squatter, port } = await occupy();
+  const exits: number[] = [];
+  const logs: string[] = [];
+  const bridge = startBridge(
+    isolatedAdminEnv({ FX_BRIDGE_BIND: "127.0.0.1", FX_BRIDGE_PORT: String(port), RUBATO_SUPERVISED: "1" }),
+    { exit: (code) => exits.push(code), log: (message) => logs.push(message) },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepEqual(exits, []);
+  assert.match(logs.join(""), /supervisor will retry/);
+  await new Promise((resolve) => squatter.close(resolve));
+  await new Promise((resolve) => bridge.once("listening", resolve));
+  assert.deepEqual(exits, []);
+  await new Promise((resolve) => bridge.close(resolve));
+});

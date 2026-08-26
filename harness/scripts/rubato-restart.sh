@@ -12,10 +12,10 @@
 #   4. starts the supervised service (or start.sh if none is loaded)
 #   5. waits until /health answers
 #
-# Drain exits 0 and the supervisor may relaunch immediately. The supervisor owns
-# one job, so an explicit start remains idempotent; we still wait for the old pid
-# to disappear before asking it to start. If we had to SIGKILL a stuck process,
-# we let the supervisor bring it back instead of starting a second copy.
+# Drain exits non-zero so both the old crash-only supervisor and the new always
+# policy relaunch immediately. The supervisor owns one job, so an explicit start
+# remains idempotent; we still wait for the old pid to disappear before asking it
+# to start. If we had to SIGKILL a stuck process, we let the supervisor recover it.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
