@@ -76,15 +76,20 @@ function variantLabel(lc) {
 
 export function formatEffort(level) {
   if (!level || level === "off") return "";
-  if (level === "xhigh") return "Xhigh";
-  if (level === "max") return "Max";
-  return String(level);
+  return String(level).toLowerCase();
 }
 
 export function formatModelWithEffort(modelId, level) {
   const model = shortModelLabel(modelId);
   const effort = formatEffort(level) || effortFromModelId(modelId);
-  return effort ? `${model} ${effort}` : model;
+  const fast = isFastModel(modelId) ? " [fast]" : "";
+  return `${effort ? `${model} ${effort}` : model}${fast}`;
+}
+
+function isFastModel(modelId) {
+  if (!modelId) return false;
+  const bare = String(modelId).split("/").pop().split(":", 1)[0];
+  return /(?:^|[-.])fast$/i.test(bare);
 }
 
 function effortFromModelId(modelId) {
