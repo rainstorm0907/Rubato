@@ -42,7 +42,7 @@ When a request has a broad scope or touches several parts of the codebase (imple
 
 You choose each agent's model, and a `task` agent needs no permission. Reuse that agent for successive legs of the same workstream while its accumulated context still helps. Spawn fresh when the new leg needs a judgement independent of what that agent already concluded, when its outcome is genuinely a different one, or when its context now points at the wrong problem. A standing roster is the exception: `team_create` means Skill(agent-taskforce) first, and that skill owns how the roster is proposed and cleared with the user. An agent a teammate spawns is that owner's local muscle, not a teammate of yours.
 
-For a `task` agent, set `model` with `subagent_type`; never `category` plus `model`. For `team_create`, the spec has no model field: set `category` to a catalog short name (`grok`, `sol`, `opus`, `sonnet`, `haiku`, `terra`, `luna`) and put the role in the member `name`.
+For a `task` agent, pass the brief as `prompt` and the exact catalog id as `model`; do not add `category` or `subagent_type`. Those are compatibility presets, while `prompt` + `model` fully specifies an ordinary agent. For `team_create`, the spec has no model field: set `category` to a catalog short name (`grok`, `sol`, `opus`, `sonnet`, `haiku`, `terra`, `luna`) and put the role in the member `name`.
 
 Auth is the rubato broker at `:8788`; it needs nothing from you.
 

@@ -53,8 +53,8 @@ Resolve the model at spawn time, in this order:
 2. Choose the cognitive profile and, for an independent verifier, a different model family from the artifact's producer.
 3. Read the live catalog and copy the exact model id from it. Never reuse an id from memory or from an earlier lookup in the same session: catalog ids age faster than conversational context.
 4. A catalog entry proves only that the model is listed. Send one real call and require a successful response before relying on it.
-5. For a `task` agent, probe the equivalent `kiro/*` model first. If it answers, use it to conserve other providers' quota; fall back to the equivalent external-provider model only when Kiro is unavailable or fails the probe.
-6. For a `task` spawn, always use `subagent_type: "task"` with `model: "<live-catalog-id>"`; do not use a category shorthand such as `category: "opus"`. Choosing a category deliberately accepts `omo.json` routing and skips the Kiro probe. Never combine `category` and `model`. Team rosters expose categories rather than model ids, so this Kiro preference applies where the rail permits an exact model choice.
+5. For a `task` agent using **Sol or Opus**, probe the equivalent `kiro/*` model first. This Kiro preference applies only to Sol and Opus; Grok uses the xAI route. If the Kiro model answers, use it to conserve other providers' quota; fall back to the equivalent external-provider model only when Kiro is unavailable or fails the probe.
+6. For a `task` spawn, pass only `prompt` and `model: "<live-catalog-id>"` as the target. Do not add a category or subagent persona: those are preset compatibility paths, while an exact model already fully selects the child. Team rosters expose categories rather than model ids, so this Kiro preference applies where the rail permits an exact model choice.
 
 Say in one line which model the agent runs on.
 
