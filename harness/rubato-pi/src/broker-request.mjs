@@ -101,7 +101,12 @@ export function contextToFxRequest(context) {
   }
   for (const message of context.messages ?? []) {
     if (message.role === "user") prompt.push({ role: "user", content: userContent(message) });
-    if (message.role === "assistant") prompt.push({ role: "assistant", content: assistantContent(message) });
+    // A provider rejection is not assistant-authored conversation. Replaying its
+    // remediation text (notably "Invalid prompt ... violating usage policy")
+    // poisons every later request in the same session.
+    if (message.role === "assistant" && message.stopReason !== "error") {
+      prompt.push({ role: "assistant", content: assistantContent(message) });
+    }
     if (message.role === "toolResult") prompt.push({ role: "tool", content: toolContent(message) });
   }
   const tools = (context.tools ?? []).map((tool) => ({

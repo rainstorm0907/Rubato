@@ -463,6 +463,19 @@ describe("model-error-classifier", () => {
     expect(result).toBe(true)
   })
 
+  test("does not retry OpenAI prompt-policy rejections", () => {
+    //#given: the provider advice contains the otherwise retryable words "try again"
+    const error = {
+      message: "Codex error: Invalid prompt: your prompt was flagged as potentially violating our usage policy. Please try again with a different prompt.",
+    }
+
+    //#when
+    const result = shouldRetryError(error)
+
+    //#then
+    expect(result).toBe(false)
+  })
+
   test("treats 'upstream request failed' provider error as retryable (issue #6313)", () => {
     //#given
     const error = { message: "Error from provider (Console Go): Upstream request failed" }

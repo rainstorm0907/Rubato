@@ -347,6 +347,21 @@ test("senpi context becomes an fx gateway body, not a Senpi OAuth payload", () =
   assert.doesNotMatch(JSON.stringify(body), /refresh_token|authorization_code/);
 });
 
+test("provider error messages are not replayed into later prompts", () => {
+  const body = contextToFxRequest({
+    messages: [
+      { role: "user", content: "continue" },
+      {
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "Codex error: Invalid prompt",
+        content: [{ type: "text", text: "Invalid prompt: flagged as potentially violating usage policy" }],
+      },
+    ],
+  });
+  assert.deepEqual(body.prompt, [{ role: "user", content: [{ type: "text", text: "continue" }] }]);
+});
+
 test("tool results use fx output so Claude does not see empty quotes", () => {
   const body = contextToFxRequest({
     messages: [

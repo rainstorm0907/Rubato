@@ -93,6 +93,8 @@ const RETRYABLE_MESSAGE_PATTERNS = [
  * These take precedence over RETRYABLE_MESSAGE_PATTERNS.
  */
 const STOP_MESSAGE_PATTERNS = [
+  "invalid prompt",
+  "flagged as potentially violating",
   "quota will reset after",
   "quota exceeded",
   "free usage limit",
