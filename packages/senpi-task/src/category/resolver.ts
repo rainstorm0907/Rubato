@@ -345,7 +345,7 @@ export function resolveCategory<TModel extends SenpiModelPort>(
   // fallback list opts the category out (its failure stays a plain user-model miss without chain
   // details), and a caller-supplied system default remains the resolver's last resort.
   const userHasCanonicalModels = (userConfig?.models?.length ?? 0) > 0
-  if (deadChain !== undefined && !userHasCanonicalModels && userConfig?.model === undefined && userConfig?.fallback_models === undefined && options.systemDefaultModel === undefined) {
+  if (deadChain !== undefined && !userHasCanonicalModels && userConfig?.model === undefined && userConfig?.fallback_models === undefined && options.systemDefaultModel === undefined && options.modelOverride === undefined) {
     return {
       kind: "model_unavailable",
       category: categoryName,
@@ -368,22 +368,26 @@ export function resolveCategory<TModel extends SenpiModelPort>(
   const userFallbackModels = canonicalChain !== undefined
     ? canonicalChain.slice(1).map((candidate) => candidate.model)
     : flattenFallbackModels(config.fallback_models)
-  const resolution = resolveModelForDelegateTask(
-    {
-      userModel,
-      userFallbackModels,
-      categoryDefaultModel: builtinConfig?.model,
-      isUserConfiguredCategoryModel: false,
-      fallbackChain,
-      availableModels: new Set(availableModels),
-      systemDefaultModel: options.systemDefaultModel,
-    },
-    {
-      connectedProviders: null,
-      hasProviderModelsCache: true,
-      hasConnectedProvidersCache: true,
-    },
-  )
+  const resolution = options.modelOverride === undefined
+    ? resolveModelForDelegateTask(
+        {
+          userModel,
+          userFallbackModels,
+          categoryDefaultModel: builtinConfig?.model,
+          isUserConfiguredCategoryModel: false,
+          fallbackChain,
+          availableModels: new Set(availableModels),
+          systemDefaultModel: options.systemDefaultModel,
+        },
+        {
+          connectedProviders: null,
+          hasProviderModelsCache: true,
+          hasConnectedProvidersCache: true,
+        },
+      )
+    : availableModels.includes(options.modelOverride)
+      ? { model: options.modelOverride, matchedFallback: false }
+      : null
 
   if (!resolution || "skipped" in resolution) {
     return {
@@ -437,7 +441,7 @@ export function resolveCategory<TModel extends SenpiModelPort>(
         availableModels: availableModelSet,
       })
   const runtimeModelChain = buildRuntimeModelChain({
-    candidates: [...categoryModelCandidates(config), ...chainCandidates],
+    candidates: options.modelOverride === undefined ? [...categoryModelCandidates(config), ...chainCandidates] : [],
     selectedModel: selection.selectedModel,
     availableModels: availableModelSet,
     source: "category",

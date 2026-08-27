@@ -43,6 +43,7 @@ export type ResolvedChildSpec<TModel extends SenpiModelPort> = {
 
 export type ResolveCategoryOptions = {
   readonly systemDefaultModel?: string
+  readonly modelOverride?: string
 }
 
 export type CategoryModelSelection = {

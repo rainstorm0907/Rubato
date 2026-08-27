@@ -36,22 +36,22 @@ export const DAG_EVENT_LANES = ["activity", "boundary"] as const
 export type DagEventLane = (typeof DAG_EVENT_LANES)[number]
 
 // Route contract: category XOR agent. There is NO {kind:"model"} route - a pure-model route is
-// forbidden; model may only ride alongside an agent route as an explicit override.
+// forbidden; model may ride alongside either persona route as an explicit registry-checked override.
 export const DAG_ROUTE_KINDS = ["category", "agent"] as const
 
 export type DagRoute =
-  | { readonly kind: "category"; readonly category: string }
+  | { readonly kind: "category"; readonly category: string; readonly model?: string }
   | { readonly kind: "agent"; readonly agent: string; readonly model?: string }
 
 // Node-level user input mirrors the task tool field names exactly: category XOR subagent_type,
-// model only alongside subagent_type. The error vocabulary reuses the task tool codes
-// (both_targets / category_with_model / no_target) from tools/task/validation.ts.
+// model may accompany either route. The error vocabulary reuses the task tool codes
+// (both_targets / no_target) from tools/task/validation.ts.
 export type DagNodeTargetInput =
   | {
       readonly prompt: string
       readonly category: string
       readonly subagent_type?: undefined
-      readonly model?: undefined
+      readonly model?: string
     }
   | {
       readonly prompt: string

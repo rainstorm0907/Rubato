@@ -113,9 +113,9 @@ function categoryListSuffix(error: PlanResolutionError): string {
   if (available === undefined || available.length === 0) return ""
   // A model_unavailable failure means the category name IS valid; listing it under "Available
   // categories" told models to retry the same broken binding. Name the vocabulary honestly and
-  // point at the omo.json config escape hatch.
+  // point at the live picker vocabulary.
   if (error.code === "model_unavailable") {
-    return ` Valid category names: ${available.join(", ")}. Retry one of these, or configure categories.<name>.models in omo.json — model overrides cannot be combined with category.`
+    return ` Valid category names: ${available.join(", ")}. Retry one of these, or choose an exact provider/model id from the current session's /model catalog.`
   }
   return ` Available categories: ${available.join(", ")}.`
 }

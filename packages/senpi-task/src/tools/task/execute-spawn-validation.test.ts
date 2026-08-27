@@ -67,11 +67,11 @@ describe("buildTaskExecute spawn validation", () => {
     expect(captured?.root_session_id).toBe("root-session")
   })
 
-  test("#given category with model #when executed #then it returns the exclusivity error without spawning", async () => {
-    let started = false
+  test("#given category with model #when executed #then manager receives persona and override", async () => {
+    let captured: ManagerStartSpec | undefined
     const manager = createFakeManager({
-      start: async (): Promise<StartResult> => {
-        started = true
+      start: async (spec): Promise<StartResult> => {
+        captured = spec
         return { kind: "started", task_id: "st_x", status: "running", name: "t" }
       },
     })
@@ -79,16 +79,17 @@ describe("buildTaskExecute spawn validation", () => {
 
     const result = await execute(
       "c",
-      { prompt: "p", category: "architect", model: "quotio-openai/gpt-5.6-luna-fast" },
+      { prompt: "p", category: "architect", model: "quotio-openai/gpt-5.6-luna-fast", run_in_background: true },
       undefined,
       undefined,
       CTX,
     )
 
-    expect(started).toBe(false)
-    expect(result.details.status).toBe("invalid_arguments")
-    const text = result.content[0]?.type === "text" ? result.content[0].text : ""
-    expect(text).toContain("omo.json")
+    expect(captured).toMatchObject({
+      category: "architect",
+      model: "quotio-openai/gpt-5.6-luna-fast",
+    })
+    expect(result.details.status).toBe("running")
   })
 
 })

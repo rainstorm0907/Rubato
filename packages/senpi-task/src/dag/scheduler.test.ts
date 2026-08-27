@@ -485,6 +485,19 @@ describe("DAG scheduler subscriber backpressure", () => {
 })
 
 describe("DAG scheduler execution mode dispatch", () => {
+  test("#given a category model override #when dispatched #then the child start spec preserves it", async () => {
+    const manager = new FakeTaskManager()
+    const definitionWithModel = definition([{ ...node("model"), model: "openai-codex/gpt-daybreak-blue-latest-fast" }])
+    const { scheduler } = schedulerFixture(definitionWithModel, manager)
+
+    await scheduler.run()
+
+    expect(manager.startedSpecs[0]).toMatchObject({
+      category: "quick",
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    })
+  })
+
   test("#given task.default_execution_mode #when a DAG node is dispatched #then the scheduler resolves through the existing chain", async () => {
     // given
     const manager = new FakeTaskManager()

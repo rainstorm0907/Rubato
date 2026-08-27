@@ -179,9 +179,10 @@ export function toDefinition(input: DagToolDefinitionInput): DagDefinition {
         ...(node.load_skills === undefined ? {} : { load_skills: node.load_skills }),
       }
       // Target validation already proved exactly one of these is present.
+      const model = node.model === undefined ? {} : { model: node.model }
       return node.category !== undefined
-        ? { ...common, category: node.category }
-        : { ...common, subagent_type: node.subagent_type as string, ...(node.model === undefined ? {} : { model: node.model }) }
+        ? { ...common, category: node.category, ...model }
+        : { ...common, subagent_type: node.subagent_type as string, ...model }
     }),
   }
 }

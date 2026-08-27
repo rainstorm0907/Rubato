@@ -377,7 +377,7 @@ function startSpec(record: DagRunRecordV1, nodeId: DagNodeId): ManagerStartSpec 
     root_session_id: record.rootSessionId,
     depth: 1,
     ...(node.route.kind === "category"
-      ? { category: node.route.category }
+      ? { category: node.route.category, ...(node.route.model === undefined ? {} : { model: node.route.model }) }
       : { subagent_type: node.route.agent, ...(node.route.model === undefined ? {} : { model: node.route.model }) }),
     name: node.id,
     ...(persisted.description === undefined ? {} : { description: persisted.description }),

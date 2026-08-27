@@ -1,6 +1,6 @@
 import type { ResolvedSpawnItem } from "./types"
 
-export type TaskTargetErrorCode = "both_targets" | "no_target" | "category_with_model"
+export type TaskTargetErrorCode = "both_targets" | "no_target"
 
 export type TaskTargetError = {
   readonly code: TaskTargetErrorCode
@@ -62,9 +62,6 @@ export type ResolveSpawnItemsResult =
 
 const BOTH_TARGETS_MESSAGE = "Provide EITHER category OR subagent_type, not both. Remove one and retry."
 
-const CATEGORY_WITH_MODEL_MESSAGE =
-  "Provide EITHER category OR model, never both. A category-routed task always takes its model from the omo.json category config; a call-site model override would silently bypass that routing. Remove model and retry, or use subagent_type for an explicit-model spawn, or configure categories.<name>.models in omo.json."
-
 const NO_TARGET_MESSAGE =
   'You MUST provide EITHER category OR subagent_type. Omitting BOTH will FAIL. Example: task(category="quick", prompt="...") or task(subagent_type="momus", prompt="...").'
 
@@ -85,9 +82,6 @@ export function validateTaskTarget(params: TargetInput): TaskTargetSelection {
   const hasSubagent = present(params.subagent_type)
   if (hasCategory && hasSubagent) {
     return { kind: "error", error: { code: "both_targets", message: BOTH_TARGETS_MESSAGE } }
-  }
-  if (hasCategory && present(params.model)) {
-    return { kind: "error", error: { code: "category_with_model", message: CATEGORY_WITH_MODEL_MESSAGE } }
   }
   if (present(params.category)) {
     return { kind: "category", category: params.category.trim() }

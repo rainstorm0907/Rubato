@@ -127,6 +127,154 @@ describe("createTaskChildPlanner", () => {
     })
   })
 
+  test("#given a category and picker-visible model override #when planned #then category persona uses that exact model", () => {
+    const planner = createTaskChildPlanner(
+      { categories: { sol: { model: "openai-codex/gpt-5.6-sol", prompt_append: "Act as a coding owner." } } },
+      {},
+      () => registry([
+        model("openai-codex", "gpt-5.6-sol"),
+        model("openai-codex", "gpt-daybreak-blue-latest-fast", "Daybreak Blue Fast"),
+      ]),
+    )
+
+    const result = planner({
+      prompt: "Ship the fix.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "sol",
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    })
+
+    const resolved = expectResolved(result)
+    expect(resolved.plan).toMatchObject({
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+      category: "sol",
+      promptAppend: "Act as a coding owner.",
+      resolved_model: {
+        source: "explicit",
+        provider: "openai-codex",
+        model_id: "gpt-daybreak-blue-latest-fast",
+      },
+      requested_model: {
+        source: "explicit",
+        provider: "openai-codex",
+        model_id: "gpt-daybreak-blue-latest-fast",
+      },
+    })
+  })
+
+  test("#given category reasoning with an explicit model #when planned #then explicit metadata reports the applied reasoning", () => {
+    const planner = createTaskChildPlanner(
+      { categories: { sol: { model: "openai-codex/gpt-5.6-sol", reasoning: "xhigh" } } },
+      {},
+      () => registry([model("openai-codex", "gpt-daybreak-blue-latest-fast")]),
+    )
+
+    const result = planner({
+      prompt: "Ship the fix.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "sol",
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    })
+
+    const resolved = expectResolved(result)
+    expect(resolved.plan.variant).toBe("xhigh")
+    expect(resolved.plan.resolved_model).toMatchObject({ source: "explicit", reasoning: "xhigh" })
+    expect(resolved.plan.requested_model).toMatchObject({ source: "explicit", reasoning: "xhigh" })
+  })
+
+  test("#given a category and model absent from the picker registry #when planned #then it is rejected", () => {
+    const available = [model("openai-codex", "gpt-5.6-sol")]
+    const hidden = model("openai-codex", "not-in-picker")
+    const planner = createTaskChildPlanner(
+      { categories: { sol: { model: "openai-codex/gpt-5.6-sol" } } },
+      {},
+      () => ({
+        getAvailable: () => available,
+        find: (provider: string, modelId: string) =>
+          [...available, hidden].find((entry) => entry.provider === provider && entry.id === modelId),
+      }),
+    )
+
+    const result = planner({
+      prompt: "Ship the fix.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "sol",
+      model: "openai-codex/not-in-picker",
+    })
+
+    expect(result.kind).toBe("error")
+    if (result.kind !== "error") throw new Error("expected error")
+    expect(result.error.code).toBe("model_unavailable")
+  })
+
+  test("#given an explicit category model on a builtin chain #when planned #then no fallback vendor survives", () => {
+    const planner = createTaskChildPlanner(
+      {},
+      {},
+      () => registry([
+        model("anthropic", "claude-opus-5"),
+        model("kimi-coding", "k3"),
+        model("zai-coding-plan", "glm-5.2"),
+        model("openai", "gpt-5.6-sol"),
+      ]),
+    )
+
+    const result = planner({
+      prompt: "Design the UI.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "visual-engineering",
+      model: "anthropic/claude-opus-5",
+    })
+
+    const resolved = expectResolved(result)
+    expect(resolved.plan.model).toBe("anthropic/claude-opus-5")
+    expect(resolved.plan.fallback_models).toBeUndefined()
+  })
+
+  test("#given a gated builtin category #when model override is available but its gate is not #then the gate remains closed", () => {
+    const planner = createTaskChildPlanner(
+      {},
+      {},
+      () => registry([model("openai-codex", "gpt-5.6-sol")]),
+    )
+
+    const result = planner({
+      prompt: "Architect this.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "architect",
+      model: "openai-codex/gpt-5.6-sol",
+    })
+
+    expect(result.kind).toBe("error")
+    if (result.kind !== "error") throw new Error("expected error")
+    expect(result.error.code).toBe("model_unavailable")
+  })
+
+  test("#given an unknown category and picker-visible model #when planned #then the model cannot invent a persona", () => {
+    const planner = createTaskChildPlanner(
+      { categories: { sol: { model: "openai-codex/gpt-5.6-sol" } } },
+      {},
+      () => registry([model("openai-codex", "gpt-daybreak-blue-latest-fast")]),
+    )
+
+    const result = planner({
+      prompt: "Ship the fix.",
+      parent_session_id: "parent-1",
+      depth: 0,
+      category: "invented",
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    })
+
+    expect(result.kind).toBe("error")
+    if (result.kind !== "error") throw new Error("expected error")
+    expect(result.error.code).toBe("unknown_target")
+  })
+
   test("#given subagent_type naming a builtin agent #when planned against a registry serving its chain #then the plan carries the agent persona and an agent-sourced model", () => {
     // given
     const planner = createTaskChildPlanner(

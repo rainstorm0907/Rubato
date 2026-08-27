@@ -352,8 +352,8 @@ describe("batch spawn types", () => {
   })
 })
 
-describe("validateTaskTarget category+model exclusivity", () => {
-  test("#given category with model #when validated #then returns a typed category_with_model error", () => {
+describe("validateTaskTarget category model overrides", () => {
+  test("#given category with model #when validated #then keeps category as the persona target", () => {
     // given
     const params = { prompt: "p", category: "architect", model: "quotio-openai/gpt-5.6-luna-fast" }
 
@@ -361,10 +361,7 @@ describe("validateTaskTarget category+model exclusivity", () => {
     const result = validateTaskTarget(params)
 
     // then
-    expect(result.kind).toBe("error")
-    if (result.kind !== "error") throw new Error("expected error")
-    expect(result.error.code).toBe("category_with_model")
-    expect(result.error.message).toContain("omo.json")
+    expect(result).toEqual({ kind: "category", category: "architect" })
   })
 
   test("#given subagent_type with model #when validated #then resolves to a subagent selection", () => {
@@ -379,38 +376,36 @@ describe("validateTaskTarget category+model exclusivity", () => {
   })
 })
 
-describe("resolveSpawnItems category+model exclusivity", () => {
-  test("#given single-form category with a model override #then returns an item_target error", () => {
+describe("resolveSpawnItems category model overrides", () => {
+  test("#given single-form category with a model override #then preserves both axes", () => {
     // given / when
     const result = resolveSpawnItems({ prompt: "p", category: "quick", model: "openai/gpt-5.6-luna-fast" })
 
     // then
-    expect(result.kind).toBe("error")
-    if (result.kind !== "error") throw new Error("expected error")
-    expect(result.error.code).toBe("item_target")
-    expect(result.error.message).toContain("omo.json")
+    expect(result.kind).toBe("ok")
+    if (result.kind !== "ok") throw new Error("expected ok")
+    expect(result.items[0]).toMatchObject({ kind: "category", category: "quick", model: "openai/gpt-5.6-luna-fast" })
   })
 
-  test("#given a top-level model inherited by a category item #then returns an item_target error", () => {
+  test("#given a top-level model inherited by a category item #then preserves the override", () => {
     // given / when
     const result = resolveSpawnItems({ model: "openai/gpt-5.6-luna-fast", tasks: [{ prompt: "one", category: "quick" }] })
 
     // then
-    expect(result.kind).toBe("error")
-    if (result.kind !== "error") throw new Error("expected error")
-    expect(result.error.code).toBe("item_target")
-    expect(result.error.message).toContain("Task item 0")
+    expect(result.kind).toBe("ok")
+    if (result.kind !== "ok") throw new Error("expected ok")
+    expect(result.items[0]).toMatchObject({ kind: "category", category: "quick", model: "openai/gpt-5.6-luna-fast" })
   })
 
-  test("#given a top-level category and an item model #then returns an item_target error", () => {
+  test("#given a top-level category and an item model #then applies it only to that item", () => {
     // given / when
     const result = resolveSpawnItems({ category: "quick", tasks: [{ prompt: "one" }, { prompt: "two", model: "openai/gpt-5.6-luna-fast" }] })
 
     // then
-    expect(result.kind).toBe("error")
-    if (result.kind !== "error") throw new Error("expected error")
-    expect(result.error.code).toBe("item_target")
-    expect(result.error.message).toContain("Task item 1")
+    expect(result.kind).toBe("ok")
+    if (result.kind !== "ok") throw new Error("expected ok")
+    expect(result.items[0]?.model).toBeUndefined()
+    expect(result.items[1]?.model).toBe("openai/gpt-5.6-luna-fast")
   })
 
   test("#given subagent items inheriting a top-level model #then resolves ok with the model attached", () => {

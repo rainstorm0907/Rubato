@@ -39,7 +39,7 @@ export function createTaskChildPlanner(
       if (agentResolution !== undefined) return agentResolution
     }
 
-    if (spec.model !== undefined && spec.model.length > 0) {
+    if (spec.category === undefined && spec.subagent_type === undefined && spec.model !== undefined && spec.model.length > 0) {
       const resolvedModel = explicitModelMetadata(spec.model)
       return {
         kind: "resolved",
@@ -63,8 +63,18 @@ export function createTaskChildPlanner(
       }
     }
 
-    const resolution = resolveCategory(categoryName, omoConfig, registry)
-    return toPlanResolution(categoryName, resolution, availableAgents)
+    const resolution = resolveCategory(
+      categoryName,
+      omoConfig,
+      registry,
+      spec.model !== undefined && spec.model.length > 0 ? { modelOverride: spec.model } : {},
+    )
+    return toPlanResolution(
+      categoryName,
+      resolution,
+      availableAgents,
+      spec.model !== undefined ? explicitModelMetadata(spec.model) : undefined,
+    )
   }
 }
 
@@ -151,20 +161,31 @@ function toPlanResolution(
   categoryName: string,
   resolution: ReturnType<typeof resolveCategory<SenpiModelPort>>,
   availableAgents: readonly string[],
+  explicitModel?: ResolvedModelMetadata,
 ): PlanResolution {
   if (resolution.kind === "resolved") {
     const appliedVariant = resolution.spec.reasoning ?? resolution.spec.reasoningEffort ?? resolution.spec.variant
+    const explicitResolvedModel = explicitModel === undefined
+      ? undefined
+      : {
+          ...explicitModel,
+          ...(resolution.spec.variant !== undefined ? { variant: resolution.spec.variant } : {}),
+          ...(resolution.spec.reasoningEffort !== undefined ? { reasoning_effort: resolution.spec.reasoningEffort } : {}),
+          ...(appliedVariant !== undefined ? { reasoning: appliedVariant } : {}),
+        }
     return {
       kind: "resolved",
       plan: {
         model: `${resolution.spec.provider}/${resolution.spec.modelId}`,
-        ...(resolution.spec.requested_model !== undefined
+        ...(explicitResolvedModel !== undefined
+          ? { requested_model: explicitResolvedModel }
+          : resolution.spec.requested_model !== undefined
           ? { requested_model: resolution.spec.requested_model }
           : {}),
         ...(resolution.spec.fallback_models !== undefined
           ? { fallback_models: resolution.spec.fallback_models }
           : {}),
-        resolved_model: {
+        resolved_model: explicitResolvedModel ?? {
           source: "category",
           provider: resolution.spec.provider,
           model_id: resolution.spec.modelId,

@@ -100,8 +100,8 @@ describe("buildTaskToolDescription", () => {
   })
 })
 
-describe("buildTaskToolDescription category+model exclusivity", () => {
-  test("#given the description #when built #then it forbids combining category with model and names the config escape hatch", () => {
+describe("buildTaskToolDescription category model overrides", () => {
+  test("#given the description #when built #then it keeps persona and model as separate axes", () => {
     // given
     const config: OmoConfig = { categories: {}, agents: {} }
 
@@ -109,14 +109,15 @@ describe("buildTaskToolDescription category+model exclusivity", () => {
     const description = buildTaskToolDescription({ omoConfig: config, agents })
 
     // then
-    expect(description).toContain("omo.json")
+    expect(description).toContain("current session's /model catalog")
+    expect(description).toContain("category or subagent_type still supplies the task persona")
     expect(description).toContain("subagent_type")
   })
 
-  test("#given the prompt guidelines #when read #then they carry the category/model exclusivity rule", () => {
+  test("#given the prompt guidelines #when read #then they require a picker-visible override", () => {
     const joined = TASK_PROMPT_GUIDELINES.join("\n")
     expect(joined).toContain("model")
     expect(joined).toContain("category")
-    expect(joined).toContain("omo.json")
+    expect(joined).toContain("current session's /model catalog")
   })
 })

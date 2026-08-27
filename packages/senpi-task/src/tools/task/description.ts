@@ -9,7 +9,7 @@ export const TASK_PROMPT_SNIPPET = "Spawn one child or fan out a batch; use task
 
 export const TASK_PROMPT_GUIDELINES: readonly string[] = [
   "Spawns run in the background by default and return a task id immediately; pass run_in_background=false only when this turn genuinely cannot continue without the child's result.",
-  "NEVER pass model together with category: category-routed tasks take their model from omo.json (categories.<name>.models).",
+  "When overriding a category model, choose an exact provider/model id from the current session's /model catalog; the category still supplies the task persona.",
   "Continue an existing child with task_send(to=\"st_...\", message=\"...\"); task always spawns.",
   "Use task_output for one midpoint status or transcript peek; use task_cancel to end a child.",
   "Pass task_summary (one line, <=80 chars) on every spawn: the user's footer/widget UI shows it instead of the raw prompt, so it should say WHAT was delegated.",
@@ -57,15 +57,14 @@ export function buildTaskToolDescription(input: DescriptionInput): string {
     ? "Each spawn MUST provide EITHER category OR subagent_type after inheritance. DO NOT provide both."
     : "Each spawn MUST provide a category after inheritance."
   const modelNote = hasAgentRoute
-    ? `name is an optional stable handle. model is an explicit override for subagent_type spawns ONLY.
-NEVER combine model with category: a category-routed task always takes its model from omo.json (categories.<name>.models), so passing both fails with invalid_arguments.
+    ? `name is an optional stable handle. model is an explicit override from the current session's /model catalog; category or subagent_type still supplies the task persona.
   CORRECT: task(subagent_type="${gatedAgents[0]?.name ?? plainAgents[0]?.name}", model="openai/gpt-5.6-sol", prompt="...")
-  INCORRECT: task(category="architect", model="quotio-openai/gpt-5.6-luna-fast", prompt="...")`
-    : `name is an optional stable handle. A category-routed task takes its model from omo.json (categories.<name>.models), so NEVER pass model: it fails with invalid_arguments.
-  INCORRECT: task(category="architect", model="quotio-openai/gpt-5.6-luna-fast", prompt="...")`
+  CORRECT: task(category="architect", model="openai-codex/gpt-daybreak-blue-latest-fast", prompt="...")`
+    : `name is an optional stable handle. model can override a category with an exact provider/model id from the current session's /model catalog.
+  CORRECT: task(category="architect", model="openai-codex/gpt-daybreak-blue-latest-fast", prompt="...")`
   const batchLine = hasAgentRoute
-    ? "- Batch: tasks (1-16 items); top-level target, model, and skills are inherited when an item omits them. An inherited model is rejected when the item's effective target is a category."
-    : "- Batch: tasks (1-16 items); the top-level target and skills are inherited when an item omits them."
+    ? "- Batch: tasks (1-16 items); top-level target, model, and skills are inherited when an item omits them."
+    : "- Batch: tasks (1-16 items); the top-level target, model, and skills are inherited when an item omits them."
   return `Spawn one child task or fan out a batch.
 
 Choose exactly one input form:

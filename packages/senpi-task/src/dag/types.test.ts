@@ -113,13 +113,13 @@ describe("dag domain types", () => {
     expect(DAG_ROUTE_KINDS).not.toContain("model")
     expectTypeOf<DagRoute["kind"]>().toEqualTypeOf<"category" | "agent">()
     expectTypeOf<Extract<DagRoute, { kind: "model" }>>().toBeNever()
-    expectTypeOf<Extract<DagRoute, { kind: "category" }>>().not.toHaveProperty("model")
+    expectTypeOf<Extract<DagRoute, { kind: "category" }>>().toHaveProperty("model")
     expectTypeOf<Extract<DagRoute, { kind: "agent" }>["model"]>().toEqualTypeOf<string | undefined>()
   })
 
   test("#given node-level user input #when field names are checked #then they mirror the task tool category XOR subagent_type contract", () => {
     // given
-    const byCategory: DagNodeTargetInput = { category: "quick", prompt: "do it" }
+    const byCategory: DagNodeTargetInput = { category: "quick", model: "openai/gpt-5", prompt: "do it" }
     const bySubagent: DagNodeTargetInput = {
       subagent_type: "momus",
       model: "openai/gpt-5",
@@ -133,7 +133,7 @@ describe("dag domain types", () => {
       undefined
     >()
     expectTypeOf<Extract<DagNodeTargetInput, { category: string }>["model"]>().toEqualTypeOf<
-      undefined
+      string | undefined
     >()
     expectTypeOf<
       Extract<DagNodeTargetInput, { subagent_type: string }>["category"]

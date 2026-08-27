@@ -149,7 +149,7 @@ describe("dag tool definition validation", () => {
     expect(runFileCount()).toBe(0)
   })
 
-  test("#given a node with both category and model #when start runs #then it is rejected with category_with_model", async () => {
+  test("#given a node with category and model #when start runs #then both persona and override are preserved", async () => {
     // given
     const { manager, runFileCount } = fixture()
     const conflicted = definition({
@@ -160,12 +160,12 @@ describe("dag tool definition validation", () => {
     const result = await runDagTool(deps(manager), { action: "start", definition: conflicted })
 
     // then
-    expect(result.details.kind).toBe("error")
-    if (result.details.kind !== "error") throw new Error("Expected category+model to fail")
-    expect(result.details.error.code).toBe("invalid_definition")
-    expect(result.details.error.nodes.map((node) => node.code)).toEqual(["category_with_model"])
-    expect(result.details.error.nodes[0]?.node_id).toBe("plan")
-    expect(runFileCount()).toBe(0)
+    expect(result.details.kind).toBe("started")
+    if (result.details.kind !== "started") throw new Error("Expected category+model to start")
+    expect(result.details.snapshot.nodes[0]).toMatchObject({
+      route: { kind: "category", category: "quick", model: "anthropic/claude-opus-4" },
+    })
+    expect(runFileCount()).toBe(1)
   })
 
   test("#given a node with both category and subagent_type #when start runs #then it is rejected with both_targets", async () => {
@@ -563,19 +563,19 @@ describe("dag tool argument validation for the control verbs", () => {
     expect(result.details.error.message).toContain("prompt")
   })
 
-  test("#given an amend definition whose nodes carry an impossible target #when the tool runs #then node validation rejects it before the amend seam", async () => {
+  test("#given an amend definition whose category node carries a model override #when the tool runs #then the compiled override reaches the amend seam", async () => {
     // given
     const { manager } = fixture()
     const started = await runDagTool(deps(manager), { action: "start", definition: definition() })
     if (started.details.kind !== "started") throw new Error("Expected the fixture start to succeed")
-    const amended: string[] = []
+    const amended: Array<{ readonly runId: string; readonly model?: string }> = []
 
     // when
     const result = await runDagTool(
       {
         ...deps(manager),
-        amend: (runId: DagRunId) => {
-          amended.push(runId)
+        amend: (runId: DagRunId, amendment) => {
+          amended.push({ runId, model: amendment.nodes[0]?.model })
           return Promise.resolve(manager.snapshot(runId, parentSessionId))
         },
       },
@@ -587,11 +587,9 @@ describe("dag tool argument validation for the control verbs", () => {
     )
 
     // then
-    expect(result.details.kind).toBe("error")
-    if (result.details.kind !== "error") throw new Error("Expected an invalid amend definition to be rejected")
-    expect(result.details.error.code).toBe("invalid_definition")
-    expect(result.details.error.nodes.map((node) => node.code)).toEqual(["category_with_model"])
-    expect(amended).toEqual([])
+    expect(result.details.kind).toBe("amended")
+    if (result.details.kind !== "amended") throw new Error("Expected amend to succeed")
+    expect(amended).toEqual([{ runId: started.details.run_id, model: "anthropic/claude-opus-4" }])
   })
 })
 

@@ -113,6 +113,7 @@ type MutableTask = {
 
 class RecoveryTaskManager implements TaskManager {
   readonly startOwnedCalls: string[] = []
+  readonly startedSpecs: ManagerStartSpec[] = []
   readonly ownerFingerprints: string[] = []
   readonly waitForCalls: string[] = []
   readonly #tasks = new Map<string, MutableTask>()
@@ -140,8 +141,9 @@ class RecoveryTaskManager implements TaskManager {
     task.completion.resolve(task.record)
   }
 
-  async startOwned(_spec: ManagerStartSpec, owner: DagTaskOwner): Promise<OwnedStartResult> {
+  async startOwned(spec: ManagerStartSpec, owner: DagTaskOwner): Promise<OwnedStartResult> {
     this.startOwnedCalls.push(String(owner.nodeId))
+    this.startedSpecs.push(spec)
     this.ownerFingerprints.push(owner.fingerprint)
     const existing = this.findOwnedTask(owner)
     if (existing !== undefined) {
@@ -234,6 +236,30 @@ describe("DAG crash recovery", () => {
       .toEqual(["done:completed", "running:completed", "next:completed"])
     expect(events(store).some((event) => event.type === "dag.node.reused" && event.nodeId === "done")).toBe(true)
     expect(events(store).some((event) => event.type === "dag.run.resumed")).toBe(true)
+  })
+
+  test("#given a paused category node with a model override #when recovery restarts it #then the override reaches the child", async () => {
+    const projectDir = tempProject()
+    const store = createDagFileStore({ project_dir: projectDir })
+    const manager = new RecoveryTaskManager()
+    const input = definition([{ ...node("next"), model: "openai-codex/gpt-daybreak-blue-latest-fast" }])
+    const record = recoverableRecord(input, { next: { state: "pending" } }, { previousLeaseHolderPid: 9001 })
+    store.writeCheckpoint(runId, record)
+    const recovery = createDagRecovery({
+      store,
+      taskManager: manager,
+      hostPid: 101,
+      isProcessAlive: (pid) => pid === 101,
+      now: () => Date.parse("2026-08-14T00:00:04.000Z"),
+    })
+
+    const outcomes = await recovery.resumePausedRuns(parentSessionId)
+
+    expect(outcomes[0]?.kind).toBe("resumed")
+    expect(manager.startedSpecs[0]).toMatchObject({
+      category: "quick",
+      model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    })
   })
 
   test("#given no injected liveness probe #when a paused run's previous holder is this live process #then the default probe skips it as a live lease", async () => {

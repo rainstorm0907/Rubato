@@ -42,14 +42,12 @@ describe("buildTaskToolDescription with zero loaded agents", () => {
     expect(description).not.toContain("EITHER category OR")
   })
 
-  test("#given no loaded agents #when built #then model is forbidden rather than offered", () => {
+  test("#given no loaded agents #when built #then category model override stays reachable", () => {
     // when
     const description = buildTaskToolDescription({ omoConfig: config, agents: noAgents })
 
-    // then: validateTaskTarget rejects a model-only target, so with no agent route there is no
-    // reachable spawn shape that carries model. It must read as forbidden, never as an override.
-    expect(description).toContain("NEVER pass model")
-    expect(description).not.toContain("explicit override")
+    expect(description).toContain("model can override a category")
+    expect(description).toContain("current session's /model catalog")
   })
 
   test("#given no loaded agents #when built #then the category route survives intact", () => {

@@ -35,7 +35,7 @@ export const DagToolParams = Type.Object({
             label: Type.Optional(Type.String({ description: "Short human label for this node." })),
             category: Type.Optional(Type.String({ description: "Category name to route this node through. Mutually exclusive with subagent_type; required unless subagent_type is given." })),
             subagent_type: Type.Optional(Type.String({ description: "Agent name to invoke directly (e.g. momus). Mutually exclusive with category; required unless category is given." })),
-            model: Type.Optional(Type.String({ description: "Explicit model override. Only valid with subagent_type; rejected alongside category, which takes its model from omo.json." })),
+            model: Type.Optional(Type.String({ description: "Explicit model override from the current session catalog; category or subagent_type still supplies the task persona." })),
             dependsOn: Type.Optional(Type.Array(Type.String(), { description: "Ids of nodes that must finish before this one is scheduled. Ordering only: no output is substituted into this prompt." })),
             task_summary: Type.Optional(Type.String({ description: "One-line summary of this node's work, shown in the run widget." })),
             description: Type.Optional(Type.String({ description: "Short human description of this node." })),

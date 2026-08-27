@@ -27,7 +27,7 @@ export const TaskToolParams = Type.Object({
     Type.Boolean({ description: "true (default) returns a child task id immediately and delivers completion as a notification; false waits and returns the final response." }),
   ),
   name: Type.Optional(Type.String({ description: "Optional stable name for this task within the current session; must be unique within the session." })),
-  model: Type.Optional(Type.String({ description: "Explicit model override, e.g. anthropic/claude-opus-4. Only valid with subagent_type; mutually exclusive with category — category-routed tasks take their model from omo.json (categories.<name>.models)." })),
+  model: Type.Optional(Type.String({ description: "Explicit model override from the current session catalog, e.g. openai-codex/gpt-daybreak-blue-latest-fast. The selected category or subagent_type still supplies the task persona." })),
   load_skills: Type.Optional(
     Type.Array(Type.String(), {
       description: "Skill names whose SKILL.md content is prepended to the child prompt. Defaults to [].",
@@ -47,12 +47,12 @@ export const TaskToolParams = Type.Object({
         category: Type.Optional(Type.String({ description: "Category name for this task." })),
         subagent_type: Type.Optional(Type.String({ description: "Direct agent name for this task." })),
         name: Type.Optional(Type.String({ description: "Optional stable name for this task." })),
-        model: Type.Optional(Type.String({ description: "Model override for this task. Only valid when the item's effective target is subagent_type; rejected with a category target." })),
+        model: Type.Optional(Type.String({ description: "Model override from the current session catalog for this task." })),
         load_skills: Type.Optional(Type.Array(Type.String(), { description: "Skills loaded for this task." })),
       }),
       {
         maxItems: MAX_TASK_BATCH_ITEMS,
-        description: "Batch of up to 16 child tasks to spawn in one call. Empty provider padding is normalized before validation. Mutually exclusive with prompt; top-level category/subagent_type/model/load_skills are inherited by items that omit them. An item whose effective target is a category must not carry a model (own or inherited).",
+        description: "Batch of up to 16 child tasks to spawn in one call. Empty provider padding is normalized before validation. Mutually exclusive with prompt; top-level category/subagent_type/model/load_skills are inherited by items that omit them.",
       },
     ),
   ),

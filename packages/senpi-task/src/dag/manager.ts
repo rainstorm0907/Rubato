@@ -588,7 +588,7 @@ function nodeFingerprintFromInput(node: DagNodeInput): DagNodeFingerprintInputV1
     dependsOn: (node.dependsOn ?? []) as readonly DagNodeId[],
     prompt: node.prompt,
     route: node.category !== undefined
-      ? { kind: "category", category: node.category }
+      ? { kind: "category", category: node.category, ...(node.model === undefined ? {} : { model: node.model }) }
       : { kind: "agent", agent: node.subagent_type, ...(node.model === undefined ? {} : { model: node.model }) },
     ...(node.task_summary === undefined ? {} : { taskSummary: node.task_summary }),
     ...(node.description === undefined ? {} : { description: node.description }),
