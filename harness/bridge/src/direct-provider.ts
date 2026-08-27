@@ -28,23 +28,34 @@ export function isDirectModel(model: string): boolean {
 type DirectProvider = "xai" | "anthropic" | "openai-codex" | "kiro";
 
 const DAYBREAK_MODEL_ID = "gpt-daybreak-blue-latest";
+const DAYBREAK_FAST_MODEL_ID = `${DAYBREAK_MODEL_ID}-fast`;
 
 export function openaiCodexProviderWithDaybreak() {
   const provider = openaiCodexProvider();
   const models = provider.getModels();
-  if (models.some((model) => model.id === DAYBREAK_MODEL_ID)) return provider;
   const template = models.find((model) => model.id === "gpt-5.6-luna");
   if (!template) throw new Error("openai-codex provider is missing the Daybreak template model");
-  const daybreak = {
+  const daybreak = models.find((model) => model.id === DAYBREAK_MODEL_ID) ?? {
     ...template,
     id: DAYBREAK_MODEL_ID,
     name: "Daybreak Blue",
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 272_000,
   };
+  const daybreakFast = models.find((model) => model.id === DAYBREAK_FAST_MODEL_ID) ?? {
+    ...daybreak,
+    id: DAYBREAK_FAST_MODEL_ID,
+    name: "Daybreak Blue Fast",
+    upstreamModelId: DAYBREAK_MODEL_ID,
+    serviceTier: "priority",
+  };
   return {
     ...provider,
-    getModels: () => [...models, daybreak],
+    getModels: () => [
+      ...models,
+      ...(models.some((model) => model.id === DAYBREAK_MODEL_ID) ? [] : [daybreak]),
+      ...(models.some((model) => model.id === DAYBREAK_FAST_MODEL_ID) ? [] : [daybreakFast]),
+    ],
   };
 }
 
@@ -168,6 +179,7 @@ export const DIRECT_CATALOG = [
   { id: "openai-codex/gpt-5.6-terra", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
   { id: "openai-codex/gpt-5.6-terra-fast", type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: `openai-codex/${DAYBREAK_MODEL_ID}`, type: "language", owned_by: "openai", tags: ["tool-use", "reasoning"] },
+  { id: `openai-codex/${DAYBREAK_FAST_MODEL_ID}`, type: "language", owned_by: "openai", tags: ["tool-use", "reasoning", "priority"] },
   { id: "google-antigravity/gemini-3.7-flash", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "google-antigravity/gemini-3.1-pro", type: "language", owned_by: "google", tags: ["tool-use", "reasoning"] },
   { id: "kiro/claude-opus-5", type: "language", owned_by: "kiro", tags: ["tool-use", "reasoning"] },

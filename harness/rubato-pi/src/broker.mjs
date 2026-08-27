@@ -39,6 +39,7 @@ export const FALLBACK_CATALOG = Object.freeze([
   { id: "openai-codex/gpt-5.6-luna", name: "GPT-5.6 Luna" },
   { id: "openai-codex/gpt-5.6-luna-fast", name: "GPT-5.6 Luna Fast" },
   { id: "openai-codex/gpt-daybreak-blue-latest", name: "Daybreak Blue" },
+  { id: "openai-codex/gpt-daybreak-blue-latest-fast", name: "Daybreak Blue Fast" },
   { id: "kiro/claude-opus-5", name: "Opus 5 (Kiro)" },
   { id: "kiro/gpt-5.6-sol", name: "GPT-5.6 Sol (Kiro)" },
 ]);
@@ -81,6 +82,13 @@ const MODEL_FALLBACKS = Object.freeze({
     maxTokens: 128_000,
     input: Object.freeze(["text", "image"]),
   }),
+  "openai-codex/gpt-daybreak-blue-latest-fast": Object.freeze({
+    contextWindow: 272_000,
+    maxTokens: 128_000,
+    input: Object.freeze(["text", "image"]),
+    upstreamModelId: "gpt-daybreak-blue-latest",
+    serviceTier: "priority",
+  }),
 });
 
 const PROVIDER_INPUT_FALLBACK = Object.freeze({
@@ -93,9 +101,10 @@ const PROVIDER_INPUT_FALLBACK = Object.freeze({
 export function catalogLimits(provider, id) {
   const builtin = getBuiltinModel(provider, id);
   const modelKey = `${provider}/${id}`;
-  const modelFallback = !builtin && Object.hasOwn(MODEL_FALLBACKS, modelKey)
+  const configuredFallback = Object.hasOwn(MODEL_FALLBACKS, modelKey)
     ? MODEL_FALLBACKS[modelKey]
     : undefined;
+  const modelFallback = builtin ? undefined : configuredFallback;
   const fallbackInput = PROVIDER_INPUT_FALLBACK[provider];
   return {
     contextWindow: modelFallback?.contextWindow ?? CONTEXT_WINDOW_OVERRIDES[id] ?? builtin?.contextWindow ?? 200_000,
@@ -103,8 +112,12 @@ export function catalogLimits(provider, id) {
     // 이미지 첨부는 이 배열로 판정된다. builtin 이 아는 모달리티를 그대로 쓴다.
     // 여기서 ["text"] 로 깎으면 read 도구가 이미지를 조용히 버린다.
     input: builtin?.input?.length ? [...builtin.input] : [...(modelFallback?.input ?? fallbackInput ?? ["text"])],
-    ...(builtin?.upstreamModelId ? { upstreamModelId: builtin.upstreamModelId } : {}),
-    ...(builtin?.serviceTier ? { serviceTier: builtin.serviceTier } : {}),
+    ...(configuredFallback?.upstreamModelId ?? builtin?.upstreamModelId
+      ? { upstreamModelId: configuredFallback?.upstreamModelId ?? builtin.upstreamModelId }
+      : {}),
+    ...(configuredFallback?.serviceTier ?? builtin?.serviceTier
+      ? { serviceTier: configuredFallback?.serviceTier ?? builtin.serviceTier }
+      : {}),
   };
 }
 

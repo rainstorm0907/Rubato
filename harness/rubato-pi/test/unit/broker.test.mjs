@@ -50,6 +50,7 @@ test("catalog ids keep provider prefixes the broker understands", () => {
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").name, "Opus 5");
   assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-5.6-sol-fast").name, "GPT-5.6 Sol Fast");
   assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-daybreak-blue-latest").name, "Daybreak Blue");
+  assert.equal(grouped["openai-codex"].find((model) => model.id === "gpt-daybreak-blue-latest-fast").name, "Daybreak Blue Fast");
   assert.ok(grouped.anthropic.every((model) => model.cacheRetention === "long"));
   assert.equal(grouped.xai[0].cacheRetention, undefined);
   assert.equal(grouped.anthropic.find((model) => model.id === "claude-opus-5").contextWindow, 1_000_000);
@@ -59,6 +60,7 @@ test("catalog ids keep provider prefixes the broker understands", () => {
     "gpt-5.6-terra", "gpt-5.6-terra-fast",
     "gpt-5.6-luna", "gpt-5.6-luna-fast",
     "gpt-daybreak-blue-latest",
+    "gpt-daybreak-blue-latest-fast",
   ]) {
     assert.equal(grouped["openai-codex"].find((model) => model.id === id).contextWindow, 272_000);
   }
@@ -67,6 +69,9 @@ test("catalog ids keep provider prefixes the broker understands", () => {
     assert.equal(fast.upstreamModelId, `gpt-5.6-${variant}`);
     assert.equal(fast.serviceTier, "priority");
   }
+  const daybreakFast = grouped["openai-codex"].find((model) => model.id === "gpt-daybreak-blue-latest-fast");
+  assert.equal(daybreakFast.upstreamModelId, "gpt-daybreak-blue-latest");
+  assert.equal(daybreakFast.serviceTier, "priority");
 });
 
 test("catalog display names have one fallback source", () => {
@@ -666,7 +671,7 @@ test("Codex Fast catalog entries keep pairing metadata and canonical thinking le
   const models = brokerProviders()
     .flatMap((provider) => provider.getModels())
     .filter((model) => model.provider === "openai-codex" && model.id.endsWith("-fast"));
-  assert.equal(models.length, 3);
+  assert.equal(models.length, 4);
   for (const model of models) {
     assert.equal(model.serviceTier, "priority");
     assert.equal(model.upstreamModelId, model.id.slice(0, -5));

@@ -48,7 +48,7 @@ export function shortModelLabel(modelId) {
   const bare = String(modelId).split("/").pop();
   const modelName = bare.split(":", 1)[0];
   const lc = modelName.toLowerCase();
-  if (lc === "gpt-daybreak-blue-latest") return "Daybreak Blue";
+  if (lc === "gpt-daybreak-blue-latest" || lc === "gpt-daybreak-blue-latest-fast") return "Daybreak Blue";
   const variant = variantLabel(lc);
   if (variant) return variant;
   for (const [key, label] of FAMILIES) {

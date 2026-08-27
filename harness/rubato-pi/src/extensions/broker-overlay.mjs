@@ -61,6 +61,15 @@ export const THINKING_LEVEL_MAPS = Object.freeze({
     xhigh: "xhigh",
     max: "max",
   }),
+  "gpt-daybreak-blue-latest-fast": Object.freeze({
+    off: "none",
+    minimal: "low",
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  }),
   "claude-opus-5": Object.freeze({ xhigh: "xhigh", max: "max" }),
   "claude-sonnet-5": Object.freeze({ xhigh: "xhigh", max: "max" }),
 });

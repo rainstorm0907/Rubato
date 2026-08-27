@@ -68,6 +68,10 @@ test("Codex fast catalog ids reach pi-ai without losing their model metadata", (
     provider: "openai-codex",
     modelId: "gpt-5.6-terra-fast",
   });
+  assert.deepEqual(providerModel("openai-codex/gpt-daybreak-blue-latest-fast"), {
+    provider: "openai-codex",
+    modelId: "gpt-daybreak-blue-latest-fast",
+  });
 });
 
 test("Daybreak Blue is a first-class Codex model instead of an alias", () => {
@@ -82,6 +86,12 @@ test("Daybreak Blue is a first-class Codex model instead of an alias", () => {
     provider: "openai-codex",
     modelId: "gpt-daybreak-blue-latest",
   });
+  const fast = openaiCodexProviderWithDaybreak().getModels()
+    .find((entry) => entry.id === "gpt-daybreak-blue-latest-fast");
+  assert.ok(fast);
+  assert.equal(fast.name, "Daybreak Blue Fast");
+  assert.equal(fast.upstreamModelId, "gpt-daybreak-blue-latest");
+  assert.equal(fast.serviceTier, "priority");
 });
 
 test("Daybreak Blue keeps its model id on the upstream wire", async () => {
@@ -151,6 +161,35 @@ test("Codex fast alias sends canonical model, reasoning, and priority on the ups
   assert.ok(wireBody, `upstream fetch was not called: ${frames.join("")}`);
   assert.equal(wireBody.model, "gpt-5.6-terra");
   assert.deepEqual(wireBody.reasoning, { effort: "high", summary: "auto" });
+  assert.equal(wireBody.service_tier, "priority");
+});
+
+test("Daybreak Blue Fast sends the Daybreak model through the priority tier", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fx-codex-daybreak-fast-"));
+  const authPath = join(directory, "auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  writeFileSync(authPath, JSON.stringify({
+    "openai-codex": { type: "oauth", access: `header.${payload}.signature`, refresh: "refresh", expires: Date.now() + 3_600_000 },
+  }));
+  let wireBody;
+  const upstreamFetch = async (_url, init) => {
+    const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
+    const encoded = new Headers(init?.headers).get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    wireBody = JSON.parse(encoded.toString("utf8"));
+    return new Response([
+      'data: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}',
+      'data: {"type":"response.completed","response":{"id":"r1","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[]}}',
+      "data: [DONE]", "",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  for await (const _frame of directProviderToFxSse({
+    model: "openai-codex/gpt-daybreak-blue-latest-fast",
+    body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }], reasoning: "high" },
+    xaiAuthPath: authPath,
+    upstreamFetch,
+    transport: "sse",
+  })) {}
+  assert.equal(wireBody.model, "gpt-daybreak-blue-latest");
   assert.equal(wireBody.service_tier, "priority");
 });
 
