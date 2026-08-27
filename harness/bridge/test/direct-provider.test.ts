@@ -35,6 +35,60 @@ test("fx history and tools become pi-ai context without executing tools", () => 
   }]);
 });
 
+test("Codex history remains native instead of being tagged as Anthropic", () => {
+  const context = fxPromptToPiContext([
+    { role: "system", content: [{ type: "text", text: "system" }] },
+    { role: "user", content: [{ type: "text", text: "question" }] },
+    { role: "assistant", content: [
+      { type: "reasoning", text: "summary", signature: '{"type":"reasoning","id":"rs_1","encrypted_content":"sealed"}' },
+      { type: "text", text: "answer" },
+    ] },
+  ], [], "openai-codex", "gpt-5.6-sol");
+
+  const assistant = context.messages.find((message) => message.role === "assistant");
+  assert.equal(assistant?.api, "openai-codex-responses");
+  assert.equal(assistant?.provider, "openai-codex");
+});
+
+test("Codex signed reasoning stays a reasoning item on the upstream wire", async () => {
+  let wireBody;
+  const upstreamFetch = async (_url, init) => {
+    const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
+    const encoded = new Headers(init?.headers).get("content-encoding") === "zstd" ? zstdDecompressSync(bytes) : bytes;
+    wireBody = JSON.parse(encoded.toString("utf8"));
+    return new Response([
+      'data: {"type":"response.created","response":{"id":"r1","status":"in_progress"}}',
+      'data: {"type":"response.completed","response":{"id":"r1","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[]}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+
+  for await (const _frame of directProviderToFxSse({
+    model: "openai-codex/gpt-5.6-sol-fast",
+    body: {
+      reasoning: "high",
+      prompt: [
+        { role: "user", content: [{ type: "text", text: "question" }] },
+        { role: "assistant", content: [
+          { type: "reasoning", text: "summary", signature: '{"type":"reasoning","id":"rs_1","encrypted_content":"sealed"}' },
+          { type: "text", text: "answer" },
+        ] },
+      ],
+    },
+    sessionId: "session",
+    upstreamFetch,
+    transport: "sse",
+  })) {}
+
+  assert.equal(wireBody.model, "gpt-5.6-sol");
+  assert.equal(wireBody.input[1].type, "reasoning");
+  assert.equal(wireBody.input[1].id, "rs_1");
+  assert.equal(wireBody.input[1].encrypted_content, "sealed");
+  assert.equal(wireBody.input[2].role, "assistant");
+  assert.equal(wireBody.input[2].content[0].text, "answer");
+});
+
 test("xAI and Anthropic use the direct provider route", () => {
   assert.equal(isDirectModel("xai/grok-4.6"), true);
   assert.equal(isDirectModel("anthropic/claude-opus-5"), true);

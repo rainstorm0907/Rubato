@@ -322,7 +322,7 @@ function outputImages(output: unknown): UserPart[] {
   );
 }
 
-export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "xai" | "anthropic" = "xai", model = "grok-4.6", naming: ToolNaming = toolNaming(provider)): JsonObject {
+export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: DirectProvider = "xai", model = "grok-4.6", naming: ToolNaming = toolNaming(provider)): JsonObject {
   const messages: JsonObject[] = [];
   const system: string[] = [];
   for (const message of Array.isArray(prompt) ? prompt : []) {
@@ -359,7 +359,11 @@ export function fxPromptToPiContext(prompt: unknown, tools: unknown, provider: "
       messages.push({
         role: "assistant",
         content: blocks,
-        api: provider === "xai" ? "openai-completions" : "anthropic-messages",
+        api: provider === "xai"
+          ? "openai-completions"
+          : provider === "openai-codex"
+            ? "openai-codex-responses"
+            : "anthropic-messages",
         provider,
         model,
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
@@ -507,7 +511,7 @@ export async function* directProviderToFxSse(args: {
     args.body.prompt,
     args.body.tools,
     selected.provider === "kiro" ? "anthropic" : selected.provider,
-    selected.modelId,
+    selected.provider === "openai-codex" ? requestModel.id : selected.modelId,
     toolNaming(selected.provider),
   );
   const headers = selected.provider === "anthropic" ? { "user-agent": await claudeCodeUserAgent() } : undefined;

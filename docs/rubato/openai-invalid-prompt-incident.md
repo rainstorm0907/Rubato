@@ -96,7 +96,8 @@ OpenAI Codex backend
 
 - Rubato는 긴 system prompt를 FX prompt의 `system` 메시지로 만들고, `direct-provider.ts`가 다시 `systemPrompt`로 합친다. Senpi AI의 Codex serializer가 그다음 실제 upstream body를 만든다.
 - 이전 사용자 메시지, assistant 출력, tool call, tool result를 매 요청마다 FX prompt로 재구성한 뒤 다시 Senpi AI message로 복원한다.
-- Senpi의 `thinking`은 중간 FX 형식에서 `reasoning` part가 되고, direct 경로의 `fxPromptToPiContext()`는 이를 다시 `thinking` block과 signature로 복원한다. 따라서 이번 direct Codex 경로에서는 과거 reasoning이 버려진다는 설명이 맞지 않는다.
+- Senpi의 `thinking`은 중간 FX 형식에서 `reasoning` part가 되고, direct 경로의 `fxPromptToPiContext()`는 이를 다시 `thinking` block과 signature로 복원한다.
+- 다만 후속 조사에서 `fxPromptToPiContext()`가 복원한 Codex assistant 턴에 `api: "anthropic-messages"`를 붙이고 있던 버그를 확인했다. Senpi AI serializer는 provider·api·model이 모두 같은 reasoning item만 native continuation으로 인정한다. 이 태그 때문에 서명된 reasoning이 다음 wire request에서 일반 assistant text로 강등됐다. fast 모델은 history model ID도 별칭으로 남아 같은 문제가 한 번 더 생겼다.
 - 반대로 실패한 턴에 남은 content는 수정 전 `broker-request.mjs`가 정상 assistant 대화처럼 다음 요청에 넣었다.
 - direct provider는 최종 오류를 `openai-codex_direct`라는 공통 code로 바꾼다. upstream의 세부 `code/type`과 request ID는 최종 세션 기록에 남지 않아 어느 정책 판정기가 거절했는지 가를 정보가 부족하다.
 
@@ -120,7 +121,7 @@ Senpi AI의 Codex parser는 top-level `error`에만 `Codex error:` 접두사를 
 
 다만 이것만으로 **정책 판정 대상이 생성 중 reasoning이었다**고 확정할 수도 없다. OpenAI가 입력을 비동기로 검사하다 늦게 실패시켰을 수도 있고, 생성된 reasoning을 검사했을 수도 있으며, Senpi AI transport가 upstream 이벤트를 최종 오류로 바꾸는 과정에서 세부 정보를 잃었을 수도 있다. 현재 로그가 확정하는 것은 오류가 reasoning 전달 뒤에 관찰됐다는 데까지다.
 
-한 가지 이상한 점도 남아 있다. `broker-stream.mjs`는 reasoning을 `thinking` block으로 만들지만, 실패한 23개 assistant 턴의 최종 세션 기록에는 부분 생성물이 `text` block으로 저장돼 있었다. thinking을 text로 바꾸는 코드는 broker stream과 direct provider에서 찾지 못했다. 다만 오류 조립 경로는 `broker-stream.mjs`의 error 처리와 `settleBrokerOutput()`까지 좁혔다. 도구 호출이 있는 실패 턴은 여기서 `toolUse`로 바뀌고 `errorMessage`가 지워지므로, `stopReason=error`로 남은 23개 턴은 도구 호출이 없던 턴이다. 남은 후보는 reasoning slot이 애초에 열리지 않았거나 세션 저장 계층에서 모양이 바뀌는 경우다. 반복 오염을 막는 수정은 error assistant 턴 전체를 제외하므로 이 미확정 변환과 상관없이 동작한다.
+한 가지 이상한 점도 남아 있다. `broker-stream.mjs`는 reasoning을 `thinking` block으로 만들지만, 실패한 23개 assistant 턴의 최종 세션 기록에는 부분 생성물이 `text` block으로 저장돼 있었다. 후속 조사에서 다음 요청을 만들 때 signed reasoning을 text로 강등하는 지점은 찾았다. Codex history에 Anthropic API 태그가 붙어 Senpi AI serializer가 이를 foreign history로 취급한 것이다. 다만 오류가 난 그 턴이 세션 파일에 처음 저장될 때부터 text였던 이유까지 같은 버그가 설명하는지는 아직 확정하지 않았다. 도구 호출이 있는 실패 턴은 `settleBrokerOutput()`에서 `toolUse`로 바뀌고 `errorMessage`가 지워지므로, `stopReason=error`로 남은 23개 턴은 도구 호출이 없던 턴이다.
 
 ## 원인 규정
 
@@ -160,11 +161,11 @@ Rubato의 system prompt에는 도구 실행, 프로세스 제어, 파일 수정,
 
 반증하려면 사용자 메시지는 그대로 두고 system instructions, tool schema, 이전 이력을 하나씩 뺀 요청을 같은 모델에 보내야 한다.
 
-### 가능성 C — Rubato의 대화 재구성이 공식 Codex의 연속성 규칙과 다르다
+### 확인된 요청 차이 — Rubato가 Codex history를 foreign history로 표시했다
 
-Rubato는 이전 대화를 매번 FX prompt로 만들고 다시 Senpi AI context로 복원한다. direct 경로에서는 reasoning과 signature도 복원하지만, 공식 Codex CLI의 원래 response item이나 continuation ID를 그대로 재사용하는지는 확인하지 못했다. 같은 내용이어도 대화 연속성을 표현하는 방식이 달라 정책 판정이나 모델 상태 복원에 영향을 줄 수 있다.
+Rubato는 이전 대화를 FX prompt로 만들고 다시 Senpi AI context로 복원하면서 Codex assistant 턴에 `api: "anthropic-messages"`를 붙였다. Senpi AI의 Responses serializer는 현재 모델과 provider·api·model이 모두 같을 때만 reasoning signature의 암호화 item을 그대로 재사용한다. 수정 전 wire test에서는 signed reasoning이 `type: "reasoning"`이 아니라 일반 assistant `output_text`로 내려갔다.
 
-반증하려면 같은 작업을 공식 Codex CLI 요청과 Rubato 요청으로 각각 캡처해 필드 단위로 비교해야 한다. 사용자 콘텐츠 비교만으로는 부족하다.
+API 태그를 `openai-codex-responses`로 바꾸고 history model ID를 실제 wire model ID로 맞추자 `reasoning.encrypted_content` item이 그대로 wire input에 남았다. 이 요청 차이는 확정했고 수정했다. 다만 이것이 최초 정책 오류의 단독 원인이었다는 뜻은 아니다. 수정 뒤 장기 실사용에서 오류가 재발하는지 봐야 한다.
 
 ### 가능성 D — Senpi AI Codex transport가 공식 CLI와 다른 body를 만든다
 
@@ -190,7 +191,7 @@ Rubato direct provider는 `@code-yeongyu/senpi-ai`의 `openaiCodexProvider()`를
    - 문구 안에 `try again`이 있어도 정책 거절을 자동 재시도하지 않는다.
 3. 두 동작에 회귀 테스트를 추가했다.
 
-reasoning 원문을 전부 제거하는 수정도 한때 검토했지만 되돌렸다. 실제 `openai-codex/*` direct 경로는 `fxPromptToPiContext()`가 reasoning과 signature를 복원한다. reasoning 전체를 지우면 정상 대화 연속성까지 깨질 수 있고, 실패 턴 전체를 제외하는 더 좁은 수정으로 반복 고리를 끊을 수 있다.
+reasoning 원문을 전부 제거하는 수정도 한때 검토했지만 되돌렸다. 후속 wire test는 반대로 native reasoning item과 암호화 signature를 보존하는 것이 Senpi AI serializer의 정상 경로임을 확인했다. reasoning 전체를 지우면 정상 대화 연속성까지 깨지고, 실제 문제였던 foreign API/model 태그를 가린다.
 
 ## 검증 결과
 

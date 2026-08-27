@@ -117,3 +117,30 @@ fix(rubato): 정책 오류가 세션을 반복 오염시키지 않게 한다
 
 Co-Authored-By: Codex <noreply@openai.com>
 ```
+
+============================================================
+
+## Codex native history 복원 [1949]
+
+**Time**: 2026-08-27 19:49 +0900
+
+### What Changed
+
+최초 정책 오류의 원인을 좁히려고 원본 payload 계측 지점을 추적하다가, 계측보다 먼저 고쳐야 할 실제 요청 shape 버그를 확인했다.
+
+- `fxPromptToPiContext()`가 OpenAI Codex의 과거 assistant 턴에 `api: "anthropic-messages"`를 붙였다.
+- Senpi AI Responses serializer는 provider·api·model이 모두 현재 요청과 같은 reasoning item만 native continuation으로 재사용한다.
+- 수정 전 wire test에서 signed reasoning은 `type: "reasoning"`과 `encrypted_content`로 남지 않고 일반 assistant `output_text`로 강등됐다.
+- fast 모델은 history에 catalog alias를 붙이고 wire에는 canonical model을 보내서, API 태그만 고쳐도 같은 foreign-history 판정이 남았다.
+
+`direct-provider.ts`가 Codex history를 `api: "openai-codex-responses"`로 표시하고, history model ID도 `requestModel.id`로 맞추도록 수정했다. 이제 fast 모델에서도 wire input에 native reasoning item과 암호화 continuation이 그대로 남는다.
+
+### Decision
+
+원본 Codex 오류 payload 계측은 이번 수정에서 보류했다. 해당 metadata는 Senpi AI stream catch에서 이미 평탄화되어 Rubato bridge에서 안전하게 복원할 수 없다. 이를 보존하려면 벤더 패치와 별도 유지보수 계약이 필요하다. 반면 history 태그 오류는 Rubato 소유 코드에 있고 공식 Codex 흐름과 다른 요청을 실제로 만들고 있었으므로 먼저 고치는 게 맞다. 수정 뒤에도 정책 오류가 재발하면 그때 최소 벤더 패치로 원본 event type/code/request ID를 보존한다.
+
+### Files Modified
+
+- `harness/bridge/src/direct-provider.ts`: Codex assistant history의 API·wire model identity 수정
+- `harness/bridge/test/direct-provider.test.ts`: native reasoning context와 fast wire replay 회귀 테스트
+- `docs/rubato/openai-invalid-prompt-incident.md`: 열린 가설이던 요청 차이를 확인된 버그와 수정으로 갱신
