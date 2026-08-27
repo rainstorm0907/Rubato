@@ -5,6 +5,30 @@ import { CTX, createFakeManager, makeDeps } from "./__fixtures__/task-tool-fakes
 import { buildTaskExecute } from "./execute"
 
 describe("buildTaskExecute spawn validation", () => {
+  test("#given prompt and model only #when executed #then manager receives a generic explicit-model spec", async () => {
+    let captured: ManagerStartSpec | undefined
+    const manager = createFakeManager({
+      start: async (spec): Promise<StartResult> => {
+        captured = spec
+        return { kind: "started", task_id: "st_model", status: "running", name: "t" }
+      },
+    })
+    const execute = buildTaskExecute(makeDeps(manager))
+
+    const result = await execute(
+      "c",
+      { prompt: "p", model: "kiro/claude-opus-5", run_in_background: true },
+      undefined,
+      undefined,
+      CTX,
+    )
+
+    expect(captured).toMatchObject({ prompt: "p", model: "kiro/claude-opus-5" })
+    expect(captured?.category).toBeUndefined()
+    expect(captured?.subagent_type).toBeUndefined()
+    expect(result.details.status).toBe("running")
+  })
+
   test("#given both category and subagent_type #when executed #then it returns the XOR error result without spawning", async () => {
     let started = false
     const manager = createFakeManager({

@@ -8,6 +8,7 @@ export type TaskTargetError = {
 }
 
 export type TaskTargetSelection =
+  | { readonly kind: "model"; readonly model: string }
   | { readonly kind: "category"; readonly category: string }
   | { readonly kind: "subagent_type"; readonly subagentType: string }
   | { readonly kind: "error"; readonly error: TaskTargetError }
@@ -63,7 +64,7 @@ export type ResolveSpawnItemsResult =
 const BOTH_TARGETS_MESSAGE = "Provide EITHER category OR subagent_type, not both. Remove one and retry."
 
 const NO_TARGET_MESSAGE =
-  'You MUST provide EITHER category OR subagent_type. Omitting BOTH will FAIL. Example: task(category="quick", prompt="...") or task(subagent_type="momus", prompt="...").'
+  'Provide a model, category, or subagent_type. Example: task(model="kiro/claude-opus-5", prompt="...").'
 
 const PROMPT_AND_TASKS_MESSAGE = "Provide EITHER prompt OR tasks, not both. Remove one and retry."
 
@@ -75,8 +76,7 @@ function present(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0
 }
 
-// category XOR subagent_type: both or neither is a typed tool error. Wording ports the omo
-// delegate-task tool-description contract so the model sees the same guidance it does in OpenCode.
+// category XOR subagent_type remains for preset compatibility. A model alone is a complete target.
 export function validateTaskTarget(params: TargetInput): TaskTargetSelection {
   const hasCategory = present(params.category)
   const hasSubagent = present(params.subagent_type)
@@ -88,6 +88,9 @@ export function validateTaskTarget(params: TargetInput): TaskTargetSelection {
   }
   if (present(params.subagent_type)) {
     return { kind: "subagent_type", subagentType: params.subagent_type.trim() }
+  }
+  if (present(params.model)) {
+    return { kind: "model", model: params.model.trim() }
   }
   return { kind: "error", error: { code: "no_target", message: NO_TARGET_MESSAGE } }
 }
@@ -156,7 +159,9 @@ export function resolveSpawnItems(params: SpawnParamsInput): ResolveSpawnItemsRe
       ...(input.name === undefined ? {} : { name: input.name }),
       ...(model === undefined ? {} : { model }),
     }
-    if (target.kind === "category") {
+    if (target.kind === "model") {
+      items.push({ ...common, kind: "model", model: target.model })
+    } else if (target.kind === "category") {
       items.push({ ...common, kind: "category", category: target.category })
     } else {
       items.push({ ...common, kind: "subagent_type", subagentType: target.subagentType })

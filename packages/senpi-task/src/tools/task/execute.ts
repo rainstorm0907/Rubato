@@ -65,7 +65,11 @@ export function buildTaskExecute(deps: TaskToolDeps, options: ForegroundWaitOpti
       skillSummaryFor: (item) => skillSummaries.get(item),
       startItem: async (item) => {
         let itemParams = singleSpawnParams(item, params.run_in_background)
-        const target = item.kind === "category" ? { category: item.category } : { subagentType: item.subagentType }
+        const target = item.kind === "category"
+          ? { category: item.category }
+          : item.kind === "subagent_type"
+            ? { subagentType: item.subagentType }
+            : { model: item.model }
         if (item.kind === "subagent_type") {
           const policy = evaluateSpawnPolicy(deps, item.subagentType, itemParams.prompt, parentSessionId)
           if (policy.kind === "deny") {

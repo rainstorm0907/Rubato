@@ -79,6 +79,7 @@ type ResolvedSpawnItemBase = {
 }
 
 export type ResolvedSpawnItem =
+  | (ResolvedSpawnItemBase & { readonly kind: "model"; readonly model: string })
   | (ResolvedSpawnItemBase & { readonly kind: "category"; readonly category: string })
   | (ResolvedSpawnItemBase & { readonly kind: "subagent_type"; readonly subagentType: string })
 

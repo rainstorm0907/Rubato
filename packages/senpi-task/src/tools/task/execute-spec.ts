@@ -14,7 +14,7 @@ export type ResolvedManagerStartSpec = ManagerStartSpec & {
 
 export function buildStartSpec(
   params: SingleSpawnParams,
-  target: { readonly category: string } | { readonly subagentType: string },
+  target: { readonly category: string } | { readonly subagentType: string } | { readonly model: string },
   parentSessionId: string,
   deps: TaskToolDeps,
   cwd: string,
@@ -31,7 +31,11 @@ export function buildStartSpec(
     parent_session_id: parentSessionId,
     root_session_id: ancestry?.rootSessionId ?? parentSessionId,
     depth: (ancestry?.depth ?? 0) + 1,
-    ...("category" in target ? { category: target.category } : { subagent_type: target.subagentType }),
+    ...("category" in target
+      ? { category: target.category }
+      : "subagentType" in target
+        ? { subagent_type: target.subagentType }
+        : {}),
     execution_mode: executionMode,
     ...(params.model !== undefined && { model: params.model }),
     ...(params.name !== undefined && { name: params.name }),
@@ -51,7 +55,7 @@ function toExecutionMode(value: string | undefined): ExecutionMode | undefined {
 }
 
 function resolvedAgentMode(
-  target: { readonly category: string } | { readonly subagentType: string },
+  target: { readonly category: string } | { readonly subagentType: string } | { readonly model: string },
   deps: TaskToolDeps,
 ): ExecutionMode | undefined {
   if (!("subagentType" in target)) return undefined
@@ -59,7 +63,7 @@ function resolvedAgentMode(
 }
 
 function resolvedTaskExecutionMode(
-  target: { readonly category: string } | { readonly subagentType: string },
+  target: { readonly category: string } | { readonly subagentType: string } | { readonly model: string },
   deps: TaskToolDeps,
 ): ExecutionMode {
   const agentMode = resolvedAgentMode(target, deps)
@@ -72,7 +76,11 @@ function resolvedTaskExecutionMode(
 export function singleSpawnParams(item: ResolvedSpawnItem, runInBackground: boolean | undefined): SingleSpawnParams {
   return {
     prompt: item.prompt,
-    ...(item.kind === "category" ? { category: item.category } : { subagent_type: item.subagentType }),
+    ...(item.kind === "category"
+      ? { category: item.category }
+      : item.kind === "subagent_type"
+        ? { subagent_type: item.subagentType }
+        : {}),
     ...(item.task_summary !== undefined && { task_summary: item.task_summary }),
     ...(item.description !== undefined && { description: item.description }),
     ...(item.name !== undefined && { name: item.name }),

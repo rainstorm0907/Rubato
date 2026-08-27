@@ -25,7 +25,7 @@ describe("buildTaskToolDescription", () => {
     expect(description).toContain("Ships the release train")
   })
 
-  test("#given the description #when built #then it enforces the category XOR subagent_type contract", () => {
+  test("#given the description #when built #then it accepts model as a complete target", () => {
     // given
     const config: OmoConfig = { categories: {}, agents: {} }
 
@@ -33,7 +33,8 @@ describe("buildTaskToolDescription", () => {
     const description = buildTaskToolDescription({ omoConfig: config, agents })
 
     // then
-    expect(description).toContain("EITHER category OR subagent_type")
+    expect(description).toContain("MUST provide a model, category, or subagent_type")
+    expect(description).toContain('task(model="kiro/claude-opus-5", prompt="...")')
   })
 
   test("#given the description #when built #then it describes spawn-only task and task_send continuation", () => {
@@ -101,7 +102,7 @@ describe("buildTaskToolDescription", () => {
 })
 
 describe("buildTaskToolDescription category model overrides", () => {
-  test("#given the description #when built #then it keeps persona and model as separate axes", () => {
+  test("#given the description #when built #then it makes presets optional beside model", () => {
     // given
     const config: OmoConfig = { categories: {}, agents: {} }
 
@@ -110,8 +111,8 @@ describe("buildTaskToolDescription category model overrides", () => {
 
     // then
     expect(description).toContain("current session's /model catalog")
-    expect(description).toContain("category or subagent_type still supplies the task persona")
-    expect(description).toContain("subagent_type")
+    expect(description).toContain("model is the default target")
+    expect(description).toContain("category and subagent_type are optional compatibility presets")
   })
 
   test("#given the prompt guidelines #when read #then they require a picker-visible override", () => {

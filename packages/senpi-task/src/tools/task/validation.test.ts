@@ -4,6 +4,13 @@ import type { ResolvedSpawnItem, TaskToolDetails, TaskToolItemDetail } from "./t
 import { resolveSpawnItems, validateBatchShape, validateTaskTarget } from "./validation"
 
 describe("validateTaskTarget", () => {
+  test("#given only model #when validated #then resolves to a model selection", () => {
+    expect(validateTaskTarget({ prompt: "do it", model: "kiro/claude-opus-5" })).toEqual({
+      kind: "model",
+      model: "kiro/claude-opus-5",
+    })
+  })
+
   test("#given only category #when validated #then resolves to a category selection", () => {
     // given
     const params = { prompt: "do it", category: "quick" }
@@ -44,7 +51,7 @@ describe("validateTaskTarget", () => {
     expect(result.error.message).toContain("Remove one and retry")
   })
 
-  test("#given neither category nor subagent_type #when validated #then returns a typed no_target error", () => {
+  test("#given no model, category, or subagent_type #when validated #then returns a typed no_target error", () => {
     // given
     const params = { prompt: "do it" }
 
@@ -55,7 +62,7 @@ describe("validateTaskTarget", () => {
     expect(result.kind).toBe("error")
     if (result.kind !== "error") throw new Error("expected error")
     expect(result.error.code).toBe("no_target")
-    expect(result.error.message).toContain("MUST provide EITHER category OR subagent_type")
+    expect(result.error.message).toContain("Provide a model, category, or subagent_type")
   })
 
   test("#given empty-string category #when validated #then treated as absent (no_target)", () => {
@@ -138,6 +145,16 @@ describe("validateBatchShape", () => {
 })
 
 describe("resolveSpawnItems", () => {
+  test("#given model-only single params #when resolved #then yields a model item", () => {
+    const result = resolveSpawnItems({ prompt: "do it", model: "kiro/claude-opus-5" })
+
+    expect(result.kind).toBe("ok")
+    if (result.kind !== "ok") throw new Error("expected ok")
+    expect(result.items).toEqual([
+      { prompt: "do it", model: "kiro/claude-opus-5", load_skills: [], kind: "model" },
+    ])
+  })
+
   test("#given legacy single-prompt params w2val #when resolved #then yields exactly one ResolvedSpawnItem (regression)", () => {
     // given
     const params = {

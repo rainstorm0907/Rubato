@@ -64,7 +64,11 @@ export async function runSpawn(
     return result(policy.message, { task_id: "", status: "denied", mode: "spawn", reason: policy.message })
   }
   const effectiveParams = policy?.kind === "force" ? { ...params, prompt: policy.prompt, load_skills: [] } : params
-  const target = selection.kind === "category" ? { category: selection.category } : { subagentType: selection.subagentType }
+  const target = selection.kind === "category"
+    ? { category: selection.category }
+    : selection.kind === "subagent_type"
+      ? { subagentType: selection.subagentType }
+      : { model: selection.model }
   const spec = buildStartSpec(effectiveParams, target, ctx.sessionManager.getSessionId(), deps, ctx.cwd)
   const started = await deps.manager.start(spec)
   if (started.kind === "plan_unresolved") {

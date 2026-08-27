@@ -80,7 +80,11 @@ function startedDetail(item: ResolvedSpawnItem, start: StartedResult, skills?: T
     task_id: start.task_id,
     name: start.name,
     ...(item.task_summary === undefined ? {} : { task_summary: item.task_summary }),
-    ...(item.kind === "category" ? { category: item.category } : { subagent_type: item.subagentType }),
+    ...(item.kind === "category"
+      ? { category: item.category }
+      : item.kind === "subagent_type"
+        ? { subagent_type: item.subagentType }
+        : {}),
     ...(item.model === undefined ? {} : { model: item.model }),
     ...(start.resolved_model === undefined ? {} : { resolved_model: start.resolved_model }),
     status: start.status,

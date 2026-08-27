@@ -18,16 +18,16 @@ export const TaskToolParams = Type.Object({
     Type.String({ description: "Short human label for this task, shown in status views." }),
   ),
   category: Type.Optional(
-    Type.String({ description: "Category name to route through Sisyphus-Junior. Mutually exclusive with subagent_type; required unless subagent_type is given." }),
+    Type.String({ description: "Optional category preset. Mutually exclusive with subagent_type; omit when model directly selects the child." }),
   ),
   subagent_type: Type.Optional(
-    Type.String({ description: "Agent name to invoke directly (e.g. momus). Mutually exclusive with category; required unless category is given." }),
+    Type.String({ description: "Optional named agent persona. Mutually exclusive with category; omit when model directly selects the child." }),
   ),
   run_in_background: Type.Optional(
     Type.Boolean({ description: "true (default) returns a child task id immediately and delivers completion as a notification; false waits and returns the final response." }),
   ),
   name: Type.Optional(Type.String({ description: "Optional stable name for this task within the current session; must be unique within the session." })),
-  model: Type.Optional(Type.String({ description: "Explicit model override from the current session catalog, e.g. openai-codex/gpt-daybreak-blue-latest-fast. The selected category or subagent_type still supplies the task persona." })),
+  model: Type.Optional(Type.String({ description: "Exact model id from the current session catalog. A model alone is a complete target; with category or subagent_type it overrides that preset's model." })),
   load_skills: Type.Optional(
     Type.Array(Type.String(), {
       description: "Skill names whose SKILL.md content is prepended to the child prompt. Defaults to [].",
@@ -44,10 +44,10 @@ export const TaskToolParams = Type.Object({
           }),
         ),
         description: Type.Optional(Type.String({ description: "Short human label for this task." })),
-        category: Type.Optional(Type.String({ description: "Category name for this task." })),
-        subagent_type: Type.Optional(Type.String({ description: "Direct agent name for this task." })),
+        category: Type.Optional(Type.String({ description: "Optional category preset for this task." })),
+        subagent_type: Type.Optional(Type.String({ description: "Optional named agent persona for this task." })),
         name: Type.Optional(Type.String({ description: "Optional stable name for this task." })),
-        model: Type.Optional(Type.String({ description: "Model override from the current session catalog for this task." })),
+        model: Type.Optional(Type.String({ description: "Exact model id from the current session catalog; a complete target by itself." })),
         load_skills: Type.Optional(Type.Array(Type.String(), { description: "Skills loaded for this task." })),
       }),
       {

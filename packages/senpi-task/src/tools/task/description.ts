@@ -35,10 +35,8 @@ export function buildTaskToolDescription(input: DescriptionInput): string {
   const plainAgents = agents.filter((agent) => !PLAN_GATED_AGENT_NAMES.has(agent.name))
   const gatedAgents = agents.filter((agent) => PLAN_GATED_AGENT_NAMES.has(agent.name))
   // With zero loaded agents, subagent_type is a dead rail: every spawn naming one fails at
-  // validateTaskTarget. Advertising the parameter (and a momus example) in that state invites the
-  // model to invent an agent name, so the whole route is omitted instead of being rendered with a
-  // "none loaded" placeholder. The model-override note rides on the same branch because model is
-  // only reachable alongside subagent_type (validation.ts rejects a model-only target).
+  // validateTaskTarget. Advertising the parameter in that state invites the model to invent an
+  // agent name, so the whole route is omitted instead of being rendered with a placeholder.
   const hasAgentRoute = plainAgents.length > 0 || gatedAgents.length > 0
   const agentNames = plainAgents.map((agent) => agent.name).join(", ")
   const plainAgentLine =
@@ -49,22 +47,13 @@ export function buildTaskToolDescription(input: DescriptionInput): string {
     gatedAgents.length === 0
       ? ""
       : `${plainAgents.length === 0 ? "\n- subagent_type invokes a loaded agent directly." : ""}\n  Plan-gated agents (spawnable only after the user explicitly requests the ulw-plan workflow, a .omo/plans/*.md plan artifact was touched in this session, and start-work was never invoked): ${gatedAgents.map((agent) => agent.name).join(", ")}`
-  const momusNotice =
-    gatedAgents.length === 0
-      ? ""
-      : "\n  momus is one-shot: spawn it, read task_output, optionally task_cancel; task_send is always refused. The harness replaces the momus spawn prompt with the canonical plan-review contract (one .omo/plans/*.md path only) - any other prompt content is discarded, so pass the plan path and nothing else."
   const targetRule = hasAgentRoute
-    ? "Each spawn MUST provide EITHER category OR subagent_type after inheritance. DO NOT provide both."
-    : "Each spawn MUST provide a category after inheritance."
-  const modelNote = hasAgentRoute
-    ? `name is an optional stable handle. model is an explicit override from the current session's /model catalog; category or subagent_type still supplies the task persona.
-  CORRECT: task(subagent_type="${gatedAgents[0]?.name ?? plainAgents[0]?.name}", model="openai/gpt-5.6-sol", prompt="...")
-  CORRECT: task(category="architect", model="openai-codex/gpt-daybreak-blue-latest-fast", prompt="...")`
-    : `name is an optional stable handle. model can override a category with an exact provider/model id from the current session's /model catalog.
-  CORRECT: task(category="architect", model="openai-codex/gpt-daybreak-blue-latest-fast", prompt="...")`
-  const batchLine = hasAgentRoute
-    ? "- Batch: tasks (1-16 items); top-level target, model, and skills are inherited when an item omits them."
-    : "- Batch: tasks (1-16 items); the top-level target, model, and skills are inherited when an item omits them."
+    ? "Each spawn MUST provide a model, category, or subagent_type after inheritance. category and subagent_type are mutually exclusive."
+    : "Each spawn MUST provide a model or category after inheritance."
+  const modelNote = `model is the default target: pass an exact provider/model id from the current session's /model catalog with the prompt.
+  CORRECT: task(model="kiro/claude-opus-5", prompt="...")
+  ${hasAgentRoute ? "category and subagent_type are optional compatibility presets" : "category is an optional compatibility preset"}; when present, model overrides its configured model.`
+  const batchLine = "- Batch: tasks (1-16 items); top-level model, optional preset, and skills are inherited when an item omits them."
   return `Spawn one child task or fan out a batch.
 
 Choose exactly one input form:
@@ -73,8 +62,8 @@ ${batchLine}
 
 ${targetRule}
 
-- category routes through Sisyphus-Junior. Available categories:
-${renderCategoryList(categories)}${plainAgentLine}${gatedLine}${momusNotice}
+- category is an optional compatibility preset. Available categories:
+${renderCategoryList(categories)}${plainAgentLine}${gatedLine}
 
 Blank provider padding is normalized automatically; do not add filler values.
 load_skills prepends named skills. run_in_background defaults to true: the spawn returns task ids immediately and completion arrives as a notification. Pass run_in_background=false to block this turn until the child finishes.

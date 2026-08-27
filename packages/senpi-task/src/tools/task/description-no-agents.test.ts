@@ -33,20 +33,20 @@ describe("buildTaskToolDescription with zero loaded agents", () => {
     expect(description).not.toContain("undefined")
   })
 
-  test("#given no loaded agents #when built #then the target rule names category alone", () => {
+  test("#given no loaded agents #when built #then the target rule accepts model or category", () => {
     // when
     const description = buildTaskToolDescription({ omoConfig: config, agents: noAgents })
 
     // then
-    expect(description).toContain("MUST provide a category")
-    expect(description).not.toContain("EITHER category OR")
+    expect(description).toContain("MUST provide a model or category")
   })
 
-  test("#given no loaded agents #when built #then category model override stays reachable", () => {
+  test("#given no loaded agents #when built #then model-only target stays reachable", () => {
     // when
     const description = buildTaskToolDescription({ omoConfig: config, agents: noAgents })
 
-    expect(description).toContain("model can override a category")
+    expect(description).toContain("model is the default target")
+    expect(description).toContain('task(model="kiro/claude-opus-5", prompt="...")')
     expect(description).toContain("current session's /model catalog")
   })
 
@@ -55,7 +55,7 @@ describe("buildTaskToolDescription with zero loaded agents", () => {
     const description = buildTaskToolDescription({ omoConfig: config, agents: noAgents })
 
     // then
-    expect(description).toContain("category routes through Sisyphus-Junior")
+    expect(description).toContain("category is an optional compatibility preset")
     expect(description).toContain("grok")
   })
 
@@ -71,6 +71,6 @@ describe("buildTaskToolDescription with zero loaded agents", () => {
     // then: the omission is conditional on the empty record, not a permanent removal.
     expect(description).toContain("subagent_type invokes a loaded agent directly")
     expect(description).toContain("explore")
-    expect(description).toContain("EITHER category OR subagent_type")
+    expect(description).toContain("model, category, or subagent_type")
   })
 })
