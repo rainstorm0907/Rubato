@@ -62,11 +62,27 @@ export function loadRubatoPiOmoConfig(options = {}) {
  * Memory children still call loadConfig themselves. Task overlay disables `quick`,
  * but facts and `/people --ask` are hardcoded to that name, so memory reopens it
  * as grok-only and pins reflection/dream to the grok category.
+ *
+ * 이 함수는 **오직 category 만** 고정한다. 나머지 필드는 손대지 않는다.
+ *
+ * 예전에는 `config.memory ?? {}` 로 시작해 항상 새 객체를 만들어 돌려줬다.
+ * 그런데 memory 설정의 기본값은 스키마가 쥐고 있고, 엔진 쪽
+ * `resolveMemorySettings` 는 `settings ?? Schema.parse({})` 로 **settings 가
+ * 통째로 undefined 일 때만** 그 기본값을 꺼낸다.
+ *
+ * 그래서 사용자 설정이 없는 배치(갓 만든 HOME, 통합 테스트의 임시 HOME)에서는
+ * `config.memory` 가 undefined 인데, 여기서 `{reflection:{category:"grok"}}` 라는
+ * 부분 객체를 만들어 끼워 넣는 순간 그 `??` 가 영영 안 걸린다. `enabled` 가
+ * undefined 로 남고 isEnabled 가 false 가 되어 memory 컴포넌트가 **조용히**
+ * 등록을 건너뛴다 — stderr 한 줄 없이 memory/dream/palace 명령이 통째로 사라졌다.
+ *
+ * 고칠 곳은 기본값을 다시 구현하는 쪽이 아니라 여기다. 원본에 memory 블록이
+ * 없으면 없는 채로 넘겨서, 기본값을 정하는 한 정본(스키마)이 그대로 일하게 둔다.
  */
 export function pinMemoryJobsToGrok(loaded) {
   const config = loaded?.config ?? {};
-  const memory = config.memory ?? {};
-  const reflection = memory.reflection ?? {};
+  const memory = config.memory;
+  const reflection = memory?.reflection ?? {};
   return {
     ...loaded,
     config: {
@@ -76,13 +92,15 @@ export function pinMemoryJobsToGrok(loaded) {
         grok: { model: MODEL_CATEGORIES.grok },
         quick: { models: [MODEL_CATEGORIES.grok] },
       },
-      memory: {
-        ...memory,
-        reflection: {
-          ...reflection,
-          category: "grok",
+      ...(memory === undefined ? {} : {
+        memory: {
+          ...memory,
+          reflection: {
+            ...reflection,
+            category: "grok",
+          },
         },
-      },
+      }),
     },
   };
 }

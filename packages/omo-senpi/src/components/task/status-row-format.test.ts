@@ -172,6 +172,50 @@ describe("backgroundWidgetRows", () => {
     expect(row).not.toContain("Luna luna")
   })
 
+  // Two machines resolve the identical provider/model id but their local catalogs differ in whether
+  // they carry a friendly `model.name`, so the planner persists `display` as either the id spelling
+  // or the friendly one. The rendered identity must not depend on that incidental metadata.
+  it("#given the same model resolved with and without a friendly catalog name #when live rows render #then both machines show one identity", () => {
+    const rowFor = (display: string): string =>
+      backgroundWidgetRows([
+        record({
+          task_id: "st_display",
+          description: "Review tests",
+          status: "running",
+          resolved_model: {
+            provider: "openai",
+            model_id: "gpt-5.6-sol",
+            display,
+            source: "category",
+          },
+        }),
+      ], new Map(), now, () => stats, 220)[0] ?? ""
+
+    // Machine A: no `model.name` in the catalog, so the planner falls back to the id spelling.
+    // Machine B: the catalog carries `GPT-5.6 Sol`, which the planner preserves verbatim.
+    expect(rowFor("openai/gpt-5.6-sol")).toContain("5.6 Sol")
+    expect(rowFor("GPT-5.6 Sol")).toContain("5.6 Sol")
+    expect(rowFor("GPT-5.6 Sol")).not.toContain("GPT 5.6")
+  })
+
+  it("#given a model whose name merely starts with a variant token #when a live row renders #then it is not read as that variant", () => {
+    const row = backgroundWidgetRows([
+      record({
+        task_id: "st_solar",
+        description: "Review tests",
+        status: "running",
+        resolved_model: {
+          provider: "vendor",
+          model_id: "gpt-5.6-solar",
+          display: "vendor/gpt-5.6-solar",
+          source: "category",
+        },
+      }),
+    ], new Map(), now, () => stats, 220)[0] ?? ""
+    expect(row).toContain("GPT 5.6")
+    expect(row).not.toContain("Sol")
+  })
+
   it("#given a narrow terminal #when a live task row renders #then it stays on one bounded physical line", () => {
     const row = backgroundWidgetRows([
       record({

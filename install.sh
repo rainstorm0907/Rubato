@@ -169,8 +169,10 @@ else
   say "rubato-pi 를 깐다"
   npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 || { err "rubato-pi 설치 실패"; exit 1; }
   say "Rubato 엔진 확장을 빌드한다"
-  (cd "$REPO" && "$NODE24" packages/omo-senpi/plugin/scripts/build-extension.mjs) \
+  (cd "$REPO" && "$NODE24" "$HARNESS/scripts/build-engine.mjs" --force) \
     >/dev/null 2>&1 || { err "엔진 확장 빌드 실패"; exit 1; }
+  "$NODE24" "$HARNESS/scripts/build-engine.mjs" --check >/dev/null 2>&1 \
+    || { err "엔진 확장 산출물이 소스와 맞지 않는다"; exit 1; }
   ok "의존성 설치 완료"
 fi
 

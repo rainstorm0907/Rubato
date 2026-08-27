@@ -18,6 +18,7 @@ BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33
 ok()   { printf '  %s✓%s %s\n' "$GRN" "$RST" "$1"; }
 warn() { printf '  %s!%s %s\n' "$YEL" "$RST" "$1"; }
 err()  { printf '  %s✗%s %s\n' "$RED" "$RST" "$1" >&2; }
+fail() { err "$1"; exit 1; }
 
 MODE=interactive
 case "${1-}" in
@@ -87,18 +88,18 @@ git log --oneline --no-decorate "HEAD..origin/$BRANCH" | sed 's/^/  /'
 
 CHANGED="$(git diff --name-only "HEAD..origin/$BRANCH")"
 need_deps=0; need_prompts=0; need_skills=0; need_engine=0; need_shell=0; need_extensions=0
-echo "$CHANGED" | grep -q '^package\.json\|^bun\.lock\|^harness/package\.json\|^harness/rubato-pi/package\.json' && need_deps=1
-echo "$CHANGED" | grep -q '^harness/prompts/' && need_prompts=1
-echo "$CHANGED" | grep -q '^harness/skills/' && need_skills=1
+echo "$CHANGED" | grep -Eq '^(package\.json|bun\.lock|harness/package\.json|harness/rubato-pi/package\.json)$' && need_deps=1
+echo "$CHANGED" | grep -Eq '^harness/prompts/' && need_prompts=1
+echo "$CHANGED" | grep -Eq '^harness/skills/' && need_skills=1
 # 자동 로드되는 사용자 확장. 설치기 자신이 바뀌어도 다시 깐다 — 설치 규칙이
 # 바뀐 경우이므로 내용이 그대로여도 배치가 달라질 수 있다.
-echo "$CHANGED" | grep -q '^harness/extensions/\|^harness/scripts/install-extensions\.sh' && need_extensions=1
-echo "$CHANGED" | grep -q '^packages/' && need_engine=1
+echo "$CHANGED" | grep -Eq '^(harness/extensions/|harness/scripts/install-extensions\.sh)' && need_extensions=1
+echo "$CHANGED" | grep -Eq '^packages/' && need_engine=1
 # 셸 설정은 alias 블록과 cmux Vault 등록이다. 둘 다 내 집(~/.zshrc, ~/.config/cmux)
 # 을 고치는 일이라 소스를 받는 것만으로는 반영되지 않는다.
 # install.sh 가 alias 목록을 들고 있고, scripts/ 에는 alias 가 가리키는 실체와
 # Vault 등록기가 있다. 둘 중 하나라도 바뀌면 다시 심는다.
-echo "$CHANGED" | grep -q '^install\.sh\|^harness/scripts/' && need_shell=1
+echo "$CHANGED" | grep -Eq '^(install\.sh$|harness/scripts/)' && need_shell=1
 
 printf '\n%s== 다시 만들 것 ==%s\n' "$BOLD" "$RST"
 [ "$need_deps" = 1 ]    && echo "  의존성 설치"
@@ -281,45 +282,59 @@ if ! restore_stash; then
 fi
 
 BUN="$(command -v bun || true)"
+NODE="$(command -v node || true)"
+NPM="$(command -v npm || true)"
 
 if [ "$need_deps" = 1 ]; then
-  [ -n "$BUN" ] && { (cd "$REPO" && "$BUN" install >/dev/null 2>&1) && ok "엔진 의존성" || warn "bun install 경고"; } \
-                || warn "bun 이 없어서 엔진 의존성은 건너뜁니다"
-  npm install --prefix "$HARNESS" >/dev/null 2>&1 && ok "bridge 의존성" || warn "bridge 설치 경고"
-  npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 && ok "rubato-pi 의존성" || warn "rubato-pi 설치 경고"
+  [ -n "$BUN" ] || fail "bun 이 없어 엔진 의존성을 갱신할 수 없습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  [ -n "$NPM" ] || fail "npm 이 없어 하네스 의존성을 갱신할 수 없습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  (cd "$REPO" && "$BUN" install >/dev/null 2>&1) \
+    && ok "엔진 의존성" || fail "bun install 에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  "$NPM" install --prefix "$HARNESS" >/dev/null 2>&1 \
+    && ok "bridge 의존성" || fail "bridge 의존성 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  "$NPM" install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 \
+    && ok "rubato-pi 의존성" || fail "rubato-pi 의존성 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
 fi
 
 if [ "$need_engine" = 1 ]; then
-  if [ -n "$BUN" ]; then
-    printf '  %s… 엔진 빌드 중%s\n' "$DIM" "$RST"
-    # 레포 안이 아니라 밖에 만든다. 안에 쓰면 방금 받은 산출물이 곧바로
-    # dirty 가 되어 다음 업데이트를 막는다. 그게 이번에 고친 문제다.
-    (cd "$REPO" && node "$HARNESS/scripts/build-engine.mjs" --force >/dev/null 2>&1) \
-      && ok "엔진 플러그인" \
-      || { err "엔진 빌드에 실패했습니다. 손으로: node harness/scripts/build-engine.mjs --force"; exit 1; }
-  else
-    warn "bun 이 없어서 엔진 빌드를 건너뜁니다 — 새 component 는 동작하지 않아요"
-  fi
+  [ -n "$BUN" ] || fail "bun 이 없어 엔진을 빌드할 수 없습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  [ -n "$NODE" ] || fail "node 가 없어 엔진을 빌드할 수 없습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  printf '  %s… 엔진 빌드 중%s\n' "$DIM" "$RST"
+  (cd "$REPO" && "$NODE" "$HARNESS/scripts/build-engine.mjs" --force >/dev/null 2>&1) \
+    || fail "엔진 빌드에 실패했습니다. 손으로: node harness/scripts/build-engine.mjs --force"
+  "$NODE" "$HARNESS/scripts/build-engine.mjs" --check >/dev/null 2>&1 \
+    && ok "엔진 플러그인" || fail "엔진 산출물이 새 소스와 맞지 않습니다."
 fi
 
 if [ "$need_prompts" = 1 ]; then
-  "$HARNESS/prompts/build.sh" >/dev/null 2>&1 && ok "시스템 프롬프트" || warn "프롬프트 합성 경고"
+  # .build 는 생성물이다. 소스 checkout 시각과 기존 생성물 시각만 비교하면
+  # 시계 차이 때문에 낡은 판을 신선하다고 오판할 수 있으므로 강제로 다시 만든다.
+  rm -f "$HARNESS/prompts/.build/lead.pi.md" "$HARNESS/prompts/.build/teammate.pi.md"
+  "$HARNESS/prompts/build.sh" >/dev/null 2>&1 \
+    || fail "시스템 프롬프트 합성에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  [ -s "$HARNESS/prompts/.build/lead.pi.md" ] && [ -s "$HARNESS/prompts/.build/teammate.pi.md" ] \
+    && ok "시스템 프롬프트" || fail "시스템 프롬프트 산출물이 만들어지지 않았습니다."
 fi
 
 if [ "$need_skills" = 1 ]; then
-  "$HARNESS/scripts/install-skills.sh" >/dev/null 2>&1 && ok "번들 스킬" || warn "스킬 설치 경고"
+  "$HARNESS/scripts/install-skills.sh" >/dev/null 2>&1 \
+    && ok "번들 스킬" || fail "번들 스킬 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
 fi
 
 # 확장은 덮어쓰지 않는다. 이 디렉터리는 Orca 가 심는 확장(orca-*.ts)과
 # 사람이 손본 판이 같이 사는 자리라, 새 파일만 넣고 있는 것은 둔다.
 if [ "$need_extensions" = 1 ]; then
-  "$HARNESS/scripts/install-extensions.sh" >/dev/null 2>&1 && ok "번들 확장" || warn "확장 설치 경고"
+  "$HARNESS/scripts/install-extensions.sh" >/dev/null 2>&1 \
+    && ok "번들 확장" || fail "번들 확장 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
 fi
 
 # 셸 alias 블록. install.sh 가 정본이라 여기서 목록을 베끼지 않고 그걸 부른다.
 # 규칙을 두 군데 두면 어깋난다. --apply 는 이미 맞으면 아무것도 안 한다.
 if [ "$need_shell" = 1 ]; then
-  ALIAS_OUT="$("$REPO/install.sh" --apply --only-shell 2>&1 || true)"
+  if ! ALIAS_OUT="$("$REPO/install.sh" --apply --only-shell 2>&1)"; then
+    printf '%s\n' "$ALIAS_OUT" >&2
+    fail "셸 설정 갱신에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
+  fi
   case "$ALIAS_OUT" in
     *"이미 맞다"*)  ok "셸 alias — 그대로" ;;
     *"alias 블록"*) ok "셸 alias 블록을 갱신했습니다 ${DIM}(새 셸부터)${RST}" ;;

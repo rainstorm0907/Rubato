@@ -62,13 +62,24 @@ export function shortModelLabel(modelId) {
   return colon >= 0 ? bare.slice(0, colon) : bare;
 }
 
+// A catalog may report the same model as `gpt-5.6-sol` (id spelling) or `GPT-5.6 Sol` (friendly
+// display name), so every non-alphanumeric run counts as a separator here. Anchoring on hyphen/dot
+// alone made the label depend on which spelling the catalog happened to carry, which let this
+// statusline and the Task widget disagree about the same resolved model.
+// Kept byte-for-byte in step with variantLabel() in
+// packages/omo-senpi/src/components/task/status-row-format.ts.
+function isVariantSeparator(ch) {
+  return ch === undefined || !/[a-z0-9]/.test(ch);
+}
+
 function variantLabel(lc) {
   for (const [key, label] of VARIANTS) {
     const idx = lc.lastIndexOf(key);
     if (idx < 0) continue;
-    if (idx > 0 && lc[idx - 1] !== "-" && lc[idx - 1] !== ".") continue;
-    const before = lc.slice(0, idx).replace(/[-.]$/, "").replace(/^gpt[-.]/, "");
-    const version = parseVersion(before.replace(/^[a-z]+[-.]/, "")) || parseVersion(before);
+    // Both edges must be separators: without the trailing check `solar` would render as `Sol`.
+    if (!isVariantSeparator(lc[idx - 1]) || !isVariantSeparator(lc[idx + key.length])) continue;
+    const before = lc.slice(0, idx).replace(/[^a-z0-9]$/, "").replace(/^gpt[^a-z0-9]/, "");
+    const version = parseVersion(before.replace(/^[a-z]+[^a-z0-9]/, "")) || parseVersion(before);
     return version ? `${version} ${label}` : label;
   }
   return "";

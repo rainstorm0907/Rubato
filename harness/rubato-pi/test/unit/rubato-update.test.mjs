@@ -31,7 +31,7 @@ function write(path, text) {
   writeFileSync(path, text);
 }
 
-function setupFixture({ dirty = false, conflict = false, evidence = false, decoyStash = false } = {}) {
+function setupFixture({ dirty = false, conflict = false, evidence = false, decoyStash = false, rebuildFailure = "" } = {}) {
   const root = mkdtempSync(join(tmpdir(), "rubato-update-"));
   const bare = join(root, "origin.git");
   const seed = join(root, "seed");
@@ -51,7 +51,12 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   mkdirSync(dirname(scriptDest), { recursive: true });
   cpSync(SCRIPT_SRC, scriptDest);
   chmodSync(scriptDest, 0o755);
-  git(seed, ["add", "note.txt", "keep.txt", ".omo/evidence/log.txt", "harness/scripts/rubato-update.sh"]);
+  write(join(seed, "harness/prompts/base.pi.md"), "base\n");
+  write(join(seed, "harness/prompts/build.sh"), "#!/bin/sh\nmkdir -p \"$(dirname \"$0\")/.build\"\nprintf built > \"$(dirname \"$0\")/.build/lead.pi.md\"\nprintf built > \"$(dirname \"$0\")/.build/teammate.pi.md\"\n");
+  chmodSync(join(seed, "harness/prompts/build.sh"), 0o755);
+  write(join(seed, "install.sh"), "#!/bin/sh\nexit 0\n");
+  chmodSync(join(seed, "install.sh"), 0o755);
+  git(seed, ["add", "note.txt", "keep.txt", ".omo/evidence/log.txt", "install.sh", "harness/prompts", "harness/scripts/rubato-update.sh"]);
   git(seed, ["commit", "-m", "base"]);
   git(seed, ["branch", "-M", "rubato/base"]);
   git(seed, ["push", "-u", "origin", "rubato/base"]);
@@ -62,7 +67,18 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   git(local, ["config", "commit.gpgsign", "false"]);
 
   write(join(seed, "note.txt"), "remote\n");
-  git(seed, ["add", "note.txt"]);
+  if (rebuildFailure === "deps") {
+    write(join(seed, "package.json"), "{}\n");
+  } else if (rebuildFailure === "prompts") {
+    write(join(seed, "harness/prompts/build.sh"), "#!/bin/sh\nprintf 'prompts\\n' >> \"$RUBATO_TEST_TRACE\"\nexit 42\n");
+    chmodSync(join(seed, "harness/prompts/build.sh"), 0o755);
+  } else if (rebuildFailure === "engine") {
+    write(join(seed, "packages/component.txt"), "changed\n");
+  } else if (rebuildFailure === "shell") {
+    write(join(seed, "install.sh"), "#!/bin/sh\nprintf 'shell\\n' >> \"$RUBATO_TEST_TRACE\"\necho shell-failed >&2\nexit 42\n");
+    chmodSync(join(seed, "install.sh"), 0o755);
+  }
+  git(seed, ["add", "."]);
   git(seed, ["commit", "-m", "remote"]);
   git(seed, ["push", "origin", "rubato/base"]);
 
@@ -90,10 +106,11 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   }
 
   const dest = join(local, "harness/scripts/rubato-update.sh");
-  return { root, local, home, dest, localOnly, decoySha };
+  const trace = join(root, "rebuild.trace");
+  return { root, local, home, dest, localOnly, decoySha, trace };
 }
 
-function runUpdate(fixture) {
+function runUpdate(fixture, { path = process.env.PATH } = {}) {
   return spawnSync("sh", [fixture.dest, "--yes"], {
     cwd: fixture.local,
     encoding: "utf8",
@@ -103,8 +120,21 @@ function runUpdate(fixture) {
       GIT_OK: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_CONFIG_SYSTEM: "/dev/null",
+      PATH: path,
+      RUBATO_TEST_TRACE: fixture.trace,
     },
   });
+}
+
+function fakePath(fixture, commands) {
+  const bin = join(fixture.root, "fake-bin");
+  mkdirSync(bin, { recursive: true });
+  for (const [name, body] of Object.entries(commands)) {
+    const path = join(bin, name);
+    writeFileSync(path, `#!/bin/sh\n${body}\n`);
+    chmodSync(path, 0o755);
+  }
+  return `${bin}:${process.env.PATH}`;
 }
 
 function backupBranch(local) {
@@ -209,3 +239,21 @@ test("updater pops only the stash it created when a substring decoy is already o
   assert.match(stashes, new RegExp(`^${fixture.decoySha} `, "m"));
   assert.equal(stashes.trim().split("\n").length, 1);
 });
+
+for (const failure of [
+  { kind: "deps", commands: { bun: "printf 'deps\\n' >> \"$RUBATO_TEST_TRACE\"\nexit 42", npm: "exit 0" }, message: /bun install 에 실패/ },
+  { kind: "engine", commands: { bun: "exit 0", node: "printf 'engine\\n' >> \"$RUBATO_TEST_TRACE\"\nexit 42" }, message: /엔진 빌드에 실패/ },
+  { kind: "prompts", commands: {}, message: /시스템 프롬프트 합성에 실패/ },
+  { kind: "shell", commands: {}, message: /셸 설정 갱신에 실패/ },
+]) {
+  test(`update fails closed when ${failure.kind} regeneration fails`, () => {
+    const fixture = setupFixture({ rebuildFailure: failure.kind });
+    const result = runUpdate(fixture, { path: fakePath(fixture, failure.commands) });
+    const out = `${result.stdout}\n${result.stderr}`;
+    assert.notEqual(result.status, 0, out);
+    assert.match(out, failure.message);
+    assert.equal(readFileSync(fixture.trace, "utf8"), `${failure.kind}\n`, `fixture did not intercept ${failure.kind}`);
+    assert.doesNotMatch(out, /업데이트를 마쳤습니다/);
+    assert.equal(git(fixture.local, ["rev-parse", "HEAD"]).stdout, git(fixture.local, ["rev-parse", "origin/rubato/base"]).stdout);
+  });
+}

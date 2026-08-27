@@ -239,10 +239,21 @@ test("OMO process child keeps the same task id after parent restart", { timeout:
   writeFileSync(join(agentDir, "models.json"), `${JSON.stringify(mockModels("http://127.0.0.1:0/v1"))}\n`);
 
   let childTurns = 0;
+  let spawned = false;
   const mock = await startMockOpenAI({
     onRequest(body) {
+      // The spawn instruction can land in any user-role message of a request (a direct turn, a
+      // background-task decoration, or - after compaction - a "Recent user messages" summary line),
+      // so its exact position/shape is not a stable selector; matching the whole serialized body is
+      // the only reliable way to find it. What must never re-fire is the SAME spawn again: the
+      // instruction text stays in every later request's history for the rest of the session
+      // (including across a parent restart, since this mock instance is shared by both parent
+      // processes), so without a one-shot latch a whole-body match spawns a second task on every
+      // later continuation turn - which looks exactly like a spurious replay of the original prompt.
       const text = JSON.stringify(body ?? {});
-      if (text.includes("spawn a helper") || text.includes("keep it running")) {
+      const hasTaskTool = (body?.tools ?? []).some((tool) => (tool.function?.name ?? tool.name) === "task");
+      if (!spawned && hasTaskTool && (text.includes("spawn a helper") || text.includes("keep it running"))) {
+        spawned = true;
         return {
           type: "tool",
           name: "task",
@@ -254,7 +265,7 @@ test("OMO process child keeps the same task id after parent restart", { timeout:
           },
         };
       }
-      if (text.includes("hold this process open")) {
+      if (!hasTaskTool && text.includes("hold this process open")) {
         childTurns += 1;
         // start() waits for the first child prompt; hang afterwards so the pid stays live.
         if (childTurns === 1) return { type: "text", text: "holding" };
@@ -360,7 +371,7 @@ test("OMO process child keeps the same task id after parent restart", { timeout:
         }),
       );
       const replayed = after.filter((item) => item.task_id !== record.task_id);
-      assert.equal(replayed.length, 0, "parent restart replayed the spawn prompt");
+      assert.equal(replayed.length, 0, `parent restart replayed the spawn prompt: ${JSON.stringify(replayed)}; original=${record.task_id}`);
     } finally {
       killTree(restarted);
     }

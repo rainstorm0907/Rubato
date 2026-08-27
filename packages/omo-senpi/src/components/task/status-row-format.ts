@@ -183,13 +183,21 @@ function shortModelLabel(modelId: string): string {
   return colon >= 0 ? bare.slice(0, colon) : bare
 }
 
+// A machine-local registry may report the same model as `gpt-5.6-sol` (id spelling) or `GPT-5.6 Sol`
+// (friendly display name), so every non-alphanumeric run counts as a separator here. Anchoring on
+// hyphen/dot alone made the rendered label depend on which spelling the catalog happened to carry.
+function isVariantSeparator(ch: string | undefined): boolean {
+  return ch === undefined || !/[a-z0-9]/u.test(ch)
+}
+
 function variantLabel(lc: string): string {
   for (const [key, label] of MODEL_VARIANTS) {
     const idx = lc.lastIndexOf(key)
     if (idx < 0) continue
-    if (idx > 0 && lc[idx - 1] !== "-" && lc[idx - 1] !== ".") continue
-    const before = lc.slice(0, idx).replace(/[-.]$/u, "").replace(/^gpt[-.]/u, "")
-    const version = parseVersion(before.replace(/^[a-z]+[-.]/u, "")) || parseVersion(before)
+    // Both edges must be separators: without the trailing check `solar` would render as `Sol`.
+    if (!isVariantSeparator(lc[idx - 1]) || !isVariantSeparator(lc[idx + key.length])) continue
+    const before = lc.slice(0, idx).replace(/[^a-z0-9]$/u, "").replace(/^gpt[^a-z0-9]/u, "")
+    const version = parseVersion(before.replace(/^[a-z]+[^a-z0-9]/u, "")) || parseVersion(before)
     return version ? `${version} ${label}` : label
   }
   return ""

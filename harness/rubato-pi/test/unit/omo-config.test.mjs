@@ -22,9 +22,9 @@ test("omo agents this harness does not route are disabled", () => {
   assert.deepEqual(Object.keys(config.agents).sort(), [...DISABLED_AGENT_NAMES].sort());
 });
 
-test("memory pin reopens quick as grok-only and forces the grok category", () => {
+test("memory pin leaves absent settings to the memory schema and reopens quick as grok-only", () => {
   const pinned = pinMemoryJobsToGrok(loadRubatoPiOmoConfig());
-  assert.equal(pinned.config.memory.reflection.category, "grok");
+  assert.equal(pinned.config.memory, undefined);
   assert.deepEqual(pinned.config.categories.grok, { model: MODEL_CATEGORIES.grok });
   assert.deepEqual(pinned.config.categories.quick, { models: [MODEL_CATEGORIES.grok] });
   assert.equal(pinned.config.categories.quick.disable, undefined);

@@ -53,6 +53,24 @@ test("shortens Claude-style model ids the way the statusline does", () => {
   assert.equal(shortModelLabel("unknown-model:high"), "unknown-model");
 });
 
+// Two machines resolve the identical provider/model id but their local catalogs differ in whether
+// they carry a friendly display name, so the label arrives as either the id spelling or the
+// friendly one. Parent statusline and Task widget must not diverge on that incidental metadata.
+test("reads friendly display spellings as the same model as their id spelling", () => {
+  assert.equal(shortModelLabel("GPT-5.6 Sol"), "5.6 Sol");
+  assert.equal(shortModelLabel("GPT-5.6 Luna"), "5.6 Luna");
+  assert.equal(shortModelLabel("GPT-5.6 Terra"), "5.6 Terra");
+  assert.equal(shortModelLabel("GPT-5.6 Sol"), shortModelLabel("gpt-5.6-sol"));
+  assert.equal(shortModelLabel("GPT-5.6 Luna"), shortModelLabel("openai-codex/gpt-5.6-luna"));
+  assert.equal(formatModelWithEffort("GPT-5.6 Sol", "high"), "5.6 Sol high");
+});
+
+test("does not read a variant token that merely prefixes a longer word", () => {
+  assert.equal(shortModelLabel("gpt-5.6-solar"), "GPT 5.6");
+  assert.equal(shortModelLabel("vendor/gpt-5.6-solar"), "GPT 5.6");
+  assert.equal(shortModelLabel("gpt-5.6-lunar"), "GPT 5.6");
+});
+
 test("appends reasoning effort next to the short model name", () => {
   assert.equal(formatModelWithEffort("anthropic/claude-opus-5", "high"), "Opus 5 high");
   assert.equal(formatModelWithEffort("xai/grok-4.6", "xhigh"), "Grok 4.6 xhigh");

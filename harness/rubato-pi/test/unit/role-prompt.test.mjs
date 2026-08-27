@@ -78,11 +78,12 @@ test("both role prompts defer the dispatch contract to the skills", () => {
   assert.match(rolePrompt("owner"), /Skill\(dispatched\)/);
 });
 
-test("both role prompts route independent review by the current main model family", () => {
+test("both role prompts defer independent-review routing to the model guide", () => {
   for (const role of ["lead", "owner"]) {
     const text = rolePrompt(role);
-    assert.match(text, /if the main session runs a Claude model, use `sol`/);
-    assert.match(text, /if it runs a Codex model, use `opus`/);
+    assert.match(text, /Skill\(model-guide\)/);
+    assert.doesNotMatch(text, /if the main session runs a Claude model, use `sol`/);
+    assert.doesNotMatch(text, /if it runs a Codex model, use `opus`/);
     assert.doesNotMatch(text, /take one independent review from `sol`\./);
   }
 });
