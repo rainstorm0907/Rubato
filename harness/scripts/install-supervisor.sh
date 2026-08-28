@@ -57,13 +57,20 @@ PORT="${FX_BRIDGE_PORT:-8788}"
 # 값이 살아 있다. 그대로 굳혀 둔다. 값이 없는 설치에서는 키를 쓰지 않아
 # 브리지의 기본 자리 판정이 그대로 남는다.
 AUTH_PATH="${SENPI_AUTH_PATH-}"
+# 경로에 &·<·> 가 있으면 plist 가 깨지고, 공백·따옴표·% 는 systemd 가 한 값이 아닌 토큰으로 읽는다.
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+systemd_env_value() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'
+}
 darwin_auth_env() {
   [ -n "$AUTH_PATH" ] || return 0
-  printf '\n    <key>SENPI_AUTH_PATH</key><string>%s</string>' "$AUTH_PATH"
+  printf '\n    <key>SENPI_AUTH_PATH</key><string>%s</string>' "$(xml_escape "$AUTH_PATH")"
 }
 linux_auth_env() {
   [ -n "$AUTH_PATH" ] || return 0
-  printf '\nEnvironment=SENPI_AUTH_PATH=%s' "$AUTH_PATH"
+  printf '\nEnvironment="SENPI_AUTH_PATH=%s"' "$(systemd_env_value "$AUTH_PATH")"
 }
 
 darwin_plist_path() { printf '%s' "$HOME/Library/LaunchAgents/${LABEL}.plist"; }
@@ -148,7 +155,7 @@ install_darwin() {
   # 읽히며, 기존 잡도 그동안 크래시 복구는 계속 맡는다.
   if launchctl print "gui/$(id -u)/${LABEL}" >/dev/null 2>&1; then
     say "설정을 갱신했다(실행 중인 브리지는 건드리지 않았다): ${target}"
-    say "새 KeepAlive 정책은 다음 로그아웃/재부팅 때 적용된다. 그전에도 기존 crash 복구와 drain exit 1이 브리지를 되살린다."
+    say "새 환경변수와 KeepAlive 정책은 다음 로그아웃/재부팅 때 적용된다. 그전에도 기존 crash 복구와 drain exit 1이 브리지를 되살린다."
     say "로그: ${LOG}"
     return 0
   fi

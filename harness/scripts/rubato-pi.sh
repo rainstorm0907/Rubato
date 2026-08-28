@@ -154,7 +154,8 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
       # 인스톨러를 부르지 않는다. 그러면 코드를 받아도 기존 기기는 안 고쳐진다.
       # 값이 없는 설치에서는 조건이 서지 않아 지금과 같다.
       if [ -n "${SENPI_AUTH_PATH-}" ]; then
-        grep -qF "<key>SENPI_AUTH_PATH</key><string>${SENPI_AUTH_PATH}</string>" "$_sv_file" 2>/dev/null || _sv_current=0
+        _sv_auth="$(printf '%s' "$SENPI_AUTH_PATH" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+        grep -qF "<key>SENPI_AUTH_PATH</key><string>${_sv_auth}</string>" "$_sv_file" 2>/dev/null || _sv_current=0
       fi
       ;;
     Linux)
@@ -165,7 +166,8 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
         grep -q '^Restart=always$' "$_sv_file" 2>/dev/null || _sv_current=0
         grep -q '^Environment=RUBATO_SUPERVISED=1$' "$_sv_file" 2>/dev/null || _sv_current=0
         if [ -n "${SENPI_AUTH_PATH-}" ]; then
-          grep -qxF "Environment=SENPI_AUTH_PATH=${SENPI_AUTH_PATH}" "$_sv_file" 2>/dev/null || _sv_current=0
+          _sv_auth="$(printf '%s' "$SENPI_AUTH_PATH" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')"
+          grep -qxF "Environment=\"SENPI_AUTH_PATH=${_sv_auth}\"" "$_sv_file" 2>/dev/null || _sv_current=0
         fi
       fi
       ;;
@@ -175,7 +177,7 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
     splash step "브리지 supervisor"
     "$HERE/install-supervisor.sh" --apply >/dev/null 2>&1 || true
   fi
-  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit 2>/dev/null || true
+  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit _sv_auth 2>/dev/null || true
 fi
 
 # 자격 파일이 있는 기기에서는 clientId 를 고치고 kiro.rs 까지 복원한다.
