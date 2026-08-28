@@ -30,6 +30,21 @@ case "${1:-}" in
   --doctor)
     exec "$py" "$here/msearch_doctor.py"
     ;;
+  --health)
+    # 세션 시작 훅이 부르는 저렴한 생존 판정 — 검색이 실제로 돌 수 있는가만 본다
+    # (환경 잠금 일치 + Redis 응답). 전체 진단은 --doctor.
+    # msearch 는 죽어도 세션이 멀쩡히 떠서 죽음이 안 보인다 — 한 머신에서
+    # 검색이 이틀 넘게 죽어 있었는데 어떤 세션도 몰랐다. 그 구멍을 막는 출구다.
+    if [ "$env_ok" -ne 1 ]; then
+      echo "python 환경이 잠금과 다르다 (msearch --doctor)" >&2
+      exit 1
+    fi
+    if ! PYTHONPATH="$here" "$py" -c 'import msearch_config, redis; redis.Redis.from_url(msearch_config.REDIS_URL, socket_connect_timeout=2, socket_timeout=2).ping()' >/dev/null 2>&1; then
+      echo "Redis 가 응답하지 않는다 (msearch --doctor)" >&2
+      exit 1
+    fi
+    exit 0
+    ;;
   -h|--help|"")
     sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 0

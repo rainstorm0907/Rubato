@@ -329,21 +329,32 @@ elif [ "$APPLY" -eq 0 ]; then
 else
   MSEARCH_VENV_TMP="$(mktemp -d "$HARNESS/msearch/.venv.tmp.XXXXXX")"
   MSEARCH_PYTHON_VERSION="$(awk -F= '$1 == "PYTHON_VERSION" { print $2 }' "$HARNESS/msearch/runtime.lock")"
+  # 실패를 조용히 삼키지 않는다. 한 머신에서 uv 가 20개월 묵어 --managed-python 을
+  # 모르는 바람에 venv 가 안 서는데, warn 한 줄만 남아 아무도 원인을 못 찾았다.
+  # 그 사이 검색은 이틀 넘게 죽어 있었다. 에러 원문을 그대로 보여준다.
+  MSEARCH_SETUP_LOG="$(mktemp "${TMPDIR:-/tmp}/msearch-setup.XXXXXX")"
   if [ -n "$UV" ] &&
-     "$UV" venv --python "$MSEARCH_PYTHON_VERSION" --managed-python --seed "$MSEARCH_VENV_TMP" >/dev/null 2>&1 &&
-     "$UV" pip install --python "$MSEARCH_VENV_TMP/bin/python" -q -r "$MSEARCH_LOCK" >/dev/null 2>&1 &&
+     "$UV" venv --python "$MSEARCH_PYTHON_VERSION" --managed-python --seed "$MSEARCH_VENV_TMP" >>"$MSEARCH_SETUP_LOG" 2>&1 &&
+     "$UV" pip install --python "$MSEARCH_VENV_TMP/bin/python" -q -r "$MSEARCH_LOCK" >>"$MSEARCH_SETUP_LOG" 2>&1 &&
      msearch_env_ok "$MSEARCH_VENV_TMP/bin/python"; then
     rm -rf "$MSEARCH_VENV"
     mv "$MSEARCH_VENV_TMP" "$MSEARCH_VENV"
+    rm -f "$MSEARCH_SETUP_LOG"
     ok "msearch venv 를 잠금대로 세웠다 ($MSEARCH_VENV)"
   else
     rm -rf "$MSEARCH_VENV_TMP"
     warn "msearch venv 를 못 세웠다"
+    if [ -s "$MSEARCH_SETUP_LOG" ]; then
+      tail -n 5 "$MSEARCH_SETUP_LOG" | sed 's/^/      /'
+    fi
     if [ -z "$UV" ]; then
       add_manual "uv 설치: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    elif grep -q 'managed-python' "$MSEARCH_SETUP_LOG" 2>/dev/null; then
+      add_manual "uv 가 낡았다: uv self update 후 다시 실행: ./install.sh --apply"
     else
       add_manual "harness/msearch/runtime.lock을 확인한 뒤 다시 실행: ./install.sh --apply"
     fi
+    rm -f "$MSEARCH_SETUP_LOG"
   fi
 fi
 
