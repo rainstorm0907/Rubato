@@ -98,6 +98,17 @@ if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
   fi
 fi
 
+# msearch 가 죽어도 세션은 멀쩡히 떠서 죽음이 보이지 않는다 — 쓰기(memory 도구)는
+# 검색과 별개로 멀쩡해서 더 안 보인다. 한 머신에서 검색이 이틀 넘게 죽어
+# 있었는데 세션들이 과거 교훈을 못 읽으며 같은 실수를 반복했다. 죽어 있을
+# 때만 한 줄 남기고 세션은 막지 않는다.
+MSEARCH_BIN="$HERE/../msearch/msearch"
+if [ -z "${RUBATO_NO_MSEARCH_CHECK-}" ] && [ -x "$MSEARCH_BIN" ]; then
+  if ! MSEARCH_NOTE="$("$MSEARCH_BIN" --health 2>&1 >/dev/null)"; then
+    printf 'rubato: 기억 검색(msearch)이 죽어 있다 — %s\n' "${MSEARCH_NOTE:-원인 불명}" >&2
+  fi
+fi
+
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 # node 를 찾는 곳은 한 군데다. 예전에는 여기서 nvm 경로를 박아 뒀는데, 그 버전이
 # 사라지면 조용히 PATH 의 아무 node 로 떨어졌고 start.sh 는 아예 PATH 만 봤다.
@@ -168,13 +179,11 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
   unset _sv_label _sv_installed _sv_current _sv_file _sv_unit 2>/dev/null || true
 fi
 
-# 자격 파일이 있는 기기에서는 clientId 를 고치고 kiro.rs 까지 복원한다.
-# 컨테이너 restart policy 만으로는 Docker 데몬이 꺼진 재부팅을 복구하지 못한다.
-# 설정하지 않은 기기에서는 ensure 가 즉시 끝난다. 실패해도 다른 프로바이더로
-# 여는 세션을 막지는 않고, Kiro 첫 호출이 원인을 그대로 보여준다.
-if [ -z "${RUBATO_NO_KIRO_ENSURE-}" ] && [ -z "${RUBATO_NO_KIRO_HEAL-}" ] && [ -x "$HERE/kiro-setup.sh" ]; then
-  splash step "Kiro 사이드카"
-  "$HERE/kiro-setup.sh" ensure >/dev/null 2>&1 || true
+# 예전 Kiro 자격에 clientId 가 없으면 accessToken 만료 뒤 갱신이 끊긴다.
+# 자격 파일만 고치고 Docker는 띄우지 않는다. 사이드카 복원은 실제 kiro/* 요청이
+# 처음 들어온 bridge 경계가 맡는다.
+if [ -z "${RUBATO_NO_KIRO_HEAL-}" ] && [ -x "$HERE/kiro-setup.sh" ]; then
+  "$HERE/kiro-setup.sh" heal >/dev/null 2>&1 || true
 fi
 
 # fetch 가 아직이면 여기서 받는다. 이미 끝났으면 wait 은 즉시 돌아온다.
