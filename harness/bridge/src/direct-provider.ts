@@ -3,14 +3,15 @@ import { readFileSync } from "node:fs";
 import { readFile, readlink, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createModels, createProvider } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
-import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { openaiCodexProvider } from "@earendil-works/pi-ai/providers/openai-codex";
+import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
+import { antigravityToFxSse } from "./antigravity.ts";
 import type { CacheRetention } from "./config.ts";
 import { gatewayProviderMetadata, gatewayTimestamp, newGatewayGenerationId } from "./fx-generation.ts";
-import { antigravityToFxSse } from "./antigravity.ts";
 import { encodeSseData, encodeSseDone } from "./sse.ts";
 import { upstreamFetch } from "./upstream-dispatcher.ts";
 
@@ -18,6 +19,41 @@ type JsonObject = Record<string, unknown>;
 type Credential = { type: "oauth"; access: string; refresh: string; expires: number; [key: string]: unknown };
 
 const DEFAULT_XAI_AUTH_PATH = join(homedir(), ".senpi", "agent", "auth.json");
+const DEFAULT_KIRO_SETUP_PATH = fileURLToPath(new URL("../../scripts/kiro-setup.sh", import.meta.url));
+
+let kiroEnsure: Promise<void> | undefined;
+
+export function ensureKiroSidecar(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (kiroEnsure) return kiroEnsure;
+  kiroEnsure = new Promise<void>((resolve, reject) => {
+    const child = spawn(env.KIRO_SETUP_PATH ?? DEFAULT_KIRO_SETUP_PATH, ["ensure"], {
+      env: {
+        ...env,
+        PATH: `/opt/homebrew/bin:/usr/local/bin:${env.PATH ?? "/usr/bin:/bin"}`,
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `kiro sidecar startup failed with exit ${code}`));
+    });
+  }).finally(() => { kiroEnsure = undefined; });
+  return kiroEnsure;
+}
+
+export async function prepareDirectProvider(args: {
+  model: string;
+  env?: NodeJS.ProcessEnv;
+  ensureKiro?: () => Promise<void>;
+}): Promise<void> {
+  if (args.model.startsWith("kiro/") && !args.env?.RUBATO_NO_KIRO_ENSURE) {
+    await (args.ensureKiro ?? (() => ensureKiroSidecar(args.env)))();
+  }
+}
 
 export function isDirectModel(model: string): boolean {
   return model.startsWith("xai/") || model.startsWith("anthropic/") || model.startsWith("claude-")
@@ -475,12 +511,15 @@ export async function* directProviderToFxSse(args: {
   env?: NodeJS.ProcessEnv;
   upstreamFetch?: typeof globalThis.fetch;
   transport?: "auto" | "sse" | "websocket";
+  ensureKiro?: () => Promise<void>;
+  prepared?: boolean;
 }): AsyncGenerator<string> {
   if (args.model.startsWith("google-antigravity/")) {
     yield* antigravityToFxSse(args);
     return;
   }
   const selected = providerModel(args.model);
+  if (!args.prepared) await prepareDirectProvider(args);
   // kiro 는 로컬 사이드카의 API 키로 붙는다. Claude setup-token 을 태우면
   // 엉뚱한 자격증명이 나가므로 분기를 anthropic 과 갈라 둔다.
   const authContext = selected.provider === "anthropic"

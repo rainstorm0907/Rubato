@@ -6,7 +6,7 @@ import { loadConfig } from "./config.ts";
 import { fxRequestToResponses } from "./fx-request.ts";
 import { responsesSseToFxSse } from "./fx-stream.ts";
 import { opencodexModelsToFxCatalog, removeDirectProviderModels } from "./models.ts";
-import { DIRECT_CATALOG, directProviderToFxSse, isDirectModel } from "./direct-provider.ts";
+import { DIRECT_CATALOG, directProviderToFxSse, isDirectModel, prepareDirectProvider } from "./direct-provider.ts";
 import { closeUpstreamAgent } from "./upstream-dispatcher.ts";
 
 const SENSITIVE = /authorization|api[-_]?key|token|secret|refresh/i;
@@ -253,6 +253,15 @@ async function proxyChat(
   });
 
   if (isDirectModel(model)) {
+    // Kiro 냉기동은 응답 헤더보다 먼저 끝낸다. 그래야 Docker/sidecar 복원 실패가
+    // 이미 열린 SSE 200 안에서 멈추지 않고 정상 HTTP 오류로 전달된다.
+    try {
+      await prepareDirectProvider({ model, env });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "direct provider preparation failed";
+      sendJson(res, 503, { error: { type: "provider_unavailable", message } });
+      return;
+    }
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
@@ -266,6 +275,7 @@ async function proxyChat(
         signal: controller.signal,
         cacheRetention: config.cacheRetention,
         env,
+        prepared: true,
       })) {
         if (controller.signal.aborted || res.writableEnded || !res.writable) break;
         res.write(frame);
