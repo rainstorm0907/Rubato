@@ -39,7 +39,7 @@ case "${1:-}" in
       echo "python 환경이 잠금과 다르다 (msearch --doctor)" >&2
       exit 1
     fi
-    if ! PYTHONPATH="$here" "$py" -c 'import msearch_config, redis; redis.Redis.from_url(msearch_config.REDIS_URL, socket_connect_timeout=2).ping()' >/dev/null 2>&1; then
+    if ! PYTHONPATH="$here" "$py" -c 'import msearch_config, redis; redis.Redis.from_url(msearch_config.REDIS_URL, socket_connect_timeout=2, socket_timeout=2).ping()' >/dev/null 2>&1; then
       echo "Redis 가 응답하지 않는다 (msearch --doctor)" >&2
       exit 1
     fi

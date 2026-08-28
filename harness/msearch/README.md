@@ -86,7 +86,11 @@ tap을 원래 브랜치로 돌려도 설치된 8.4.0은 유지된다. 자동 업
 6380으로 띄우고 확인한다:
 
 ```bash
-redis-server /opt/homebrew/etc/redis.conf --port 6380
+redis-server --port 6380 \
+  --dir /opt/homebrew/var/db/redis \
+  --save '300 10' \
+  --loadmodule /opt/homebrew/opt/redis/lib/redis/modules/redisearch.so \
+  --loadmodule /opt/homebrew/opt/redis/lib/redis/modules/rejson.so
 redis-cli -p 6380 INFO server | grep redis_version       # 8.4.0
 redis-cli -p 6380 INFO modules | grep search_version     # 8.4.2
 redis-cli -p 6380 COMMAND INFO FT.CREATE FT.HYBRID       # 둘 다 있어야 함
@@ -95,7 +99,7 @@ redis-cli -p 6380 COMMAND INFO FT.CREATE FT.HYBRID       # 둘 다 있어야 함
 **`/opt/homebrew/etc/redis.conf` 를 쓰지 않는다.** 한 머신에서 그 파일이 바이너리(8.4.0)보다
 새 버전용 설정(`array-slice-size`, `hash-*-template` 등)을 담고 있어 서버가 기동을
 거부했다("Module Configuration detected without loadmodule directive"). conf 는 cask와
-따로 옴직여서 또 어긋나간다 — 필요한 인자만 명령줄로 준다. 모듈 경로는 cask 가
+따로 움직여서 또 어긋나간다 — 필요한 인자만 명령줄로 준다. 모듈 경로는 cask 가
 `/opt/homebrew/opt/redis` 심링크를 안 만들면 직접 걸어준다:
 `ln -sfn /opt/homebrew/Caskroom/redis/8.4.0 /opt/homebrew/opt/redis`
 
