@@ -51,6 +51,12 @@ test("Codex history remains native instead of being tagged as Anthropic", () => 
 });
 
 test("Codex signed reasoning stays a reasoning item on the upstream wire", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "fx-codex-reasoning-"));
+  const authPath = join(directory, "auth.json");
+  const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  writeFileSync(authPath, JSON.stringify({
+    "openai-codex": { type: "oauth", access: `header.${payload}.signature`, refresh: "refresh", expires: Date.now() + 3_600_000 },
+  }));
   let wireBody;
   const upstreamFetch = async (_url, init) => {
     const bytes = typeof init?.body === "string" ? Buffer.from(init.body) : Buffer.from(init?.body);
@@ -77,6 +83,7 @@ test("Codex signed reasoning stays a reasoning item on the upstream wire", async
       ],
     },
     sessionId: "session",
+    xaiAuthPath: authPath,
     upstreamFetch,
     transport: "sse",
   })) {}
