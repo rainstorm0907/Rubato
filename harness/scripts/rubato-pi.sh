@@ -149,6 +149,14 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
       _sv_file="$HOME/Library/LaunchAgents/${_sv_label}.plist"
       grep -q '<key>KeepAlive</key><true/>' "$_sv_file" 2>/dev/null || _sv_current=0
       grep -q '<key>RUBATO_SUPERVISED</key><string>1</string>' "$_sv_file" 2>/dev/null || _sv_current=0
+      # 인증 경로는 설치 시점 값을 굳혀 둔다. 그전에 깔린 파일에는 그 키가 아예
+      # 없는데 위의 두 줄은 멀쩡하므로, 이 조건이 없으면 가드가 최신으로 보고
+      # 인스톨러를 부르지 않는다. 그러면 코드를 받아도 기존 기기는 안 고쳐진다.
+      # 값이 없는 설치에서는 조건이 서지 않아 지금과 같다.
+      if [ -n "${SENPI_AUTH_PATH-}" ]; then
+        _sv_auth="$(printf '%s' "$SENPI_AUTH_PATH" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+        grep -qF "<key>SENPI_AUTH_PATH</key><string>${_sv_auth}</string>" "$_sv_file" 2>/dev/null || _sv_current=0
+      fi
       ;;
     Linux)
       _sv_unit="${RUBATO_SUPERVISOR_UNIT:-rubato-bridge.service}"
@@ -157,6 +165,10 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
         _sv_file="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${_sv_unit}"
         grep -q '^Restart=always$' "$_sv_file" 2>/dev/null || _sv_current=0
         grep -q '^Environment=RUBATO_SUPERVISED=1$' "$_sv_file" 2>/dev/null || _sv_current=0
+        if [ -n "${SENPI_AUTH_PATH-}" ]; then
+          _sv_auth="$(printf '%s' "$SENPI_AUTH_PATH" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')"
+          grep -qxF "Environment=\"SENPI_AUTH_PATH=${_sv_auth}\"" "$_sv_file" 2>/dev/null || _sv_current=0
+        fi
       fi
       ;;
     *) ;;
@@ -165,7 +177,7 @@ if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; th
     splash step "브리지 supervisor"
     "$HERE/install-supervisor.sh" --apply >/dev/null 2>&1 || true
   fi
-  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit 2>/dev/null || true
+  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit _sv_auth 2>/dev/null || true
 fi
 
 # 자격 파일이 있는 기기에서는 clientId 를 고치고 kiro.rs 까지 복원한다.
