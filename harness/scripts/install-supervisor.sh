@@ -50,6 +50,22 @@ fi
 
 PORT="${FX_BRIDGE_PORT:-8788}"
 
+# 데몬은 로그인 셸을 안 거친다. SENPI_AUTH_PATH 를 셸 rc 에 export 해 둔
+# 설치에서는 그 값이 여기까지만 오고 브리지에는 닿지 않는다. 그러면 브리지는
+# 기본 자리(~/.senpi/agent/auth.json)를 읽고, 그 자리가 비어 있으면 모든
+# 요청이 fetch failed 로 떨어진다. 설치는 대화형 셸에서 도니 이 시점에는
+# 값이 살아 있다. 그대로 굳혀 둔다. 값이 없는 설치에서는 키를 쓰지 않아
+# 브리지의 기본 자리 판정이 그대로 남는다.
+AUTH_PATH="${SENPI_AUTH_PATH-}"
+darwin_auth_env() {
+  [ -n "$AUTH_PATH" ] || return 0
+  printf '\n    <key>SENPI_AUTH_PATH</key><string>%s</string>' "$AUTH_PATH"
+}
+linux_auth_env() {
+  [ -n "$AUTH_PATH" ] || return 0
+  printf '\nEnvironment=SENPI_AUTH_PATH=%s' "$AUTH_PATH"
+}
+
 darwin_plist_path() { printf '%s' "$HOME/Library/LaunchAgents/${LABEL}.plist"; }
 
 darwin_write_plist() {
@@ -76,7 +92,7 @@ darwin_write_plist() {
   <dict>
     <key>HOME</key><string>${HOME}</string>
     <key>FX_BRIDGE_PORT</key><string>${PORT}</string>
-    <key>RUBATO_SUPERVISED</key><string>1</string>
+    <key>RUBATO_SUPERVISED</key><string>1</string>$(darwin_auth_env)
   </dict>
 </dict>
 </plist>
@@ -97,7 +113,7 @@ Type=simple
 WorkingDirectory=${ROOT}
 ExecStart=/bin/bash ${ROOT}/scripts/start.sh
 Environment=FX_BRIDGE_PORT=${PORT}
-Environment=RUBATO_SUPERVISED=1
+Environment=RUBATO_SUPERVISED=1$(linux_auth_env)
 # 종료 원인과 무관하게 되살린다. rubato-restart.sh 는 옛 프로세스가 완전히
 # 나간 뒤 start 하므로 자동복구와 경합해도 같은 unit 하나만 남는다.
 Restart=always
