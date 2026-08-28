@@ -16,7 +16,11 @@ DEST="${RUBATO_AGENT_DIR:-$HOME/.rubato-pi/agent}/extensions"
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-[ -d "$SRC" ] || { echo "install-extensions: 번들이 없다 - $SRC" >&2; exit 1; }
+# 번들이 통째로 비면 디렉터리 자체가 사라진다. 마지막 확장을 폐기하면 그렇게
+# 된다. 그때 여기서 죽으면 안 된다. 아래 폐기 목록이 "이건 지워라" 를 각 기기에
+# 전하는 유일한 통로인데, 폐기가 비우기를 완성한 순간 그 통로가 닫히기 때문이다.
+BUNDLE_PRESENT=1
+[ -d "$SRC" ] || BUNDLE_PRESENT=0
 mkdir -p "$DEST"
 
 # 번들에서 폐기한 확장은 다른 기기에도 남기지 않는다. 일반 사용자 확장은
@@ -30,6 +34,7 @@ for name in promise-nudge.ts; do
 done
 
 added=0; kept=0; replaced=0
+if [ "$BUNDLE_PRESENT" -eq 1 ]; then
 for file in "$SRC"/*.ts "$SRC"/*.js; do
   [ -f "$file" ] || continue
   name="$(basename "$file")"
@@ -45,6 +50,7 @@ for file in "$SRC"/*.ts "$SRC"/*.js; do
     added=$((added + 1))
   fi
 done
+fi
 
 echo "install-extensions: 새로 $added, 유지 $kept, 덮어씀 $replaced, 폐기 $removed -> $DEST"
 [ "$kept" -gt 0 ] && [ "$FORCE" -eq 0 ] && echo "  (이미 있는 것은 두었다. 덮어쓰려면 --force)"
