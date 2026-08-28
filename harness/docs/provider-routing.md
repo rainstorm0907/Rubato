@@ -62,11 +62,11 @@ kiro-setup.sh ensure           # Docker와 사이드카를 현재 설정에서 �
 Kiro IDE 도 `kiro-cli` 도 요구하지 않는다 — 빈 기기에서 파일 하나로 모델 19개와
 두 모델의 실응답까지 확인했다.
 
-로그인 supervisor와 `rubato` 기동은 자격 파일이 있는 기기에서 `ensure`를 자동
-호출한다. supervisor는 브리지 기동을 늦추지 않도록 백그라운드에서 복원한다. Docker의
+브리지는 실제 `kiro/*` 요청이 처음 들어올 때 `ensure`를 자동 호출한다. Docker의
 `restart=unless-stopped`는 데몬이 먼저 떠야만 작동하므로, macOS에서는 현재 Docker
 context에 맞춰 OrbStack 또는 Docker Desktop을 깨운 뒤 기존 `kiro-rs`를 시작한다.
 Linux Docker Desktop은 user unit을 깨우고, 시스템 Docker는 OS supervisor에 맡긴다.
+부팅과 다른 모델 사용만으로는 Docker를 띄우지 않는다.
 컨테이너가 사라졌으면 같은 `config.json`과 `credentials.json`으로 다시 만들며,
 어느 경로든 인증한 `/v1/models` 응답이 돌아와야 복원이 끝난다. Kiro를 설정하지 않은
 기기에서는 Docker를 찾거나 띄우지 않는다.

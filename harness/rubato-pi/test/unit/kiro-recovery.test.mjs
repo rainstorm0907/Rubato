@@ -14,7 +14,7 @@ function stub(dir, name, body) {
   chmodSync(path, 0o755);
 }
 
-function fixture({ credentials = true, healthy = false, running = false, os = "Darwin", context = "orbstack" } = {}) {
+function fixture({ credentials = true, healthy = false, running = false, os = "Darwin", context = "orbstack", stuckDesktop = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "rubato-kiro-recovery-"));
   const home = join(root, "home");
   const bin = join(root, "bin");
@@ -44,6 +44,9 @@ function fixture({ credentials = true, healthy = false, running = false, os = "D
     '  "container inspect") exit 0 ;;',
     '  "inspect -f") [ -f "$STUB_ROOT/container.running" ] && echo true || echo false ;;',
     '  "start kiro-rs") touch "$STUB_ROOT/container.running" "$STUB_ROOT/sidecar.ready" ;;',
+    `  "desktop status") ${stuckDesktop ? "exit 0" : "exit 1"} ;;`,
+    '  "desktop start") touch "$STUB_ROOT/docker.ready" ;;',
+    '  "desktop restart") touch "$STUB_ROOT/docker.ready" ;;',
     '  *) exit 0 ;;',
     'esac',
   ].join("\n"));
@@ -65,10 +68,11 @@ function fixture({ credentials = true, healthy = false, running = false, os = "D
   return { root, run, docker: log("docker.log"), open: log("open.log"), systemctl: log("systemctl.log") };
 }
 
-test("ensure is inert on machines without Kiro credentials", () => {
+test("ensure reports setup guidance on machines without Kiro credentials", () => {
   const got = fixture({ credentials: false });
   try {
-    assert.equal(got.run.status, 0, got.run.stderr);
+    assert.notEqual(got.run.status, 0);
+    assert.match(got.run.stderr, /Kiro 자격이 없다/);
     assert.equal(got.docker, "");
     assert.equal(got.open, "");
   } finally {
@@ -104,8 +108,19 @@ test("ensure follows a Docker Desktop context instead of assuming OrbStack", () 
   const got = fixture({ context: "desktop-linux" });
   try {
     assert.equal(got.run.status, 0, got.run.stderr);
-    assert.match(got.open, /-gja Docker/);
+    assert.match(got.docker, /desktop start --detach --timeout 30/);
     assert.doesNotMatch(got.open, /OrbStack/);
+  } finally {
+    rmSync(got.root, { recursive: true, force: true });
+  }
+});
+
+test("ensure restarts a half-stopped Docker Desktop engine", () => {
+  const got = fixture({ context: "desktop-linux", stuckDesktop: true });
+  try {
+    assert.equal(got.run.status, 0, got.run.stderr);
+    assert.match(got.docker, /desktop restart --detach --timeout 30/);
+    assert.match(got.docker, /start kiro-rs/);
   } finally {
     rmSync(got.root, { recursive: true, force: true });
   }
@@ -132,15 +147,13 @@ test("ensure never restarts a running but temporarily unready sidecar", () => {
   }
 });
 
-test("the Rubato launcher owns Kiro restoration, not credential healing alone", () => {
+test("the Rubato launcher heals credentials without waking the Kiro runtime", () => {
   const launcher = readFileSync(fileURLToPath(new URL("../../../scripts/rubato-pi.sh", import.meta.url)), "utf8");
-  assert.match(launcher, /kiro-setup\.sh" ensure/);
-  assert.match(launcher, /RUBATO_NO_KIRO_ENSURE/);
+  assert.match(launcher, /kiro-setup\.sh" heal/);
+  assert.doesNotMatch(launcher, /kiro-setup\.sh" ensure/);
 });
 
-test("the login supervisor restores Kiro without delaying bridge startup", () => {
+test("the login supervisor does not wake Docker for Kiro", () => {
   const start = readFileSync(fileURLToPath(new URL("../../../scripts/start.sh", import.meta.url)), "utf8");
-  assert.match(start, /kiro-setup\.sh" ensure[^\n]*>>[^\n]*2>&1\) &/);
-  assert.match(start, /\/opt\/homebrew\/bin:\/usr\/local\/bin/);
-  assert.ok(start.indexOf('kiro-setup.sh" ensure') < start.indexOf('exec "$NODE"'), "Kiro recovery is not attached to login startup");
+  assert.doesNotMatch(start, /kiro-setup\.sh/);
 });

@@ -4,7 +4,7 @@ import { zstdDecompressSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, openaiCodexProviderWithDaybreak, piUsageToFx, providerModel, readClaudeSetupToken } from "../src/direct-provider.ts";
+import { claudeCodeUserAgentFromTarget, claudeToolToFx, directProviderToFxSse, fxBodyToPiStreamOptions, fxPromptToPiContext, fxToolToClaude, isDirectModel, openaiCodexProviderWithDaybreak, piUsageToFx, prepareDirectProvider, providerModel, readClaudeSetupToken } from "../src/direct-provider.ts";
 import { fixtureJson } from "./helpers.ts";
 
 test("fx history and tools become pi-ai context without executing tools", () => {
@@ -326,6 +326,65 @@ test("kiro keeps fx tool names so the tool loop can match them on the way back",
   assert.equal(context.tools[0].name, "read_file");
   assert.equal(context.messages[1].content[0].name, "read_file");
   assert.equal(context.messages[2].toolName, "read_file");
+});
+
+test("a Kiro request ensures its sidecar before contacting the provider", async () => {
+  const order = [];
+  const upstreamFetch = async () => {
+    order.push("fetch");
+    return new Response([
+      'event: message_start',
+      'data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","content":[],"model":"claude-opus-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}',
+      "",
+      'event: message_stop',
+      'data: {"type":"message_stop"}',
+      "",
+    ].join("\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  for await (const _frame of directProviderToFxSse({
+    model: "kiro/claude-opus-5",
+    body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }] },
+    env: { KIRO_API_KEY: "test-key", KIRO_BASE_URL: "http://127.0.0.1:8990" },
+    ensureKiro: async () => { order.push("ensure"); },
+    upstreamFetch,
+  })) { /* drain */ }
+  assert.deepEqual(order.slice(0, 2), ["ensure", "fetch"]);
+});
+
+test("a non-Kiro request never ensures the Kiro sidecar", async () => {
+  let ensured = false;
+  const upstreamFetch = async () => new Response([
+    'event: message_start',
+    'data: {"type":"message_start","message":{"id":"m1","type":"message","role":"assistant","content":[],"model":"claude-opus-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}',
+    "",
+    'event: message_stop',
+    'data: {"type":"message_stop"}',
+    "",
+  ].join("\n"), { status: 200, headers: { "content-type": "text/event-stream" } });
+  for await (const _frame of directProviderToFxSse({
+    model: "anthropic/claude-opus-5",
+    body: { prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }] },
+    ensureKiro: async () => { ensured = true; },
+    upstreamFetch,
+  })) { /* drain */ }
+  assert.equal(ensured, false);
+});
+
+test("direct-provider preparation only ensures Kiro models", async () => {
+  const ensured = [];
+  await prepareDirectProvider({ model: "anthropic/claude-opus-5", ensureKiro: async () => { ensured.push("anthropic"); } });
+  await prepareDirectProvider({ model: "kiro/claude-opus-5", ensureKiro: async () => { ensured.push("kiro"); } });
+  assert.deepEqual(ensured, ["kiro"]);
+});
+
+test("the Kiro ensure escape hatch remains available", async () => {
+  let ensured = false;
+  await prepareDirectProvider({
+    model: "kiro/claude-opus-5",
+    env: { RUBATO_NO_KIRO_ENSURE: "1" },
+    ensureKiro: async () => { ensured = true; },
+  });
+  assert.equal(ensured, false);
 });
 
 // 사용자가 Opus 에서 이미지를 못 본다고 한 자리다. tool-result 안의 이미지를
