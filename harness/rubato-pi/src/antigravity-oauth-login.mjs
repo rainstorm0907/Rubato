@@ -180,28 +180,30 @@ export async function loginAntigravityGoogle({
     url,
     instructions: "A browser window should open. Complete Google sign-in to finish.",
   });
-  let manual;
-  let manualError;
   const onAbort = () => callback.cancelWait();
   interaction.signal?.addEventListener?.("abort", onAbort, { once: true });
   try {
-    const manualPromise = interaction
-      .prompt?.({
-        type: "manual_code",
-        message: "Complete login in your browser, or paste the authorization code / redirect URL here:",
-        placeholder: callback.redirectUri,
-      })
-      ?.then((input) => {
-        manual = input;
-        callback.cancelWait();
-      })
-      .catch((error) => {
-        manualError = error instanceof Error ? error : new Error(String(error));
-        callback.cancelWait();
-      });
-    const result = await callback.waitForCode();
-    await manualPromise;
-    if (manualError) throw manualError;
+    const callbackPromise = callback.waitForCode();
+    const manualPromise = interaction.prompt?.({
+      type: "manual_code",
+      message: "Complete login in your browser, or paste the authorization code / redirect URL here:",
+      placeholder: callback.redirectUri,
+    });
+    let result;
+    let manual;
+    if (!manualPromise) {
+      result = await callbackPromise;
+    } else {
+      const raced = await Promise.race([
+        callbackPromise.then((payload) => ({ via: "callback", payload })),
+        Promise.resolve(manualPromise).then((input) => {
+          callback.cancelWait();
+          return { via: "manual", input };
+        }),
+      ]);
+      if (raced.via === "callback") result = raced.payload;
+      else manual = raced.input;
+    }
     const parsed = result?.code ? result : parseAuthorizationInput(manual);
     if (parsed.state && parsed.state !== pkce.state) {
       throw new Error("Antigravity OAuth state mismatch");

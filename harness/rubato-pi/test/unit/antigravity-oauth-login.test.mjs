@@ -62,6 +62,34 @@ test("loginAntigravityGoogle은 auth_url을 알리고 code를 교환한다", asy
   assert.match(fetches[0].body, /code_verifier=ver/);
 });
 
+test("브라우저 콜백이 오면 수동 입력을 기다리지 않는다", async () => {
+  let loginSettled = false;
+  const work = loginAntigravityGoogle({
+    interaction: {
+      notify: () => {},
+      prompt: () => new Promise(() => {}),
+    },
+    clients: [{ id: "client", secret: "secret" }],
+    generatePkceImpl: () => ({ verifier: "ver", challenge: "chal", state: "st" }),
+    startCallback: async () => ({
+      redirectUri: "http://127.0.0.1:9/oauth2callback",
+      waitForCode: async () => ({ code: "abc", state: "st" }),
+      cancelWait: () => {},
+      close: () => {},
+    }),
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ access_token: "ak", refresh_token: "rk", expires_in: 60 }),
+    }),
+  }).then((credential) => {
+    loginSettled = true;
+    return credential;
+  });
+  const credential = await work;
+  assert.equal(loginSettled, true);
+  assert.equal(credential.access, "ak");
+});
+
 test("exchangeAuthorizationCode는 다음 client로 넘어간다", async () => {
   const seen = [];
   const credential = await exchangeAuthorizationCode({

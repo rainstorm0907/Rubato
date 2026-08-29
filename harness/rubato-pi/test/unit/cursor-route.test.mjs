@@ -523,6 +523,31 @@ test("부모는 재로그인 뒤 오프라인 동기화에서 canary를 다시 �
   assert.equal(decisions.some((decision) => decision.ok && decision.phase === "activate"), true);
 });
 
+test("같은 인스턴스에서 재로그인하면 canary가 다시 돈다", async () => {
+  let runs = 0;
+  const store = memoryMarkerStore();
+  const provider = withCursorActivationCanary(
+    pinnedShapedCursor({ fetchModels: async () => [discoveredModel("composer-1")] }),
+    {
+      markerStore: store,
+      reactivateOnCredentialRotation: true,
+      run: async () => {
+        runs += 1;
+        return { stopReason: "stop" };
+      },
+    },
+  );
+  const first = await twoPhaseRefresh(provider, { storedCredential: CREDENTIAL });
+  const persisted = first.published.at(-1).persist;
+  assert.equal(runs, 1, "첫 활성화 canary가 없다");
+  await twoPhaseRefresh(provider, {
+    store: persisted,
+    storedCredential: { ...CREDENTIAL, refresh: "after-relogin" },
+    allowNetwork: false,
+  });
+  assert.equal(runs, 2, "settle 된 inflight를 재사용하면 새 자격증명을 검증하지 않는다");
+});
+
 test("증명 판정은 전부 fail closed 고, 세대는 값을 담지 않는다", () => {
   const models = [discoveredModel("composer-1")];
   const marker = issueCursorActivationMarker({ credential: CREDENTIAL, models, now: 1_000 });

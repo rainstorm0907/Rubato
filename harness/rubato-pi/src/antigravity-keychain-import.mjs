@@ -6,7 +6,7 @@
 //
 // 규칙:
 //   - 직결이 켜져 있고 대상에 `google-antigravity` 가 **없을 때만** 쓴다.
-//   - 이미 있으면 절대 덮지 않는다.
+//   - 실 자격이 있으면 덮지 않는다. broker sentinel 은 자격이 아니라 교체한다.
 //   - 쓰기 전에 pinned 파서로 검증한다.
 //   - 병합은 대상 lock 안에서 한 번에 한다(`credential-import.mjs` 와 같은 이유).
 //   - 취소되면 `security` 프로세스를 죽인다.
@@ -286,8 +286,9 @@ export async function importAntigravityKeychainCredential({
       }
       data = parsed;
     }
-    // lock 안에서 다시 본다. 그 사이 로그인이 채웠을 수 있고, 그 값이 이긴다.
-    if (ANTIGRAVITY_PROVIDER_ID in data) {
+    // lock 안에서 다시 본다. 그 사이 로그인이 채운 실 자격이 이긴다.
+    // sentinel 은 있는 키가 아니다 — 그대로 두면 Keychain import 가 영구히 skip 된다.
+    if (ANTIGRAVITY_PROVIDER_ID in data && !isBrokerSentinel(data[ANTIGRAVITY_PROVIDER_ID])) {
       status = "skipped";
       return { result: undefined };
     }

@@ -72,10 +72,14 @@ test("베이스가 없고 Fast 변형만 있으면 묶어서 보여 준다", () 
   assert.equal(presented[0].thinkingLevelMap.xhigh, null);
 });
 
+function presentedGrok(fastIds) {
+  return presentCursorGrokFast([grokBase(), ...fastIds.map(grokFast)])[0];
+}
+
 test("effort 를 바꾸면 wire id 가 Fast suffix 를 유지한다", () => {
-  const model = grokBase();
+  const model = presentedGrok(["cursor-grok-4.6-low-fast", "cursor-grok-4.6-medium-fast", "cursor-grok-4.6-high-fast", "cursor-grok-4.6-xhigh-fast"]);
   assert.equal(
-    resolveCursorSelectionDescriptor(model, { level: "high", source: "explicit" }).modelId,
+    resolveCursorSelectionDescriptor(grokBase(), { level: "high", source: "explicit" }).modelId,
     "cursor-grok-4.6-high",
     "전제: 핀 없으면 effort 가 Fast 를 푼다",
   );
@@ -90,12 +94,37 @@ test("effort 를 바꾸면 wire id 가 Fast suffix 를 유지한다", () => {
   }
 });
 
-test("effort 가 없으면 Cursor 기본 high Fast 로 고정한다", () => {
-  const { options } = pinCursorGrokFastSelection(grokBase(), {});
+test("effort 가 없으면 발견한 Fast 중 기본 high 로 고정한다", () => {
+  const model = presentedGrok(["cursor-grok-4.6-high-fast"]);
+  const { options } = pinCursorGrokFastSelection(model, {});
   assert.equal(options.thinkingSelection.legacyVariantId, "cursor-grok-4.6-high-fast");
   assert.equal(
-    resolveCursorSelectionDescriptor(grokBase(), options.thinkingSelection).modelId,
+    resolveCursorSelectionDescriptor(model, options.thinkingSelection).modelId,
     "cursor-grok-4.6-high-fast",
+  );
+});
+
+test("발견한 Fast 가 없으면 이름을 Fast 로 바꾸지 않고 pin 하지 않는다", () => {
+  const presented = presentCursorGrokFast([grokBase()]);
+  assert.equal(presented[0].name, "Cursor Grok 4.6");
+  const options = { thinkingSelection: { level: "high", source: "explicit" } };
+  assert.deepEqual(pinCursorGrokFastSelection(presented[0], options), { model: presented[0], options });
+});
+
+test("발견하지 않은 Fast variant id 는 만들지 않는다", () => {
+  const model = presentCursorGrokFast([grokFast("cursor-grok-4.6-medium-fast")])[0];
+  assert.equal(model.id, "cursor-grok-4.6");
+  assert.equal(model.name, CURSOR_GROK_46_FAST_NAME);
+  assert.equal(model.thinkingLevelMap.high, null);
+  assert.equal(model.thinkingLevelMap.medium, "medium");
+  assert.equal(model.upstreamModelId, "cursor-grok-4.6-medium-fast");
+  const { options } = pinCursorGrokFastSelection(model, {
+    thinkingSelection: { level: "high", source: "explicit" },
+  });
+  assert.equal(options.thinkingSelection.legacyVariantId, "cursor-grok-4.6-medium-fast");
+  assert.equal(
+    resolveCursorSelectionDescriptor(model, options.thinkingSelection).modelId,
+    "cursor-grok-4.6-medium-fast",
   );
 });
 

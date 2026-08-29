@@ -216,6 +216,21 @@ test("xAI: pinned grok-4.6 의 xhigh 가 picker 와 wire 에 남는다", async (
   assert.equal(grok.contextWindow, 500_000);
 });
 
+test("피커는 현재 세대만 남기고 getModels 저장분은 그대로다", async () => {
+  const [codex, xai, , anthropic] = await directProviders();
+  assert.deepEqual(xai.filterModels(xai.getModels()).map((model) => model.id), ["grok-4.6"]);
+  assert.ok(xai.getModels().some((model) => model.id === "grok-4.3"), "pin 저장분에서 4.3 을 지우면 안 된다");
+
+  const anthropicPicker = anthropic.filterModels(anthropic.getModels()).map((model) => model.id);
+  assert.deepEqual(anthropicPicker, ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5"]);
+  assert.ok(anthropic.getModels().some((model) => model.id === "claude-sonnet-4-5"));
+
+  const codexPicker = new Set(codex.filterModels(codex.getModels()).map((model) => model.id));
+  assert.ok(codexPicker.has("gpt-5.6-sol"));
+  assert.ok(codexPicker.has("gpt-daybreak-blue-latest"));
+  assert.ok(!codexPicker.has("gpt-5.4"));
+});
+
 test("직결 provider 는 pinned 의 다른 면을 잃지 않는다", async () => {
   const providers = await directProviders();
   for (const provider of providers) {

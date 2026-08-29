@@ -167,6 +167,38 @@ test("project env가 없으면 import 전에 project를 발견해 credential에 
   assert.equal(JSON.parse(FakeBackend.next)[ANTIGRAVITY_PROVIDER_ID].env.RUBATO_ANTIGRAVITY_PROJECT, "discovered-project");
 });
 
+test("lock 안의 broker sentinel은 Keychain 자격으로 교체한다", async () => {
+  const sentinel = {
+    type: "oauth",
+    access: "local",
+    refresh: "rubato-broker",
+    expires: 1,
+  };
+  FakeBackend.current = JSON.stringify({ [ANTIGRAVITY_PROVIDER_ID]: sentinel });
+  FakeBackend.next = undefined;
+  const child = fakeChild();
+  const result = await importAntigravityKeychainCredential({
+    enabled: true,
+    targetPath: "/tmp/rubato-antigravity-sentinel-replace-test.json",
+    read: () => FakeBackend.current,
+    spawnImpl: () => {
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from(encodedSecret({ access: "from-keychain", refresh: "from-keychain" })));
+        child.emit("close", 0);
+      });
+      return child;
+    },
+    backendFactory: FakeBackend,
+    ReadOnlyAuthStorage: FakeReadOnlyAuthStorage,
+    projectId: "project-a",
+  });
+  assert.equal(result.status, "imported");
+  const imported = JSON.parse(FakeBackend.next)[ANTIGRAVITY_PROVIDER_ID];
+  assert.equal(imported.access, "from-keychain");
+  assert.equal(imported.refresh, "from-keychain");
+  assert.notEqual(imported.refresh, "rubato-broker");
+});
+
 test("broker sentinel은 있는 자격이 아니다", () => {
   const dir = mkdtempSync(join(tmpdir(), "rubato-antigravity-sentinel-"));
   const targetPath = join(dir, "auth.json");

@@ -12,6 +12,12 @@ import { cursorDirectProvider } from "./cursor-route.mjs";
 import { senpiNested } from "./engine-paths.mjs";
 import { ensureKiroSidecar, kiroDirectProvider, withKiroSidecarEnsure } from "./kiro-route.mjs";
 import { antigravityDirectProvider } from "./antigravity-route.mjs";
+import {
+  ANTHROPIC_PICKER_IDS,
+  CODEX_PICKER_IDS,
+  XAI_PICKER_IDS,
+  withPickerIds,
+} from "./picker-catalog.mjs";
 import { wrapProviderStreams } from "./rubato-stream.mjs";
 
 /**
@@ -171,15 +177,23 @@ export async function directProviders({ cursor, anthropic, kiro, antigravity, en
   ]);
 
   const codexNative = openaiCodexProvider();
-  const codex = withExtraModels(codexNative, daybreakModels(codexNative.getModels()));
+  const codex = withPickerIds(
+    withExtraModels(codexNative, daybreakModels(codexNative.getModels())),
+    CODEX_PICKER_IDS,
+  );
 
-  // xAI 는 pinned 를 그대로 쓴다. `grok-4.6` 의 `xhigh` 는 pinned map 에 이미 있고
+  // xAI metadata 는 pinned 그대로다. `grok-4.6` 의 `xhigh` 는 pinned map 에 이미 있고
   // (`thinkingLevelMap.xhigh === "xhigh"`), 우리가 다시 적으면 pin 과 어긋날 뿐이다.
-  const xai = xaiProvider();
+  // 피커만 현재 세대(grok-4.6)로 줄인다 — 4.3/4.5 는 예전 FX 목록에 없었다.
+  const xai = withPickerIds(xaiProvider(), XAI_PICKER_IDS);
 
   // Anthropic 은 pinned provider + setup-token fallback resolver 하나다. 모델 정의도,
   // wire 도, tool 이름 규칙도 손대지 않는다 — pinned OAuth 경로가 전부 소유한다.
-  const anthropicNative = withClaudeSetupToken(anthropicProvider(), anthropic ?? { env });
+  // 피커만 현재 세대(opus/sonnet/fable 5, haiku 4.5)로 줄인다.
+  const anthropicNative = withPickerIds(
+    withClaudeSetupToken(anthropicProvider(), anthropic ?? { env }),
+    ANTHROPIC_PICKER_IDS,
+  );
 
   // Kiro 는 loopback 사이드카다. 여기서 config 를 읽는다 — module import 시점이 아니다.
   const kiroNative = await kiroDirectProvider({ env, ...(kiro ?? {}) });

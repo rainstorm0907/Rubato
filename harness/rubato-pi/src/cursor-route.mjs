@@ -504,7 +504,8 @@ export function withCursorActivationCanary(provider, {
   let inflight = null;
 
   const gate = ({ models, credential, signal }) => {
-    // single-flight: 먼저 시작한 canary 의 결과를 그대로 공유한다.
+    // single-flight: 동시에 겹친 호출만 공유한다. settle 뒤에도 남겨 두면 재로그인
+    // 오프라인 동기화가 옛 성공 Promise 를 재사용해 새 자격증명을 검증하지 않는다.
     inflight ??= runCursorCanary({ provider, models, credential, run, signal, sessionId: sessionIdFactory() })
       .then(
         (result) => {
@@ -517,7 +518,10 @@ export function withCursorActivationCanary(provider, {
           onDecision?.({ ok: false, phase: "activate", route: "native", reason, fallbackEligible: eligible });
           throw error;
         },
-      );
+      )
+      .finally(() => {
+        inflight = null;
+      });
     return inflight;
   };
 
@@ -665,7 +669,7 @@ function withCursorPickerPresentation(provider) {
  *
  * `restoreModels`, `auth.oauth`, `api`(cursor-agent), `baseUrl`, exec 의미는 전부
  * pinned 그대로 남는다. 모델 정의는 만들지 않는다 — 공개 시점만 바꾸고, 피커에는
- * 쓰던 일곱과 Cursor Grok 4.6 Fast 정체성만 보여 준다.
+ * 쓰던 일곱과 Grok 4.6 Fast 정체성만 보여 준다.
  */
 export async function cursorDirectProvider(options = {}) {
   const native = options.provider ?? (await loadPinnedCursorProvider());

@@ -8,8 +8,9 @@
 // thinkingSelection 을 해당 `*-{level}-fast` legacy variant 로 고정한다.
 
 export const CURSOR_GROK_46_ID = "cursor-grok-4.6";
-export const CURSOR_GROK_46_FAST_NAME = "Cursor Grok 4.6 Fast";
+export const CURSOR_GROK_46_FAST_NAME = "Grok 4.6 Fast";
 export const CURSOR_GROK_46_DEFAULT_LEVEL = "high";
+const LEVEL_ORDER = Object.freeze(["high", "medium", "low", "xhigh"]);
 
 export const CURSOR_GROK_46_FAST_BY_LEVEL = Object.freeze({
   low: "cursor-grok-4.6-low-fast",
@@ -29,8 +30,21 @@ export function isCursorGrok46FastVariant(model) {
   return model?.provider === "cursor" && FAST_VARIANT.test(model?.id ?? "");
 }
 
-export function cursorGrok46FastVariantId(level) {
-  return CURSOR_GROK_46_FAST_BY_LEVEL[level] ?? CURSOR_GROK_46_FAST_BY_LEVEL[CURSOR_GROK_46_DEFAULT_LEVEL];
+export function cursorGrok46FastVariantId(level, byLevel = CURSOR_GROK_46_FAST_BY_LEVEL) {
+  return byLevel[level] ?? byLevel[defaultDiscoveredLevel(byLevel)];
+}
+
+export function discoveredCursorGrokFastByLevel(fastVariants) {
+  const byLevel = {};
+  for (const model of fastVariants ?? []) {
+    const level = levelFromFastVariant(model.id);
+    if (level && CURSOR_GROK_46_FAST_BY_LEVEL[level] === model.id) byLevel[level] = model.id;
+  }
+  return byLevel;
+}
+
+function defaultDiscoveredLevel(byLevel) {
+  return LEVEL_ORDER.find((level) => byLevel?.[level]);
 }
 
 export function presentCursorGrokFast(models) {
@@ -55,16 +69,11 @@ export function presentCursorGrokFast(models) {
 }
 
 function presentBase(base, fastVariants) {
-  if (base) {
-    return base.name === CURSOR_GROK_46_FAST_NAME ? base : { ...base, name: CURSOR_GROK_46_FAST_NAME };
-  }
-  const template = fastVariants.find((model) => model.id === CURSOR_GROK_46_FAST_BY_LEVEL.high) ?? fastVariants[0];
+  const byLevel = discoveredCursorGrokFastByLevel(fastVariants);
+  const representative = cursorGrok46FastVariantId(CURSOR_GROK_46_DEFAULT_LEVEL, byLevel);
+  if (!representative) return base;
+  const template = fastVariants.find((model) => model.id === representative) ?? base ?? fastVariants[0];
   if (!template) return undefined;
-  const levels = new Set(
-    fastVariants
-      .map((model) => model.id.match(/^cursor-grok-4\.6-(low|medium|high|xhigh)-fast$/)?.[1])
-      .filter(Boolean),
-  );
   return {
     ...template,
     id: CURSOR_GROK_46_ID,
@@ -73,18 +82,19 @@ function presentBase(base, fastVariants) {
     thinkingLevelMap: {
       off: null,
       minimal: null,
-      low: levels.has("low") ? "low" : null,
-      medium: levels.has("medium") ? "medium" : null,
-      high: levels.has("high") ? "high" : null,
-      xhigh: levels.has("xhigh") ? "xhigh" : null,
+      low: byLevel.low ? "low" : null,
+      medium: byLevel.medium ? "medium" : null,
+      high: byLevel.high ? "high" : null,
+      xhigh: byLevel.xhigh ? "xhigh" : null,
       max: null,
     },
-    upstreamModelId: CURSOR_GROK_46_FAST_BY_LEVEL.high,
+    upstreamModelId: representative,
     compat: {
       ...(template.compat ?? {}),
+      cursorGrokFastByLevel: byLevel,
       cursorReasoning: {
         capabilityId: CURSOR_GROK_46_ID,
-        representativeVariantId: CURSOR_GROK_46_FAST_BY_LEVEL.high,
+        representativeVariantId: representative,
       },
     },
   };
@@ -92,14 +102,18 @@ function presentBase(base, fastVariants) {
 
 export function pinCursorGrokFastSelection(model, options = {}) {
   if (!isCursorGrok46Base(model)) return { model, options };
+  const byLevel = model.compat?.cursorGrokFastByLevel;
+  if (!byLevel || !defaultDiscoveredLevel(byLevel)) return { model, options };
   const selection = options.thinkingSelection;
   const alreadyFast = typeof selection?.legacyVariantId === "string" && FAST_SUFFIX.test(selection.legacyVariantId);
-  const level = CURSOR_GROK_46_FAST_BY_LEVEL[selection?.level]
+  const requested = byLevel[selection?.level]
     ? selection.level
     : alreadyFast
       ? levelFromFastVariant(selection.legacyVariantId)
       : CURSOR_GROK_46_DEFAULT_LEVEL;
-  const legacyVariantId = cursorGrok46FastVariantId(level);
+  const level = byLevel[requested] ? requested : defaultDiscoveredLevel(byLevel);
+  const legacyVariantId = byLevel[level];
+  if (!legacyVariantId) return { model, options };
   if (alreadyFast && selection.legacyVariantId === legacyVariantId && selection.level === level) {
     return { model, options };
   }

@@ -9,6 +9,7 @@
 // live id 는 `cursor-grok-4.6` 이다.
 
 import { CURSOR_GROK_46_ID, presentCursorGrokFast } from "./cursor-grok-fast.mjs";
+import { keepPickerIds } from "./picker-catalog.mjs";
 
 export const CURSOR_PICKER_IDS = Object.freeze([
   CURSOR_GROK_46_ID,
@@ -20,14 +21,6 @@ export const CURSOR_PICKER_IDS = Object.freeze([
   "composer-2.5",
 ]);
 
-const PICKER = new Set(CURSOR_PICKER_IDS);
-
 export function presentCursorPicker(models) {
-  const presented = presentCursorGrokFast(models);
-  if (!Array.isArray(presented) || presented.length === 0) return presented;
-  const byId = new Map();
-  for (const model of presented) {
-    if (PICKER.has(model.id) && !byId.has(model.id)) byId.set(model.id, model);
-  }
-  return CURSOR_PICKER_IDS.filter((id) => byId.has(id)).map((id) => byId.get(id));
+  return keepPickerIds(presentCursorGrokFast(models), CURSOR_PICKER_IDS);
 }
