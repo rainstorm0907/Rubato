@@ -36,7 +36,7 @@ Route by asking: **what part is hardest to get right?**
 | Understanding people, product value, or what should be built | problem framer — usually a framing step or human dialogue, not a standing teammate |
 | Cross-stream architecture, contracts, integration | structurer — often the lead itself |
 | Discovering and proving the correct technical change | the outcome's current owner — diagnosis is judgment, not a delegable phase (see the debugging note) |
-| Executing a settled change across tools, files, runtime | action converger |
+| Executing a settled change across tools, files, runtime | action converger — a worker the owner dispatches, not a new owner |
 | Falsifying a material implementation | fresh verifier with a *different* profile from the writer |
 
 Two convergers are not interchangeable: a hypothesis converger compresses the answer space, an action converger compresses the action space. A patch built by an action converger is well checked by a hypothesis converger — their failure modes rarely overlap. Neither substitutes for a framer when the variables of the problem are themselves undecided.
@@ -58,12 +58,12 @@ Resolve the model at spawn time, in this order:
 
 Say in one line which model the agent runs on.
 
-**Default child is Grok 4.6 Fast.** Most dispatched work is settled execution across files and tools; Sol and Opus are the scarce exception seats. Use Grok Fast for an ordinary `task` spawn or execution owner. Pick Sol or Opus only when one of the exceptions below applies — not because the work looks important or has a diagnosis step.
+**Default worker is Grok 4.6 Fast.** An owner dispatches it for settled execution across files and tools (`task`). Grok is not an owner. Pick Sol or Opus as a child only when one of the exceptions below applies — not because the work looks important or has a diagnosis step.
 
 - **Fable 5** — problem framer. Optional framing and human-outcome review before execution or at a rare alignment gate; do not create a standing Fable teammate by default.
-- **Opus 5** — structurer. Default **lead**. Spawn as a child only when the dominant bottleneck is cross-stream architecture, contracts, or integration.
+- **Opus 5** — structurer. Default **lead** and default **owner**. Spawn as a child only when the dominant bottleneck is cross-stream architecture, contracts, or integration.
 - **GPT-5.6 Sol** — hypothesis converger. Default **verifier**, and the supervisor when the owner is stuck. Give Sol ownership only when the proof itself is the deliverable. Operator note (2026-08): Sol quota is the scarcer wallet.
-- **Grok 4.6 Fast** — action converger. **Default worker.** Prefer the Cursor Fast id from the live catalog (`cursor/cursor-grok-4.6` on rubato; picker label `grok-4.6-fast`). Fall back to xAI `xai/grok-4.6` only when Cursor Fast is missing or the probe fails. A regular child (`task` with that exact id, or `team_create` with category `grok`), not a separate CLI lane.
+- **Grok 4.6 Fast** — action converger. **Default worker** an owner dispatches. Prefer the Cursor Fast id from the live catalog (`cursor/cursor-grok-4.6` on rubato; picker label `grok-4.6-fast`). Fall back to xAI `xai/grok-4.6` only when Cursor Fast is missing or the probe fails. A `task` child, not a standing teammate and not a separate CLI lane.
 
 Verifier defaults when an independent check is worth the cost:
 
@@ -74,7 +74,7 @@ Defaults, not mandatory pairings. A clear low-risk task may use owner self-verif
 
 ## 4. Minimal shapes
 
-- One bounded technical outcome → one Grok Fast owner.
+- One bounded technical outcome → one owner. That owner dispatches Grok Fast workers for settled execution.
 - One material or ambiguous outcome → owner + verifier.
 - Two genuinely independent outcomes → two owners; verifier only if integration risk warrants.
 - Unclear root cause → the owner diagnoses from a `grok` map; only a genuinely separable, parallel debugging workstream gets a child owner, and that owner is Opus.
