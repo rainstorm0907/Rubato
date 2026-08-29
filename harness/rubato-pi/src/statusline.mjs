@@ -90,19 +90,24 @@ export function formatEffort(level) {
   return String(level).toLowerCase();
 }
 
-export function formatModelWithEffort(modelId, level) {
-  const model = shortModelLabel(modelId);
+export function formatModelWithEffort(modelId, level, model) {
+  const label = shortModelLabel(modelId);
   const effort = formatEffort(level) || effortFromModelId(modelId);
-  const fast = isFastModel(modelId) ? " [fast]" : "";
-  return `${effort ? `${model} ${effort}` : model}${fast}`;
+  const fast = isFastModel(modelId, model) ? " [fast]" : "";
+  return `${effort ? `${label} ${effort}` : label}${fast}`;
 }
 
-function isFastModel(modelId) {
+function isFastModel(modelId, model) {
   if (!modelId) return false;
   const bare = String(modelId).split("/").pop().split(":", 1)[0];
-  // Cursor Grok 4.6 은 피커 id 가 Fast 가 아니지만 wire 는 Fast 다.
-  if (bare === "cursor-grok-4.6") return true;
-  return /(?:^|[-.])fast$/i.test(bare);
+  if (/(?:^|[-.])fast$/i.test(bare)) return true;
+  // 피커 id 는 `cursor-grok-4.6` 그대로다. Fast 인지는 표시명·discovered map 으로만 본다.
+  // id 만으로 Fast 를 단정하면 catalog 에 Fast variant 가 없을 때도 [fast] 가 붙는다.
+  if (bare !== "cursor-grok-4.6") return false;
+  if (model?.compat?.cursorGrokFastByLevel && Object.keys(model.compat.cursorGrokFastByLevel).length > 0) {
+    return true;
+  }
+  return typeof model?.name === "string" && /\bfast\b/i.test(model.name);
 }
 
 function effortFromModelId(modelId) {

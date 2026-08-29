@@ -94,7 +94,7 @@ export function installStatusline(pi, { processStartedAt = PROCESS_STARTED_AT } 
             .join(" · ");
           const identity = [
             {
-              text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.())}`,
+              text: `✦ ${formatModelWithEffort(ctx.model?.id, ctx.thinkingLevel ?? ctx.getThinkingLevel?.(), ctx.model)}`,
               color: "accent",
             },
             { text: formatContext(remaining, window), color: remainingColor(remaining) },
