@@ -64,6 +64,23 @@ fi
 splash step "프롬프트"
 "$HERE/../prompts/build.sh" >/dev/null
 
+# 스킬은 `rubato update` 가 맞춘다. 예전 업데이터는 있는 스킬을 건너뛰어서
+# 소스는 새데 ~/.agents/skills 는 낡은 기기가 생겼다. HEAD 가 마지막
+# 설치와 다르면 여기서 한 번 더 맞춘다. 실패해도 세션은 띄운다.
+REPO="$(CDPATH= cd -- "$HERE/../.." && pwd)"
+SKILLS_STAMP="${RUBATO_SKILLS_STAMP:-$HOME/.rubato-pi/skills-bundle-head}"
+SKILLS_HEAD="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+if [ -n "$SKILLS_HEAD" ] && [ "$(cat "$SKILLS_STAMP" 2>/dev/null || true)" != "$SKILLS_HEAD" ]; then
+  splash step "스킬"
+  SKILLS_PREV="$(cat "$SKILLS_STAMP" 2>/dev/null || true)"
+  [ -n "$SKILLS_PREV" ] || SKILLS_PREV="$(git -C "$REPO" rev-parse 'HEAD@{1}' 2>/dev/null || true)"
+  if [ -n "$SKILLS_PREV" ]; then
+    "$HERE/install-skills.sh" --sync-from "$SKILLS_PREV" >/dev/null 2>&1 || true
+  else
+    "$HERE/install-skills.sh" >/dev/null 2>&1 || true
+  fi
+fi
+
 # msearch 가 죽어도 세션은 멀쩡히 떠서 죽음이 보이지 않는다 — 쓰기(memory 도구)는
 # 검색과 별개로 멀쩡해서 더 안 보인다. 한 머신에서 검색이 이틀 넘게 죽어
 # 있었는데 세션들이 과거 교훈을 못 읽으며 같은 실수를 반복했다. 죽어 있을

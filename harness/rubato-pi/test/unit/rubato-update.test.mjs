@@ -31,7 +31,9 @@ function write(path, text) {
   writeFileSync(path, text);
 }
 
-function setupFixture({ dirty = false, conflict = false, evidence = false, decoyStash = false, rebuildFailure = "" } = {}) {
+const INSTALL_SKILLS_SRC = join(dirname(fileURLToPath(import.meta.url)), "../../../scripts/install-skills.sh");
+
+function setupFixture({ dirty = false, conflict = false, evidence = false, decoyStash = false, rebuildFailure = "", skillUpdate = false } = {}) {
   const root = mkdtempSync(join(tmpdir(), "rubato-update-"));
   const bare = join(root, "origin.git");
   const seed = join(root, "seed");
@@ -56,7 +58,13 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   chmodSync(join(seed, "harness/prompts/build.sh"), 0o755);
   write(join(seed, "install.sh"), "#!/bin/sh\nexit 0\n");
   chmodSync(join(seed, "install.sh"), 0o755);
-  git(seed, ["add", "note.txt", "keep.txt", ".omo/evidence/log.txt", "install.sh", "harness/prompts", "harness/scripts/rubato-update.sh"]);
+  cpSync(INSTALL_SKILLS_SRC, join(seed, "harness/scripts/install-skills.sh"));
+  chmodSync(join(seed, "harness/scripts/install-skills.sh"), 0o755);
+  if (skillUpdate) {
+    write(join(seed, "harness/skills/demo/SKILL.md"), "v1\n");
+  }
+  git(seed, ["add", "note.txt", "keep.txt", ".omo/evidence/log.txt", "install.sh", "harness/prompts", "harness/scripts"]);
+  if (skillUpdate) git(seed, ["add", "harness/skills"]);
   git(seed, ["commit", "-m", "base"]);
   git(seed, ["branch", "-M", "rubato/base"]);
   git(seed, ["push", "-u", "origin", "rubato/base"]);
@@ -67,6 +75,10 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   git(local, ["config", "commit.gpgsign", "false"]);
 
   write(join(seed, "note.txt"), "remote\n");
+  if (skillUpdate) {
+    write(join(seed, "harness/skills/demo/SKILL.md"), "v2\n");
+    write(join(home, ".agents/skills/demo/SKILL.md"), "v1\n");
+  }
   if (rebuildFailure === "deps") {
     write(join(seed, "package.json"), "{}\n");
   } else if (rebuildFailure === "prompts") {
@@ -77,6 +89,10 @@ function setupFixture({ dirty = false, conflict = false, evidence = false, decoy
   } else if (rebuildFailure === "shell") {
     write(join(seed, "install.sh"), "#!/bin/sh\nprintf 'shell\\n' >> \"$RUBATO_TEST_TRACE\"\necho shell-failed >&2\nexit 42\n");
     chmodSync(join(seed, "install.sh"), 0o755);
+  } else if (rebuildFailure === "skills") {
+    write(join(seed, "harness/skills/demo/SKILL.md"), "v2\n");
+    write(join(seed, "harness/scripts/install-skills.sh"), "#!/bin/sh\nprintf 'skills\\n' >> \"$RUBATO_TEST_TRACE\"\nexit 42\n");
+    chmodSync(join(seed, "harness/scripts/install-skills.sh"), 0o755);
   }
   git(seed, ["add", "."]);
   git(seed, ["commit", "-m", "remote"]);
@@ -145,6 +161,24 @@ function backupBranch(local) {
   assert.equal(listed.length, 1, `expected one backup branch, got ${listed.join(",") || "(none)"}`);
   return listed[0];
 }
+
+test("unattended update refreshes bundled skills that still match the previous bundle", () => {
+  const fixture = setupFixture({ skillUpdate: true });
+  const result = runUpdate(fixture);
+  const out = `${result.stdout}\n${result.stderr}`;
+  assert.equal(result.status, 0, out);
+  assert.equal(readFileSync(join(fixture.home, ".agents/skills/demo/SKILL.md"), "utf8"), "v2\n");
+  assert.match(out, /번들 스킬/);
+});
+
+test("unattended update keeps a locally edited bundled skill", () => {
+  const fixture = setupFixture({ skillUpdate: true });
+  write(join(fixture.home, ".agents/skills/demo/SKILL.md"), "hand-edited\n");
+  const result = runUpdate(fixture);
+  const out = `${result.stdout}\n${result.stderr}`;
+  assert.equal(result.status, 0, out);
+  assert.equal(readFileSync(join(fixture.home, ".agents/skills/demo/SKILL.md"), "utf8"), "hand-edited\n");
+});
 
 test("unattended update hard-resets a diverged rubato/base and keeps local commits on a backup branch", () => {
   const fixture = setupFixture();
@@ -245,6 +279,7 @@ for (const failure of [
   { kind: "engine", commands: { bun: "exit 0", node: "printf 'engine\\n' >> \"$RUBATO_TEST_TRACE\"\nexit 42" }, message: /엔진 빌드에 실패/ },
   { kind: "prompts", commands: {}, message: /시스템 프롬프트 합성에 실패/ },
   { kind: "shell", commands: {}, message: /셸 설정 갱신에 실패/ },
+  { kind: "skills", commands: {}, message: /번들 스킬 설치에 실패/ },
 ]) {
   test(`update fails closed when ${failure.kind} regeneration fails`, () => {
     const fixture = setupFixture({ rebuildFailure: failure.kind });
