@@ -183,6 +183,16 @@ export const VENDOR_PATCHES = [
       return realpathSync(join(senpiRoot, "node_modules", "@earendil-works", "pi-ai"));
     },
   },
+  {
+    packageName: "@code-yeongyu/senpi-codemode (nested in @code-yeongyu/senpi)",
+    patchName: "@code-yeongyu%2Fsenpi-codemode@2026.8.22.patch",
+    seriesName: "@code-yeongyu%2Fsenpi-codemode",
+    expectedVersion: "2026.8.22",
+    resolveRoot() {
+      const senpiRoot = VENDOR_PATCHES[0].resolveRoot();
+      return realpathSync(join(senpiRoot, "node_modules", "@code-yeongyu", "senpi-codemode"));
+    },
+  },
 ];
 
 export function seriesDir(spec, root = rootDir) {

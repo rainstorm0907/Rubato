@@ -21,7 +21,7 @@ import { join, relative, sep } from "node:path";
 import { formatPatch, structuredPatch } from "diff";
 import { VENDOR_PATCHES, collectPatchLayers, locateInStack, parseFilePatches, seriesDir, stackByFile } from "../../postinstall.mjs";
 
-const ALIASES = { senpi: 0, "senpi-tui": 1 };
+const ALIASES = { senpi: 0, "senpi-tui": 1, "pi-ai": 2, "senpi-codemode": 3 };
 
 function fail(message) {
   process.stderr.write(`vendor-patch: ${message}\n`);
@@ -179,8 +179,8 @@ else if (command === "save") save(alias, rest[0], rest.slice(1));
 else {
   process.stderr.write(
     "usage:\n" +
-    "  vendor-patch open <senpi|senpi-tui> [--session <name>] [--force]\n" +
-    "  vendor-patch save <senpi|senpi-tui> <change-id> [--session <name>]\n",
+    "  vendor-patch open <senpi|senpi-tui|pi-ai|senpi-codemode> [--session <name>] [--force]\n" +
+    "  vendor-patch save <senpi|senpi-tui|pi-ai|senpi-codemode> <change-id> [--session <name>]\n",
   );
   process.exit(2);
 }
