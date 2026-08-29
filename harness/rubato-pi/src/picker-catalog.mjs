@@ -14,10 +14,10 @@ export const ANTHROPIC_PICKER_IDS = Object.freeze([
 
 export const CODEX_PICKER_IDS = Object.freeze([
   "gpt-5.6-sol",
-  "gpt-5.6-sol-fast",
   "gpt-5.6-terra",
-  "gpt-5.6-terra-fast",
   "gpt-5.6-luna",
+  "gpt-5.6-sol-fast",
+  "gpt-5.6-terra-fast",
   "gpt-5.6-luna-fast",
   "gpt-daybreak-blue-latest",
   "gpt-daybreak-blue-latest-fast",

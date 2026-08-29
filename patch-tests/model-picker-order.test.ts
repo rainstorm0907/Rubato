@@ -28,7 +28,7 @@ describe("Rubato model picker order", () => {
 
   test("uses the requested model rank inside each provider", () => {
     expect(ids([
-      item("cursor", "composer-2.5"), item("cursor", "grok-4.6"),
+      item("cursor", "composer-2.5"), item("cursor", "cursor-grok-4.6"),
       item("kiro", "claude-opus-5"), item("kiro", "gpt-5.6-sol"),
       item("anthropic", "claude-haiku-4-5"), item("anthropic", "claude-sonnet-5"),
       item("anthropic", "claude-opus-5"), item("anthropic", "claude-fable-5"),
@@ -38,7 +38,29 @@ describe("Rubato model picker order", () => {
       "openai-codex/gpt-5.6-sol", "openai-codex/gpt-5.6-terra", "openai-codex/gpt-5.6-luna",
       "anthropic/claude-fable-5", "anthropic/claude-opus-5", "anthropic/claude-sonnet-5", "anthropic/claude-haiku-4-5",
       "kiro/gpt-5.6-sol", "kiro/claude-opus-5",
-      "cursor/grok-4.6", "cursor/composer-2.5",
+      "cursor/cursor-grok-4.6", "cursor/composer-2.5",
+    ]);
+  });
+
+  test("keeps Codex bases together, then Fast variants", () => {
+    expect(ids([
+      item("openai-codex", "gpt-5.6-luna-fast"),
+      item("openai-codex", "gpt-5.6-sol"),
+      item("openai-codex", "gpt-daybreak-blue-latest-fast"),
+      item("openai-codex", "gpt-5.6-terra-fast"),
+      item("openai-codex", "gpt-5.6-luna"),
+      item("openai-codex", "gpt-5.6-sol-fast"),
+      item("openai-codex", "gpt-5.6-terra"),
+      item("openai-codex", "gpt-daybreak-blue-latest"),
+    ])).toEqual([
+      "openai-codex/gpt-5.6-sol",
+      "openai-codex/gpt-5.6-terra",
+      "openai-codex/gpt-5.6-luna",
+      "openai-codex/gpt-5.6-sol-fast",
+      "openai-codex/gpt-5.6-terra-fast",
+      "openai-codex/gpt-5.6-luna-fast",
+      "openai-codex/gpt-daybreak-blue-latest",
+      "openai-codex/gpt-daybreak-blue-latest-fast",
     ]);
   });
 
@@ -85,5 +107,41 @@ describe("Rubato model picker order", () => {
     expect(rendered).toContain("Daybreak Blue [openai-codex]");
     expect(rendered).toContain("Daybreak Blue Fast [openai-codex]");
     expect(rendered).not.toContain("gpt-daybreak-blue-latest");
+  });
+
+  test("renders Cursor Grok as grok-4.6-fast, not the wire id", () => {
+    initTheme("dark", false);
+    const models = [
+      { provider: "cursor", id: "cursor-grok-4.6", name: "Grok 4.6 Fast" },
+      { provider: "xai", id: "grok-4.6", name: "Grok 4.6" },
+    ].map((model) => ({
+      ...model,
+      api: "openai-completions",
+      baseUrl: "http://example.test",
+      reasoning: true,
+      input: ["text"],
+      contextWindow: 272_000,
+      maxTokens: 128_000,
+    }));
+    const runtime = {
+      getAvailableSnapshot: () => models,
+      getModel: (provider: string, id: string) => models.find((model) => model.provider === provider && model.id === id),
+      getError: () => undefined,
+      refresh: async () => ({ aborted: false, errors: new Map() }),
+    };
+    const component = new ModelSelectorComponent(
+      { terminal: { rows: 40 }, requestRender() {} },
+      models[0] as any,
+      {} as any,
+      runtime as any,
+      [],
+      () => {},
+      () => {},
+    );
+    const rendered = stripAnsi(component.render(100).join("\n"));
+    component.dispose();
+    expect(rendered).toContain("grok-4.6-fast [cursor]");
+    expect(rendered).toContain("grok-4.6 [xai]");
+    expect(rendered).not.toContain("cursor-grok-4.6");
   });
 });

@@ -36,6 +36,19 @@ test("Anthropic 이전 세대와 dated id 는 빠진다", () => {
   assert.deepEqual(kept.map((entry) => entry.id), [...ANTHROPIC_PICKER_IDS]);
 });
 
+test("Codex 피커는 base 묶음 다음 Fast 묶음이다", () => {
+  assert.deepEqual([...CODEX_PICKER_IDS], [
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol-fast",
+    "gpt-5.6-terra-fast",
+    "gpt-5.6-luna-fast",
+    "gpt-daybreak-blue-latest",
+    "gpt-daybreak-blue-latest-fast",
+  ]);
+});
+
 test("Codex 는 5.6과 Daybreak만 남긴다", () => {
   const kept = keepPickerIds(
     [model("gpt-5.4"), model("gpt-5.6-sol"), model("gpt-5.5"), model("gpt-daybreak-blue-latest")],

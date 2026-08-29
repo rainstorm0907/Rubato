@@ -45,7 +45,7 @@ Debugging is the case that tempts misrouting. The diagnosis is judgment, and jud
 
 ## 3. Current catalog mapping (operational — verify against the live catalog)
 
-Pinned 2026-08. Names are replaceable mappings, not universal claims.
+Pinned 2026-08-29. Names are replaceable mappings, not universal claims.
 
 Resolve the model at spawn time, in this order:
 
@@ -53,15 +53,15 @@ Resolve the model at spawn time, in this order:
 2. Choose the cognitive profile and, for an independent verifier, a different model family from the artifact's producer.
 3. Read the live catalog and copy the exact model id from it. Never reuse an id from memory or from an earlier lookup in the same session: catalog ids age faster than conversational context.
 4. A catalog entry proves only that the model is listed. Send one real call and require a successful response before relying on it.
-5. For a `task` agent using **Sol or Opus**, probe the equivalent `kiro/*` model first. This Kiro preference applies only to Sol and Opus; Grok uses the xAI route. If the Kiro model answers, use it to conserve other providers' quota; fall back to the equivalent external-provider model only when Kiro is unavailable or fails the probe.
-6. For a `task` spawn, pass only `prompt` and `model: "<live-catalog-id>"` as the target. Do not add a category or subagent persona: those are preset compatibility paths, while an exact model already fully selects the child. Team rosters expose categories rather than model ids, so this Kiro preference applies where the rail permits an exact model choice.
+5. For a `task` agent using **Sol or Opus**, probe the equivalent `kiro/*` model first. This Kiro preference applies only to Sol and Opus. For **Grok**, prefer Cursor Fast over xAI. If the preferred route answers, use it to conserve other providers' quota; fall back only when it is unavailable or fails the probe.
+6. For a `task` spawn, pass only `prompt` and `model: "<live-catalog-id>"` as the target. Do not add a category or subagent persona: those are preset compatibility paths, while an exact model already fully selects the child. Team rosters expose categories rather than model ids, so these provider preferences apply where the rail permits an exact model choice.
 
 Say in one line which model the agent runs on.
 
 - **Fable 5** — problem framer. Optional framing and human-outcome review before execution or at a rare alignment gate; do not create a standing Fable teammate by default.
 - **Opus 5** — structurer. Strong default lead and default owner; may own a highly coupled architectural outcome.
 - **GPT-5.6 Sol** — hypothesis converger. The supervisor seat: adversarial review, independent verification, second opinion on a diagnosis the owner is stuck on. Give Sol ownership only when the proof itself is the deliverable. Operator note (2026-08): Sol quota is the scarcer wallet; Opus is the default owner.
-- **Grok 4.6** — action converger. Owner when the contract is settled and breadth of execution is the hard part. A regular child like any other (`task` with a model, or `team_create` with category `grok`), not a separate CLI lane.
+- **Grok 4.6 Fast** — action converger. Owner when the contract is settled and breadth of execution is the hard part. Prefer the Cursor Fast id from the live catalog (`cursor/cursor-grok-4.6` on rubato; picker label `grok-4.6-fast`). Fall back to xAI `xai/grok-4.6` only when Cursor Fast is missing or the probe fails. A regular child like any other (`task` with that exact id, or `team_create` with category `grok`), not a separate CLI lane.
 
 Verifier defaults when an independent check is worth the cost:
 

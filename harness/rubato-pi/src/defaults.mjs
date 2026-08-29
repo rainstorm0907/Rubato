@@ -3,7 +3,7 @@ export const DEFAULT_MODEL_ID = "claude-opus-5";
 export const CACHE_RETENTION = "long";
 
 export const MODEL_CATEGORIES = Object.freeze({
-  grok: "xai/grok-4.6",
+  grok: "cursor/cursor-grok-4.6",
   opus: "anthropic/claude-opus-5",
   sonnet: "anthropic/claude-sonnet-5",
   fable: "anthropic/claude-fable-5",

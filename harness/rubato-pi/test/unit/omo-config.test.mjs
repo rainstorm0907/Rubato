@@ -5,6 +5,7 @@ import { loadRubatoPiOmoConfig, pinMemoryJobsToGrok } from "../../src/omo-config
 
 test("task config maps model names and disables omo category routing", () => {
   const { config } = loadRubatoPiOmoConfig();
+  assert.equal(MODEL_CATEGORIES.grok, "cursor/cursor-grok-4.6");
   assert.equal(config.models, undefined);
   for (const [name, model] of Object.entries(MODEL_CATEGORIES)) {
     assert.deepEqual(config.categories[name], { model });
