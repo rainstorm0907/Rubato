@@ -9,14 +9,19 @@ import {
 
 export const BRAND_NAME = "\u{1D493}\u{1D496}\u{1D483}\u{1D482}\u{1D495}\u{1D490}";
 export const BRAND_ASCII = "rubato";
-export const DISPLAY_VERSION = "0.0.4";
+export const RUBATO_VERSION = "0.0.5";
 export const CONFIG_DIR_NAME = ".rubato-pi";
 export const ENV_PREFIX = "RUBATO_PI";
 
-export function brandProfile() {
+function resolveRubatoVersion(env) {
+  const override = env?.RUBATO_VERSION;
+  return typeof override === "string" && override.trim() ? override.trim() : RUBATO_VERSION;
+}
+
+export function brandProfile(env) {
   return {
     name: BRAND_NAME,
-    displayVersion: DISPLAY_VERSION,
+    displayVersion: resolveRubatoVersion(env),
     configDir: CONFIG_DIR_NAME,
     flatLayout: false,
     envPrefix: ENV_PREFIX,
@@ -70,7 +75,8 @@ export function defaultMeasurementLogPath(agentDir, { now = () => new Date(), pi
 export function launchEnv(baseEnv, agentDir) {
   const env = { ...baseEnv };
   stripInheritedUpstream(env);
-  env.SENPI_BRAND = JSON.stringify(brandProfile());
+  env.RUBATO_VERSION = resolveRubatoVersion(env);
+  env.SENPI_BRAND = JSON.stringify(brandProfile(env));
   env.SENPI_CODING_AGENT_DIR = agentDir;
   env.RUBATO_PI_CODING_AGENT_DIR = agentDir;
   // telemetry 를 끄는 값. `packages/telemetry-core/src/env.ts:39` 가 이것을 읽는다.

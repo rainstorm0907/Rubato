@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { delimiter } from "node:path";
 import {
+  RUBATO_VERSION,
   brandProfile,
   defaultAgentDir,
   defaultMeasurementLogPath,
@@ -19,7 +20,8 @@ test("brand is rubato and never uses the omo config dir", () => {
   assert.equal(brand.name, "\u{1D493}\u{1D496}\u{1D483}\u{1D482}\u{1D495}\u{1D490}");
   assert.equal(brand.userAgent, "rubato");
   assert.equal(brand.originator, "rubato");
-  assert.equal(brand.displayVersion, "0.0.4");
+  assert.equal(RUBATO_VERSION, "0.0.5");
+  assert.equal(brand.displayVersion, RUBATO_VERSION);
   assert.equal(brand.configDir, ".rubato-pi");
   assert.equal(brand.envPrefix, "RUBATO_PI");
   assert.match(defaultAgentDir("/tmp/home"), /\/\.rubato-pi\/agent$/);
@@ -38,11 +40,19 @@ test("launch env isolates state and clears the upstream native badge", () => {
   const parsed = JSON.parse(env.SENPI_BRAND);
   assert.equal(parsed.name, "\u{1D493}\u{1D496}\u{1D483}\u{1D482}\u{1D495}\u{1D490}");
   assert.equal(parsed.userAgent, "rubato");
-  assert.equal(parsed.displayVersion, "0.0.4");
+  assert.equal(parsed.displayVersion, RUBATO_VERSION);
+  assert.equal(env.RUBATO_VERSION, RUBATO_VERSION);
   assert.equal(parsed.configDir, ".rubato-pi");
   assert.equal(env.PI_CACHE_RETENTION, "long");
   // canonical 이름만 넘긴다. 예전 FX_CACHE_RETENTION 은 삭제된 FX bridge config 만 읽었다.
   assert.equal(env.FX_CACHE_RETENTION, undefined);
+});
+
+test("RUBATO_VERSION overrides the senpi brand display version", () => {
+  const env = launchEnv({ HOME: "/tmp/home", RUBATO_VERSION: "9.9.9" }, "/tmp/home/.rubato-pi/agent");
+  assert.equal(env.RUBATO_VERSION, "9.9.9");
+  assert.equal(JSON.parse(env.SENPI_BRAND).displayVersion, "9.9.9");
+  assert.equal(brandProfile().displayVersion, RUBATO_VERSION);
 });
 
 // 배경 memory 에이전트(reflection/dream/facts)은 --no-extensions 로 뜬다. 우리 프로바이더는
