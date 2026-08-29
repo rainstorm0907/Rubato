@@ -23,8 +23,12 @@ function warn(message) {
  * 위를 덮는 두 번째 등록이었다. 이제 합성할 catalog 도, 덮을 대상도 없다 — pinned pi-ai
  * factory 가 모델 metadata 의 유일한 권위다.
  */
-export async function supportedProviders({ env = process.env, antigravity } = {}) {
-  return await directProviders({ env, ...(antigravity ? { antigravity } : {}) });
+export async function supportedProviders({ env = process.env, antigravity, cursor } = {}) {
+  return await directProviders({
+    env,
+    ...(antigravity ? { antigravity } : {}),
+    ...(cursor ? { cursor } : {}),
+  });
 }
 
 /**
@@ -72,7 +76,11 @@ export default async function providerOverlay(pi, {
   // `env` 를 넘긴다. 넘기지 않으면 native 층이 `process.env` 를 다시 읽고, 격리된
   // 세션(별도 profile, 별도 gate)이 그 지점에서 깨진다.
   const antigravity = {};
-  const natives = await supportedProviders({ env, antigravity });
+  const natives = await supportedProviders({
+    env,
+    antigravity,
+    cursor: { reactivateOnCredentialRotation: parentSession(process.argv) },
+  });
   // 이관 결과를 삼키지 않는다. pinned ExtensionAPI 에는 `log` 가 없어서(agent-session.js
   // 의 extension 객체를 확인했다) `pi.log?.()` 는 영원히 조용한 no-op 이 된다. 그래서
   // 관측 가능한 두 경로만 쓴다: 이관이 **필요한데** 입력이 깨져 막힌 경우는 던지고,

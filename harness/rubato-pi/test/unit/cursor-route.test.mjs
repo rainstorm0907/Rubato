@@ -487,6 +487,42 @@ test("증명은 정적 활성화가 되지 않는다: 자격증명·catalog 세�
   }
 });
 
+test("부모는 재로그인 뒤 오프라인 동기화에서 canary를 다시 돈다", async () => {
+  const store = memoryMarkerStore();
+  const parent = withCursorActivationCanary(
+    pinnedShapedCursor({ fetchModels: async () => [discoveredModel("composer-1")] }),
+    { markerStore: store, run: async () => ({ stopReason: "stop" }) },
+  );
+  const first = await twoPhaseRefresh(parent, { storedCredential: CREDENTIAL });
+  const persisted = first.published.at(-1).persist;
+  const previousMarker = store.text;
+  const rotated = { ...CREDENTIAL, refresh: "after-relogin" };
+  let runs = 0;
+  const decisions = [];
+  const reactivated = withCursorActivationCanary(
+    pinnedShapedCursor({ fetchModels: async () => { throw new Error("offline reactivate must not discover"); } }),
+    {
+      markerStore: store,
+      reactivateOnCredentialRotation: true,
+      onDecision: (decision) => decisions.push(decision),
+      run: async ({ credential }) => {
+        runs += 1;
+        assert.equal(credential.refresh, rotated.refresh);
+        return { stopReason: "stop" };
+      },
+    },
+  );
+  const { published } = await twoPhaseRefresh(reactivated, {
+    store: persisted,
+    storedCredential: rotated,
+    allowNetwork: false,
+  });
+  assert.equal(runs, 1, "재로그인 오프라인 동기화가 canary를 건너뛰었다");
+  assert.equal(published.length, 1, "canary 뒤에 저장분이 공개되지 않았다");
+  assert.notEqual(store.text, previousMarker, "새 자격증명으로 marker를 다시 발급하지 않았다");
+  assert.equal(decisions.some((decision) => decision.ok && decision.phase === "activate"), true);
+});
+
 test("증명 판정은 전부 fail closed 고, 세대는 값을 담지 않는다", () => {
   const models = [discoveredModel("composer-1")];
   const marker = issueCursorActivationMarker({ credential: CREDENTIAL, models, now: 1_000 });
@@ -680,4 +716,19 @@ test("server-exec 표지와 local-work 위임은 pinned 그대로다", async () 
   releaseWork();
   inner.push({ type: "done", reason: "stop", message: { role: "assistant", content: [], stopReason: "stop" } });
   inner.end();
+});
+
+test("피커 filterModels 는 쓰던 일곱만 남긴다", async () => {
+  const provider = await cursorDirectProvider({
+    provider: pinnedShapedCursor({ fetchModels: async () => [] }),
+    markerStore: memoryMarkerStore(),
+    run: async () => ({ stopReason: "stop" }),
+  });
+  const filtered = provider.filterModels([
+    discoveredModel("claude-opus-4-7"),
+    discoveredModel("composer-2.5"),
+    discoveredModel("gpt-5.6-sol"),
+    discoveredModel("default"),
+  ]);
+  assert.deepEqual(filtered.map((model) => model.id), ["gpt-5.6-sol", "composer-2.5"]);
 });

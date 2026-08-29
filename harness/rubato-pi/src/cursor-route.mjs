@@ -18,6 +18,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { pinCursorGrokFastSelection } from "./cursor-grok-fast.mjs";
+import { presentCursorPicker } from "./cursor-picker.mjs";
 import { senpiNested } from "./engine-paths.mjs";
 
 export const CURSOR_PROVIDER_ID = "cursor";
@@ -402,8 +404,9 @@ function wrapCursorHttp2Stream(inner) {
 function wrapCursorHttp2Fn(inner) {
   if (typeof inner !== "function") return inner;
   return (model, context, options) => {
+    const pinned = pinCursorGrokFastSelection(model, options);
     try {
-      return wrapCursorHttp2Stream(inner(model, context, options));
+      return wrapCursorHttp2Stream(inner(pinned.model, context, pinned.options));
     } catch (error) {
       throw rewriteCursorHttp2Error(error);
     }
@@ -490,6 +493,10 @@ export function withCursorActivationCanary(provider, {
   markerStore,
   now = Date.now,
   ttlMs = CURSOR_ACTIVATION_TTL_MS,
+  // Senpi `/login` 직후 동기화는 allowNetwork:false 다. 재로그인은 refresh token
+  // 을 바꾸므로 옛 marker 가 죽고, 오프라인 복원은 모델을 숨긴 채 끝난다. 부모
+  // 세션만 그 자리에서 canary 를 다시 돌린다 — 격리 자식이 각자 Run 하면 안 된다.
+  reactivateOnCredentialRotation = false,
 } = {}) {
   const nativeRefresh = provider.refreshModels;
   if (typeof nativeRefresh !== "function") throw new Error("pinned cursorProvider has no refreshModels to gate");
@@ -561,6 +568,29 @@ export function withCursorActivationCanary(provider, {
           ttlMs,
         });
         if (!verdict.ok) {
+          const stored = storedCursorModels(context);
+          if (
+            reactivateOnCredentialRotation &&
+            verdict.reason === "credential_generation_mismatch" &&
+            stored.length > 0 &&
+            cursorAccessToken(context.credential)
+          ) {
+            await gate({ models: stored, credential: context.credential, signal: context.signal });
+            const rotated = issueCursorActivationMarker({
+              credential: context.credential,
+              models: stored,
+              now: now(),
+            });
+            if (rotated) {
+              try {
+                store.write(`${JSON.stringify(rotated)}\n`);
+              } catch {
+                onDecision?.({ ok: false, phase: "persist_marker", reason: "write_failed", fallbackEligible: false });
+              }
+            }
+            await release(context, publications);
+            return;
+          }
           onDecision?.({
             ok: false,
             phase: "restore",
@@ -621,13 +651,23 @@ function withCursorHttp2Errors(provider) {
   };
 }
 
+function withCursorPickerPresentation(provider) {
+  const nativeFilter = provider.filterModels;
+  return {
+    ...provider,
+    filterModels: (models, credential) =>
+      presentCursorPicker(nativeFilter ? nativeFilter(models, credential) : models),
+  };
+}
+
 /**
  * 직결에 등록할 Cursor provider. pinned provider + canary gate 뿐이다.
  *
  * `restoreModels`, `auth.oauth`, `api`(cursor-agent), `baseUrl`, exec 의미는 전부
- * pinned 그대로 남는다. `getModels` 도 감싸지 않는다 — 공개 시점만 바꾼다.
+ * pinned 그대로 남는다. 모델 정의는 만들지 않는다 — 공개 시점만 바꾸고, 피커에는
+ * 쓰던 일곱과 Cursor Grok 4.6 Fast 정체성만 보여 준다.
  */
 export async function cursorDirectProvider(options = {}) {
   const native = options.provider ?? (await loadPinnedCursorProvider());
-  return withCursorActivationCanary(withCursorHttp2Errors(native), options);
+  return withCursorPickerPresentation(withCursorActivationCanary(withCursorHttp2Errors(native), options));
 }

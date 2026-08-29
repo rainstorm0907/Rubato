@@ -100,6 +100,8 @@ export function formatModelWithEffort(modelId, level) {
 function isFastModel(modelId) {
   if (!modelId) return false;
   const bare = String(modelId).split("/").pop().split(":", 1)[0];
+  // Cursor Grok 4.6 은 피커 id 가 Fast 가 아니지만 wire 는 Fast 다.
+  if (bare === "cursor-grok-4.6") return true;
   return /(?:^|[-.])fast$/i.test(bare);
 }
 
