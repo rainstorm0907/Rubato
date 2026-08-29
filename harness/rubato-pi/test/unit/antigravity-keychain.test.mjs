@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
   ANTIGRAVITY_PROVIDER_ID,
   antigravityCredentialFromKeychain,
+  antigravityCredentialPresent,
   decodeAntigravityKeychainSecret,
   importAntigravityKeychainCredential,
   readAntigravityKeychainSecret,
+  readStoredAntigravityCredential,
 } from "../../src/antigravity-keychain-import.mjs";
 
 function encodedSecret({ access = "access-test", refresh = "refresh-test", expiry = "2099-01-01T00:00:00Z" } = {}) {
@@ -110,6 +112,33 @@ test("import는 target lock 안에서 no-overwrite하고 두 번째 호출은 sk
   assert.match(FakeBackend.current, /winner/);
 });
 
+test("project 조회가 실패하면 expires=0으로 저장하고 거절하지 않는다", async () => {
+  FakeBackend.current = "{}";
+  FakeBackend.next = undefined;
+  const child = fakeChild();
+  const result = await importAntigravityKeychainCredential({
+    enabled: true,
+    targetPath: "/tmp/rubato-antigravity-expired-access-test.json",
+    read: () => { throw Object.assign(new Error("absent"), { code: "ENOENT" }); },
+    spawnImpl: () => {
+      queueMicrotask(() => {
+        child.stdout.emit("data", Buffer.from(encodedSecret()));
+        child.emit("close", 0);
+      });
+      return child;
+    },
+    resolveProjectId: async () => {
+      throw new Error("Antigravity loadCodeAssist failed (401)");
+    },
+    backendFactory: FakeBackend,
+    ReadOnlyAuthStorage: FakeReadOnlyAuthStorage,
+  });
+  assert.equal(result.status, "imported");
+  const imported = JSON.parse(FakeBackend.next)[ANTIGRAVITY_PROVIDER_ID];
+  assert.equal(imported.expires, 0);
+  assert.equal(imported.env, undefined);
+});
+
 test("project env가 없으면 import 전에 project를 발견해 credential에 고정한다", async () => {
   FakeBackend.current = "{}";
   FakeBackend.next = undefined;
@@ -136,6 +165,20 @@ test("project env가 없으면 import 전에 project를 발견해 credential에 
   assert.equal(result.status, "imported");
   assert.equal(seenAccess, "access-test");
   assert.equal(JSON.parse(FakeBackend.next)[ANTIGRAVITY_PROVIDER_ID].env.RUBATO_ANTIGRAVITY_PROJECT, "discovered-project");
+});
+
+test("broker sentinel은 있는 자격이 아니다", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rubato-antigravity-sentinel-"));
+  const targetPath = join(dir, "auth.json");
+  writeFileSync(targetPath, `${JSON.stringify({
+    [ANTIGRAVITY_PROVIDER_ID]: { type: "oauth", access: "local", refresh: "rubato-broker", expires: 1 },
+  })}\n`);
+  try {
+    assert.equal(antigravityCredentialPresent(targetPath, { ReadOnlyAuthStorage: FakeReadOnlyAuthStorage }), false);
+    assert.equal(readStoredAntigravityCredential(targetPath), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("import는 abort를 keychain_unavailable로 삼키지 않는다", async () => {

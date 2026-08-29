@@ -80,6 +80,33 @@ test("OAuth refresh가 project를 못 받으면 credential을 만들지 않는�
   assert.equal(readFileImpl.calls.length, 1, "refresh가 주입한 client file을 읽지 않았다");
 });
 
+test("login은 Google OAuth 뒤에 project를 붙여 credential을 돌려준다", async () => {
+  const events = [];
+  const oauth = antigravityOAuth({
+    env: {},
+    readFileImpl: oauthClientsFile(),
+    fetchImpl: async (url) => {
+      if (String(url).includes("v1internal:loadCodeAssist")) {
+        return response({ cloudaicompanionProject: "project-a" });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+    loginGoogle: async ({ interaction, clients }) => {
+      assert.equal(clients.length, 1);
+      interaction.notify({ type: "auth_url", url: "https://accounts.google.com/o/oauth2/v2/auth?client_id=client" });
+      return { type: "oauth", access: "ak", refresh: "rk", expires: Date.now() + 60_000 };
+    },
+  });
+  const credential = await oauth.login({
+    notify: (event) => events.push(event),
+    prompt: async () => { throw new Error("login must not fall back to text input"); },
+  });
+  assert.equal(events[0]?.type, "auth_url");
+  assert.match(events[0].url, /accounts\.google\.com/);
+  assert.equal(credential.access, "ak");
+  assert.equal(credential.env.RUBATO_ANTIGRAVITY_PROJECT, "project-a");
+});
+
 test("provider endpoint는 HTTPS와 loopback만 허용한다", async () => {
   const factory = (definition) => definition;
   await assert.rejects(

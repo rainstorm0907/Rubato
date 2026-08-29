@@ -157,8 +157,14 @@ async function loadAuthStorageModule() {
   return await import(pathToFileURL(join(senpiDir, "dist/core/auth-storage.js")).href);
 }
 
+/** broker 시절 표지. 실 토큰이 아니다. */
+export function isBrokerSentinel(entry) {
+  return entry?.refresh === "rubato-broker" || entry?.access === "local";
+}
+
 /**
  * 대상에 이 provider 자격증명이 이미 있는가. 값은 보지 않는다.
+ * broker sentinel 은 자격이 아니다 — 있으면 Keychain import 를 막는다.
  */
 export function antigravityCredentialPresent(targetPath, { read = readFileSync, ReadOnlyAuthStorage } = {}) {
   let raw;
@@ -174,9 +180,25 @@ export function antigravityCredentialPresent(targetPath, { read = readFileSync, 
     return false;
   }
   if (!isObject(parsed)) return false;
-  if (!(ANTIGRAVITY_PROVIDER_ID in parsed)) return false;
+  const entry = parsed[ANTIGRAVITY_PROVIDER_ID];
+  if (!isObject(entry) || isBrokerSentinel(entry)) return false;
   if (!ReadOnlyAuthStorage) return true;
-  return credentialShapeWith(ReadOnlyAuthStorage, ANTIGRAVITY_PROVIDER_ID, parsed[ANTIGRAVITY_PROVIDER_ID]).ok;
+  return credentialShapeWith(ReadOnlyAuthStorage, ANTIGRAVITY_PROVIDER_ID, entry).ok;
+}
+
+/** login() 이 AuthStorage.set 에 넘길 credential. 값은 로그하지 않는다. */
+export function readStoredAntigravityCredential(targetPath, { read = readFileSync } = {}) {
+  let parsed;
+  try {
+    parsed = JSON.parse(read(targetPath, "utf-8"));
+  } catch {
+    return undefined;
+  }
+  const entry = parsed?.[ANTIGRAVITY_PROVIDER_ID];
+  if (!isObject(entry) || isBrokerSentinel(entry)) return undefined;
+  if (typeof entry.access !== "string" || entry.access.length === 0) return undefined;
+  if (typeof entry.refresh !== "string" || entry.refresh.length === 0) return undefined;
+  return entry;
 }
 
 /**
@@ -224,12 +246,16 @@ export async function importAntigravityKeychainCredential({
 
   // 3) project를 import 시점에 확정한다. project 없는 access token을 저장하면 pinned
   // resolver가 refresh 전에 아직 유효하다고 보고 request를 보내, transport env가 빈다.
+  // access 가 이미 만료면 loadCodeAssist 가 401 이다. 그때는 거절하지 않고 expires=0
+  // 으로 저장한다 — `antigravityCredentialFromKeychain` 이 그 계약을 갖고 있다.
   let resolvedProjectId = projectId;
   if ((!resolvedProjectId || typeof resolvedProjectId !== "string") && typeof resolveProjectId === "function") {
-    resolvedProjectId = await resolveProjectId(token, { signal });
-  }
-  if (typeof resolvedProjectId !== "string" || resolvedProjectId.length === 0) {
-    return { status: "rejected", reason: "missing_project_id" };
+    try {
+      resolvedProjectId = await resolveProjectId(token, { signal });
+    } catch (error) {
+      if (isAbort(error, signal)) throw error;
+      resolvedProjectId = undefined;
+    }
   }
 
   // 쓰기 전에 검증한다. 엔진이 거절할 항목을 우리가 넣으면 파일 전체가 거절된다.

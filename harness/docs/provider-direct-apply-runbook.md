@@ -121,19 +121,16 @@ rubato
 - 도구를 쓰는 턴을 하나 돌린다 — exec journal이 붙는 경로다
 - Kiro 모델로 한 턴 돌린다 — 사이드카 `:8990` 의존이 남은 유일한 자리다
 
-### 5. 브릿지를 물러나게 한다 (선택, 마지막)
+### 5. 브릿지를 물러나게 한다 (마지막)
 
-여기까지는 저장소에서 bridge를 지운 것이고, **살아 있는 listener는 그대로다.** 다른 클론에서
-돌고 있어서 이 작업이 닿지 않았다.
+저장소에서 bridge를 지운 뒤에도 LaunchAgent와 옛 `server.ts` listener가 남을 수 있다.
+물러나게 하면 그 포트에 붙어 있던 세션이 멈춘다. 같이 고칠 것:
 
-물러나게 하려면 그 클론과 LaunchAgent를 따로 처리해야 하고, 그 순간 **그 브릿지에 붙어 있는
-모든 세션이 멈춘다.** 급할 이유가 없으므로 다음 조건이 다 맞을 때 한다:
-
-- 위 1~4단계가 라이브에서 통과했다
-- 그 브릿지를 쓰는 다른 세션이 없다
-- `agent-taskforce` 정본의 `skills/agent-taskforce/runtimes/pi.md` 를 같이 갱신한다 — 지금 그
-  파일은 "모델 호출은 `:8788` broker로 간다"고 적고, 그것은 **라이브 하네스에 대해 아직 맞는
-  서술**이다. 브릿지를 물러나게 하는 시점에 함께 고쳐야 에이전트가 없는 경로를 향하지 않는다
+- `dev.rubato.bridge` LaunchAgent disable + bootout, plist 삭제
+- 남아 있는 `:8788` listener 종료
+- `rbr` / `rubato-restart` alias 제거 (`install.sh --only-shell --apply`)
+- `agent-taskforce` 정본 `skills/agent-taskforce/runtimes/pi.md` — 직결 서술로 갱신.
+  `:8788` broker 문장을 남겨 두면 에이전트가 없는 경로를 향한다
 
 ## 되돌리기
 

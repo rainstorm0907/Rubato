@@ -18,6 +18,7 @@ import {
 } from "./antigravity-state.mjs";
 import { defaultTargetAuthPath, resolveAgentDirFromEnv } from "./credential-import.mjs";
 import { senpiNested } from "./engine-paths.mjs";
+import { loginAntigravityGoogle } from "./antigravity-oauth-login.mjs";
 
 export const ANTIGRAVITY_PROVIDER_ID = "google-antigravity";
 export const ANTIGRAVITY_OAUTH_FILE_ENV = "RUBATO_ANTIGRAVITY_OAUTH_FILE";
@@ -115,6 +116,7 @@ export function antigravityOAuth({
   fetchImpl = globalThis.fetch,
   readFileImpl = readFileSync,
   endpoint = endpointFromEnv(env),
+  loginGoogle = loginAntigravityGoogle,
 } = {}) {
   const refresh = async (credential, signal) => {
     const clients = oauthClients(env, readFileImpl);
@@ -154,14 +156,16 @@ export function antigravityOAuth({
   return {
     name: "Google Antigravity",
     isSubscription: true,
-    loginLabel: "Import Antigravity credentials from macOS Keychain",
+    loginLabel: "Sign in with Google",
     async login(interaction) {
-      interaction.notify({
-        type: "info",
-        message: "Run Rubato Engine once with Antigravity installed; its Keychain credential is imported automatically.",
+      const clients = oauthClients(env, readFileImpl);
+      const tokens = await loginGoogle({
+        interaction,
+        clients,
+        fetchImpl,
       });
-      await interaction.prompt({ type: "text", message: "Press Enter after the credential import completes" });
-      throw new Error("Antigravity credential import requires restarting Rubato Engine");
+      const project = await loadAntigravityProjectId(tokens.access, endpoint, fetchImpl, interaction?.signal);
+      return { ...tokens, env: { [ANTIGRAVITY_PROJECT_ENV]: project } };
     },
     refresh,
     async toAuth(credential) {
