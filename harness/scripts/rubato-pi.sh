@@ -64,6 +64,17 @@ fi
 splash step "프롬프트"
 "$HERE/../prompts/build.sh" >/dev/null
 
+# msearch 가 죽어도 세션은 멀쩡히 떠서 죽음이 보이지 않는다 — 쓰기(memory 도구)는
+# 검색과 별개로 멀쩡해서 더 안 보인다. 한 머신에서 검색이 이틀 넘게 죽어
+# 있었는데 세션들이 과거 교훈을 못 읽으며 같은 실수를 반복했다. 죽어 있을
+# 때만 한 줄 남기고 세션은 막지 않는다.
+MSEARCH_BIN="$HERE/../msearch/msearch"
+if [ -z "${RUBATO_NO_MSEARCH_CHECK-}" ] && [ -x "$MSEARCH_BIN" ]; then
+  if ! MSEARCH_NOTE="$("$MSEARCH_BIN" --health 2>&1 >/dev/null)"; then
+    printf 'rubato: 기억 검색(msearch)이 죽어 있다 — %s\n' "${MSEARCH_NOTE:-원인 불명}" >&2
+  fi
+fi
+
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 # node 를 찾는 곳은 한 군데다. 예전에는 여기서 nvm 경로를 박아 뒀는데, 그 버전이
 # 사라지면 조용히 PATH 의 아무 node 로 떨어졌다.
