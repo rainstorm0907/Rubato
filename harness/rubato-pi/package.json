@@ -12,7 +12,8 @@
     "test": "node --test test/unit/*.test.mjs",
     "test:integration": "node --test test/integration/*.test.mjs",
     "smoke:local": "node test/smoke/local.mjs",
-    "smoke:real": "node test/smoke/real.mjs"
+    "smoke:real": "node test/smoke/real.mjs",
+    "smoke:direct": "node test/smoke/direct-real.mjs"
   },
   "dependencies": {
     "omo-ai": "5.0.0-0.beta.16"

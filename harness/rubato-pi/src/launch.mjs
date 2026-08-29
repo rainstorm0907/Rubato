@@ -4,7 +4,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultAgentDir, launchEnv } from "./brand.mjs";
 import { ensureAgentExtensions } from "./agent-extensions.mjs";
-import { ensureBroker, loadCatalog } from "./broker.mjs";
 import { PIN } from "./policy.mjs";
 import { resolveRole } from "./role-contract.mjs";
 import { listNodeCandidates, pickNode, runningNode } from "./select-node.mjs";
@@ -33,8 +32,8 @@ export function adapterPath() {
   return join(root, "src/extensions/adapter.mjs");
 }
 
-export function brokerOverlayPath() {
-  return join(root, "src/extensions/broker-overlay.mjs");
+export function providerOverlayPath() {
+  return join(root, "src/extensions/provider-overlay.mjs");
 }
 
 export function readPinnedVersions() {
@@ -89,7 +88,7 @@ export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
     "-e",
     leadOverlayPath(),
     "-e",
-    brokerOverlayPath(),
+    providerOverlayPath(),
     "-e",
     adapterPath(),
     ...userArgs,
@@ -98,17 +97,15 @@ export function buildSenpiArgs(userArgs, { env = process.env } = {}) {
 
 export async function spawnRubatoPi({ args = process.argv.slice(2), env = process.env, agentDir = defaultAgentDir() } = {}) {
   assertExactPin();
-  ensureBroker({ env });
   const node = resolveNode24();
   mkdirSync(agentDir, { recursive: true });
-  // 카탈로그는 매번 받는다. 파일이 "이미 맞다"를 폴백 id 로만 보면
-  // 브로커가 새로 연 프로바이더가 disabled 에 영영 남는다.
-  // 쓰기를 건너뛰는 판단도 방금 받은 목록 기준이다.
   // 우리가 소유한 전역 확장(현재 tps)을 senpi 가 자기 기본판으로 되돌리기 전에 깐다.
   ensureAgentExtensions(agentDir);
-  const catalog = await loadCatalog({ env });
-  if (!sessionDefaultsLookCurrent(agentDir, { catalog })) {
-    ensureSessionDefaults(agentDir, { catalog });
+  // 지원 provider 는 정적이다. 예전에는 bridge 카탈로그를 매번 받아서 "새로 열린
+  // 프로바이더가 disabled 에 영영 남는" 경우를 막았는데, 이제 등록하는 것이 pinned
+  // native factory 뿐이라 런타임에 물을 대상이 없다.
+  if (!sessionDefaultsLookCurrent(agentDir)) {
+    ensureSessionDefaults(agentDir);
   }
   if (!existsSync(senpiCliPath())) {
     throw new Error("pinned senpi CLI is missing; run npm install in harness/rubato-pi");

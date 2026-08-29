@@ -95,10 +95,11 @@ test("nvm is consulted before PATH", () => {
   }
 });
 
-test("both launchers go through the shared resolver", () => {
-  // 셋이 각자 다른 방식으로 node 를 찾는 상태가 이 파일이 생긴 이유다.
+test("launcher goes through the shared resolver", () => {
+  // 셋이 각자 다른 방식으로 node 를 찾는 상태가 이 파일이 생긴 이유다. FX bridge 를
+  // 지우면서 `start.sh` 가 사라졌으므로 남은 진입점은 세션 런처 하나다.
   assert.ok(existsSync(FIND_NODE));
-  for (const name of ["rubato-pi.sh", "start.sh"]) {
+  for (const name of ["rubato-pi.sh"]) {
     const source = readFileSync(fileURLToPath(new URL(`../../../scripts/${name}`, import.meta.url)), "utf8");
     assert.match(source, /find-node\.sh/, `${name} 이 공통 해석기를 쓰지 않는다`);
     assert.doesNotMatch(source, /^exec node /m, `${name} 이 PATH 의 node 를 그대로 실행한다`);

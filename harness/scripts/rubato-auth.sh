@@ -17,8 +17,18 @@ miss() { printf '  %s✗%s %s\n' "$YEL" "$RST" "$1"; }
 hint() { printf '      %s%s%s\n' "$DIM" "$1" "$RST"; }
 
 SENPI_AUTH="${SENPI_AUTH_PATH:-$HOME/.senpi/agent/auth.json}"
-ACCOUNT="${FX_CLAUDE_ACCOUNT:-sub}"
-TOKEN_FILE="${FX_CLAUDE_SETUP_TOKEN_FILE:-$HOME/.claude/auth/setup-token-$ACCOUNT}"
+# 정식 이름이 먼저다. `anthropic-setup-token.mjs` 가 `RUBATO_CLAUDE_*` 를 읽으므로, 이
+# 스크립트가 legacy 만 보면 정식 이름을 설정한 사람이 서로 다른 계정을 보게 된다.
+# legacy `FX_CLAUDE_*` 는 배포 대상이 다 옮겨질 때까지 읽고, 쓰였을 때 한 번만 알린다.
+ACCOUNT="${RUBATO_CLAUDE_ACCOUNT:-${FX_CLAUDE_ACCOUNT:-sub}}"
+TOKEN_FILE="${RUBATO_CLAUDE_SETUP_TOKEN_FILE:-${FX_CLAUDE_SETUP_TOKEN_FILE:-$HOME/.claude/auth/setup-token-$ACCOUNT}}"
+
+if [ -z "${RUBATO_CLAUDE_ACCOUNT-}" ] && [ -n "${FX_CLAUDE_ACCOUNT-}" ]; then
+  printf 'note: FX_CLAUDE_ACCOUNT 는 옛 이름이다. RUBATO_CLAUDE_ACCOUNT 로 바꿔라.\n' >&2
+fi
+if [ -z "${RUBATO_CLAUDE_SETUP_TOKEN_FILE-}" ] && [ -n "${FX_CLAUDE_SETUP_TOKEN_FILE-}" ]; then
+  printf 'note: FX_CLAUDE_SETUP_TOKEN_FILE 는 옛 이름이다. RUBATO_CLAUDE_SETUP_TOKEN_FILE 로 바꿔라.\n' >&2
+fi
 
 # auth.json 에 특정 provider 키가 살아 있는지. 만료 시각도 같이 본다.
 senpi_has() {
@@ -65,7 +75,6 @@ if left="$(senpi_has openai-codex)"; then
 else
   miss "Codex — 없다"
   hint "senpi /login 으로 OpenAI Codex 를 로그인한다"
-  hint "OpenCodex 는 이제 선택이다 — 없어도 Codex 는 이 OAuth 로 직접 간다"
 fi
 
 # --- Claude (장기 토큰)
@@ -77,17 +86,8 @@ else
   miss "Claude — 없다 (계정: $ACCOUNT)"
   hint "claude setup-token 을 돌려 sk-ant-oat... 를 받는다"
   hint "받은 값을 파일로: mkdir -p ~/.claude/auth && pbpaste > $TOKEN_FILE"
-  hint "계정 이름을 바꾸려면 FX_CLAUDE_ACCOUNT 를 설정한다"
+  hint "계정 이름을 바꾸려면 RUBATO_CLAUDE_ACCOUNT 를 설정한다"
 fi
 
-printf '\n%s브리지%s\n' "$BOLD" "$RST"
-if curl -sf --max-time 2 http://127.0.0.1:8788/health >/dev/null 2>&1; then
-  count="$(curl -sf --max-time 3 http://127.0.0.1:8788/v1/models 2>/dev/null \
-    | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("data",[])))' 2>/dev/null || echo '?')"
-  ok "돌고 있다 (:8788), 모델 $count 개"
-else
-  miss "브리지가 안 돈다"
-  hint "rubato-restart 로 띄운다. 모델 호출은 전부 이것을 지난다"
-fi
 echo
 exit 0

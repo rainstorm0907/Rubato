@@ -1,5 +1,0 @@
-event: response.failed
-data: {"type":"response.failed","response":{"status":"failed","error":{"code":"provider_down","message":"wafer route unavailable"}}}
-
-data: [DONE]
-

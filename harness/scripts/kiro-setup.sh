@@ -194,7 +194,25 @@ EOF
 
 require_docker() {
   command -v docker >/dev/null 2>&1 || die "docker 가 없다. OrbStack 이나 Docker Desktop 을 설치해라."
-  docker info >/dev/null 2>&1 || die "docker 데몬이 꺼져 있다. OrbStack/Docker Desktop 을 켜라."
+  docker_ready || die "docker 데몬이 꺼져 있다. OrbStack/Docker Desktop 을 켜라."
+}
+
+# Docker Desktop 이 앱만 남고 VM 은 꺼진 상태면 `docker info` 자체가 오래
+# 매달린다. Kiro 첫 요청이 무한히 묶이지 않도록 모든 readiness probe 를 제한한다.
+docker_ready() {
+  python3 - <<'PY'
+import subprocess, sys
+try:
+    result = subprocess.run(
+        ["docker", "info"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=3,
+    )
+except (OSError, subprocess.TimeoutExpired):
+    sys.exit(1)
+sys.exit(result.returncode)
+PY
 }
 
 kiro_ready() {
@@ -210,7 +228,7 @@ kiro_ready() {
 # 시스템 Docker 는 OS supervisor 소유라 여기서 sudo 로 건드리지 않는다.
 ensure_docker() {
   command -v docker >/dev/null 2>&1 || return 1
-  docker info >/dev/null 2>&1 && return 0
+  docker_ready && return 0
 
   if [ "$(uname -s)" = "Darwin" ] && command -v open >/dev/null 2>&1; then
     local context endpoint app=""
@@ -232,7 +250,15 @@ ensure_docker() {
         fi
         ;;
     esac
-    [ -n "$app" ] && open -gja "$app" >/dev/null 2>&1 || true
+    if [ "$app" = "Docker" ] && docker desktop status >/dev/null 2>&1; then
+      docker desktop restart --detach --timeout 30 >/dev/null 2>&1 \
+        || open -gja Docker >/dev/null 2>&1 || true
+    elif [ "$app" = "Docker" ]; then
+      docker desktop start --detach --timeout 30 >/dev/null 2>&1 \
+        || open -gja Docker >/dev/null 2>&1 || true
+    else
+      [ -n "$app" ] && open -gja "$app" >/dev/null 2>&1 || true
+    fi
   elif [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1; then
     # Docker Desktop for Linux 는 user unit 이다. 시스템 docker.service 는
     # root supervisor 소유이므로 비밀번호 없는 우회 기동을 시도하지 않는다.
@@ -241,14 +267,15 @@ ensure_docker() {
 
   local i
   for i in $(seq 1 30); do
-    docker info >/dev/null 2>&1 && return 0
+    docker_ready && return 0
     sleep 1
   done
   return 1
 }
 
 ensure_sidecar() {
-  [ -f "$KIRO_DIR/config.json" ] && [ -f "$KIRO_DIR/credentials.json" ] || return 0
+  [ -f "$KIRO_DIR/config.json" ] && [ -f "$KIRO_DIR/credentials.json" ] \
+    || die "Kiro 설정이 없다. 먼저 kiro-setup.sh setup 또는 import <파일>을 실행해라."
   kiro_ready && return 0
   ensure_docker || return 1
 
@@ -337,7 +364,7 @@ PY
   [ "$out" = "healed" ] || return 0
 
   # 파일을 고치면 떠 있는 kiro.rs 는 예전 메모리를 그대로 쓴다.
-  if docker inspect -f '{{.State.Running}}' "$KIRO_CONTAINER" 2>/dev/null | grep -qx true; then
+  if docker_ready && docker inspect -f '{{.State.Running}}' "$KIRO_CONTAINER" 2>/dev/null | grep -qx true; then
     docker restart "$KIRO_CONTAINER" >/dev/null 2>&1 || true
   fi
   return 0
@@ -398,9 +425,10 @@ EOF
     ;;
 
   ensure)
-    # rubato 기동이 부른다. 자격 파일이 있는 기기에서만 Docker와 사이드카를
-    # 복원한다. 설정하지 않은 기기에는 Docker 의존성을 만들지 않는다.
-    [ -f "$KIRO_DIR/credentials.json" ] || exit 0
+    # 실제 kiro/* 요청이 부른다. 설정하지 않은 기기에서는 성공한 척한 뒤
+    # 죽은 loopback 으로 넘기지 않고 최초 설정 방법을 즉시 알려준다.
+    [ -f "$KIRO_DIR/credentials.json" ] \
+      || die "Kiro 자격이 없다. 먼저 kiro-setup.sh setup 또는 import <파일>을 실행해라."
     heal_credentials
     ensure_sidecar || die "kiro.rs 를 복원하지 못했다. Docker 런타임과 docker logs $KIRO_CONTAINER 를 확인해라."
     ;;

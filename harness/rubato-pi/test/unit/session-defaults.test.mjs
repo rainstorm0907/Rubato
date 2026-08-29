@@ -121,16 +121,14 @@ test("already-current session files are left untouched", () => {
   assert.deepEqual(written, {});
 });
 
-test("live catalog with a new broker provider is not treated as current", () => {
-  const models = { disabledProviders: ["vercel-ai-gateway", "newco"] };
-  assert.equal(modelsLookCurrent(models), true);
-  assert.equal(
-    modelsLookCurrent(models, [{ id: "anthropic/claude-opus-5" }, { id: "newco/widget" }]),
-    false,
-  );
+// FX bridge 삭제 전에는 이 판정이 살아 있는 catalog 를 받았다. 그때는 bridge 가 우리가
+// 모르는 provider 를 열 수 있었으므로 "지금 무엇이 우리 것인가"를 런타임에 물어야 했다.
+// 이제 지원 목록이 정적이라 판정도 그 목록만 본다.
+test("지원하지 않는 id 를 끈 파일은 그대로 현재로 본다", () => {
+  assert.equal(modelsLookCurrent({ disabledProviders: ["vercel-ai-gateway", "newco"] }), true);
 });
 
-test("stale models that still disable a broker provider are not treated as current", () => {
+test("stale models that still disable a supported provider are not treated as current", () => {
   assert.equal(
     modelsLookCurrent(
       { disabledProviders: ["vercel-ai-gateway", "openai-codex"] },
@@ -179,13 +177,21 @@ test("사용자가 적어 둔 modelFallback 은 그대로 둔다", () => {
   assert.equal(next.retry.modelFallback, true);
 });
 
-// 브로커가 내려주는 카탈로그를 넘기면 그 프로바이더도 회수 대상이다.
-test("models.json reclaims providers present in the live broker catalog", () => {
+// 회수 대상은 정적 지원 목록이다. bridge catalog 가 사라지면서 두 가지가 같이 바뀐다:
+// catalog 에 없어서 회수되지 않던 cursor/kiro/google-antigravity 는 이제 회수되고,
+// bridge 가 서비스해서 회수됐던 `openai` 는 우리 id 가 아니므로 disabled 로 남는다.
+test("models.json reclaims every supported provider and leaves foreign ids disabled", () => {
   const next = ensureModelsConfig("/tmp/agent", {
     exists: () => true,
-    readFile: () => JSON.stringify({ providers: {}, disabledProviders: ["openai"] }),
+    readFile: () => JSON.stringify({
+      providers: {},
+      disabledProviders: ["openai", "cursor", "kiro", "google-antigravity", "vercel-ai-gateway"],
+    }),
     writeFile: () => {},
-    catalog: [{ id: "openai/gpt-5.6-sol" }, { id: "openai-codex/gpt-5.6-sol" }],
   });
-  assert.ok(!next.disabledProviders.includes("openai"), "a live broker provider must not stay disabled");
+  for (const id of ["cursor", "kiro", "google-antigravity"]) {
+    assert.ok(!next.disabledProviders.includes(id), `${id} 는 직결 소유이므로 회수해야 한다`);
+  }
+  assert.ok(next.disabledProviders.includes("openai"), "우리가 등록하지 않는 openai 는 계속 끈다");
+  assert.ok(next.disabledProviders.includes("vercel-ai-gateway"), "foreign builtin 은 계속 끈다");
 });

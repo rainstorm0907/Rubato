@@ -1,9 +1,0 @@
-{
-  "object": "list",
-  "data": [
-    { "id": "gpt-5.6-sol", "object": "model", "owned_by": "openai", "supports_reasoning_effort": true, "reasoning_efforts": [{ "value": "low" }, { "value": "medium" }] },
-    { "id": "xai/grok-4.6", "object": "model", "owned_by": "xai", "supports_reasoning_effort": true, "reasoning_efforts": [{ "value": "high", "default": true }] },
-    { "id": "cursor/grok-4.6", "object": "model", "owned_by": "cursor", "supports_reasoning_effort": true },
-    { "id": "cursor/gemini-3.7-flash", "object": "model", "owned_by": "cursor" }
-  ]
-}

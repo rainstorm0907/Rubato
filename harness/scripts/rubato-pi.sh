@@ -7,10 +7,6 @@ HERE="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 # Subcommands handled here rather than by the agent. Everything else falls
 # through to the session launcher, so a prompt starting with an ordinary word
 # still works.
-if [ "${1-}" = "restart" ]; then
-  shift
-  exec "$HERE/rubato-restart.sh" "$@"
-fi
 if [ "${1-}" = "auth" ]; then
   shift
   exec "$HERE/rubato-auth.sh" "$@"
@@ -47,7 +43,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# fetch 는 0.5초라 프롬프트·브리지·엔진 준비와 겹친다. 결과는 스플래시를
+# fetch 는 0.5초라 프롬프트·엔진 준비와 겹친다. 결과는 스플래시를
 # 닫기 직전에 받는다. 묻는 시점과 문구는 예전과 같다.
 if [ -z "${RUBATO_NO_UPDATE_CHECK-}" ] && [ -x "$HERE/rubato-update.sh" ]; then
   UPDATE_OUT="$(mktemp "${TMPDIR:-/tmp}/rubato-update.XXXXXX")" || UPDATE_OUT=""
@@ -68,39 +64,9 @@ fi
 splash step "프롬프트"
 "$HERE/../prompts/build.sh" >/dev/null
 
-# 세션은 모델 호출을 전부 브리지로 보낸다. 브리지가 죽어 있으면 아무것도
-# 안 되는데, 그 사실은 첫 응답이 실패할 때에야 보인다. 여기서 미리 보고
-# 죽어 있을 때만 띄운다. 살아 있으면 조용하고, 띄우기에 실패해도 세션은
-# 막지 않는다 — 실패는 어차피 첫 호출에서 드러난다.
-#
-# 예전에는 2초 안에 /health 가 안 오면 곧바로 rubato-restart.sh 를 불렀다.
-# 브리지가 다른 세션들의 SSE 로 바쁘면 2초는 넘길 수 있고, 그때마다 살아 있는
-# 브리지가 죽어서 남의 턴이 통째로 끊겼다. 이제 판정은 넉넉하게 여러 번 보고,
-# 그러고도 답이 없을 때 포트를 물고 있는 프로세스가 있으면 죽이지 않는다 —
-# 그건 "죽었다"가 아니라 "바쁘거나 이상하다"이고, 가는 것은 사람이 정한다.
-if [ -z "${RUBATO_NO_BRIDGE_CHECK-}" ]; then
-  BRIDGE_PORT="${FX_BRIDGE_PORT:-8788}"
-  BRIDGE_URL="http://127.0.0.1:${BRIDGE_PORT}/health"
-  BRIDGE_OK=0
-  for _ in 1 2 3; do
-    if curl -fsS -m 5 -o /dev/null "$BRIDGE_URL" 2>/dev/null; then BRIDGE_OK=1; break; fi
-    sleep 1
-  done
-  if [ "$BRIDGE_OK" = 0 ]; then
-    if lsof -ti "tcp:${BRIDGE_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-      printf 'rubato: :%s 브리지가 /health 에 늦게 답한다. 살아 있는 프로세스라 건드리지 않는다 (`rubato restart` 는 직접).\n' \
-        "$BRIDGE_PORT" >&2
-    else
-      splash step "브리지"
-      RUBATO_RESTART_REASON="rubato-pi.sh: :${BRIDGE_PORT} 에 리스너 없음" \
-        "$HERE/rubato-restart.sh" >/dev/null 2>&1 || true
-    fi
-  fi
-fi
-
 ROOT="$(CDPATH= cd -- "$HERE/../rubato-pi" && pwd)"
 # node 를 찾는 곳은 한 군데다. 예전에는 여기서 nvm 경로를 박아 뒀는데, 그 버전이
-# 사라지면 조용히 PATH 의 아무 node 로 떨어졌고 start.sh 는 아예 PATH 만 봤다.
+# 사라지면 조용히 PATH 의 아무 node 로 떨어졌다.
 splash step "node"
 . "$HERE/find-node.sh"
 if ! NODE="$(rubato_find_node)"; then
@@ -129,52 +95,11 @@ if [ -z "${RUBATO_NO_VAULT-}" ] && [ -f "$HOME/.config/cmux/cmux.json" ]; then
   "$NODE" "$HERE/cmux-vault.mjs" --apply >/dev/null 2>&1 || true
 fi
 
-# 브리지 supervisor 를 심는다. 없으면 로그인 때 브리지가 안 뜨고, 어떤 이유로든
-# 프로세스가 끝난 뒤 아무도 되살리지 않는다 — rubato-restart.sh 는 "supervisor 가
-# 되살린다" 를 전제로 SIGKILL 뒤 재기동을 건너뛰는 분기가 있어서, supervisor 가
-# 없는 머신에서는 그 자리가 그대로 정전이 된다.
-#
-# 등록 여부뿐 아니라 정책 파일도 본다. 기존 crash-only 설정이면 실행 중인 잡은
-# 그대로 둔 채 KeepAlive=true/Restart=always 파일만 갱신한다. macOS는 다음
-# 로그아웃/재부팅 때 새 plist를 읽고, 그전에는 drain exit 1이 옛 정책에도 복구를
-# 요청한다. 이미 최신이면 아무 일도 하지 않는다.
-# 끄려면 RUBATO_NO_SUPERVISOR=1.
-if [ -z "${RUBATO_NO_SUPERVISOR-}" ] && [ -x "$HERE/install-supervisor.sh" ]; then
-  _sv_label="${RUBATO_SUPERVISOR_LABEL:-dev.rubato.bridge}"
-  _sv_installed=1
-  _sv_current=1
-  case "$(uname -s)" in
-    Darwin)
-      launchctl print "gui/$(id -u)/${_sv_label}" >/dev/null 2>&1 || _sv_installed=0
-      _sv_file="$HOME/Library/LaunchAgents/${_sv_label}.plist"
-      grep -q '<key>KeepAlive</key><true/>' "$_sv_file" 2>/dev/null || _sv_current=0
-      grep -q '<key>RUBATO_SUPERVISED</key><string>1</string>' "$_sv_file" 2>/dev/null || _sv_current=0
-      ;;
-    Linux)
-      _sv_unit="${RUBATO_SUPERVISOR_UNIT:-rubato-bridge.service}"
-      if command -v systemctl >/dev/null 2>&1; then
-        [ "$(systemctl --user show "$_sv_unit" -p LoadState --value 2>/dev/null)" = "loaded" ] || _sv_installed=0
-        _sv_file="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/${_sv_unit}"
-        grep -q '^Restart=always$' "$_sv_file" 2>/dev/null || _sv_current=0
-        grep -q '^Environment=RUBATO_SUPERVISED=1$' "$_sv_file" 2>/dev/null || _sv_current=0
-      fi
-      ;;
-    *) ;;
-  esac
-  if [ "$_sv_installed" -eq 0 ] || [ "$_sv_current" -eq 0 ]; then
-    splash step "브리지 supervisor"
-    "$HERE/install-supervisor.sh" --apply >/dev/null 2>&1 || true
-  fi
-  unset _sv_label _sv_installed _sv_current _sv_file _sv_unit 2>/dev/null || true
-fi
-
-# 자격 파일이 있는 기기에서는 clientId 를 고치고 kiro.rs 까지 복원한다.
-# 컨테이너 restart policy 만으로는 Docker 데몬이 꺼진 재부팅을 복구하지 못한다.
-# 설정하지 않은 기기에서는 ensure 가 즉시 끝난다. 실패해도 다른 프로바이더로
-# 여는 세션을 막지는 않고, Kiro 첫 호출이 원인을 그대로 보여준다.
-if [ -z "${RUBATO_NO_KIRO_ENSURE-}" ] && [ -z "${RUBATO_NO_KIRO_HEAL-}" ] && [ -x "$HERE/kiro-setup.sh" ]; then
-  splash step "Kiro 사이드카"
-  "$HERE/kiro-setup.sh" ensure >/dev/null 2>&1 || true
+# 예전 Kiro 자격에 clientId 가 없으면 accessToken 만료 뒤 갱신이 끊긴다.
+# 자격 파일만 고치고 Docker 는 띄우지 않는다. 사이드카 복원은 실제 kiro/* 요청이
+# 처음 들어온 provider 경계가 맡는다.
+if [ -z "${RUBATO_NO_KIRO_HEAL-}" ] && [ -x "$HERE/kiro-setup.sh" ]; then
+  "$HERE/kiro-setup.sh" heal >/dev/null 2>&1 || true
 fi
 
 # fetch 가 아직이면 여기서 받는다. 이미 끝났으면 wait 은 즉시 돌아온다.

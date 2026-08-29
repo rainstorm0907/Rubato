@@ -50,8 +50,6 @@ const child = spawn(
       SENPI_CODING_AGENT_DIR: agentDir,
       PI_OFFLINE: "1",
       DO_NOT_TRACK: "1",
-      OMO_DISABLE_POSTHOG: "1",
-      OMO_SENPI_DISABLE_POSTHOG: "1",
       RUBATO_PI_ARGV_LOG: argvLog,
       RUBATO_PI_GATE4_NOTES: notesPath,
       RUBATO_PI_GATE4_SPAWN: "1",

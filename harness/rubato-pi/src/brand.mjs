@@ -2,6 +2,10 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CACHE_RETENTION } from "./defaults.mjs";
+import {
+  applyUpstreamChildExtensions,
+  stripInheritedUpstream,
+} from "./upstream-compat.mjs";
 
 export const BRAND_NAME = "\u{1D493}\u{1D496}\u{1D483}\u{1D482}\u{1D495}\u{1D490}";
 export const BRAND_ASCII = "rubato";
@@ -27,11 +31,11 @@ export function defaultAgentDir(home = homedir()) {
 
 /**
  * 모델 프로바이더를 등록하는 확장. 우리 프로바이더는 `models.json` 에 없다 —
- * broker-overlay 가 부팅 때 브리지 카탈로그로 직접 등록한다(`providers: {}` 인 이유).
+ * provider-overlay 가 부팅 때 provider 를 직접 등록한다(`providers: {}` 인 이유).
  *
  * 그래서 확장 없이 뜨는 자식 프로세스는 pi-ai 빌트인 프로바이더만 갖고, 자격증명 없이
  * 벤더 API 를 직접 때려 401 로 죽는다. 실제로 reflection·dream·facts 배경 에이전트이
- * 전부 그렇게 죽고 있었다 — 부모 세션은 `-e broker-overlay` 로 멀쩡했으므로 증상이
+ * 전부 그렇게 죽고 있었다 — 부모 세션은 `-e provider-overlay` 로 멀쩡했으므로 증상이
  * 자식 쪽에만 보였다.
  *
  * `--no-extensions` 는 **탐색만** 끄고 명시적 `-e` 는 그대로 싣는다(senpi
@@ -45,7 +49,7 @@ export function defaultAgentDir(home = homedir()) {
  * statusline 을 자식에 다시 깔아서 `--no-extensions` 로 산 격리를 도로 무른다.
  */
 export function providerExtensionPaths() {
-  return [fileURLToPath(new URL("./extensions/broker-overlay.mjs", import.meta.url))];
+  return [fileURLToPath(new URL("./extensions/provider-overlay.mjs", import.meta.url))];
 }
 
 /**
@@ -65,16 +69,16 @@ export function defaultMeasurementLogPath(agentDir, { now = () => new Date(), pi
 
 export function launchEnv(baseEnv, agentDir) {
   const env = { ...baseEnv };
-  delete env.OMO_NATIVE;
-  delete env.OMO_BIN;
+  stripInheritedUpstream(env);
   env.SENPI_BRAND = JSON.stringify(brandProfile());
   env.SENPI_CODING_AGENT_DIR = agentDir;
   env.RUBATO_PI_CODING_AGENT_DIR = agentDir;
-  env.OMO_DISABLE_POSTHOG = "1";
-  env.OMO_SENPI_DISABLE_POSTHOG = "1";
+  // telemetry 를 끄는 값. `packages/telemetry-core/src/env.ts:39` 가 이것을 읽는다.
+  // 범용 관례이고 upstream 이름이 아니므로 upstream-compat 이 아니라 여기 둔다.
   env.DO_NOT_TRACK = "1";
-  env.OMO_MEMORY_CHILD_EXTENSIONS = providerExtensionPaths().join(delimiter);
-  env.FX_CACHE_RETENTION = env.FX_CACHE_RETENTION ?? CACHE_RETENTION;
+  applyUpstreamChildExtensions(env, providerExtensionPaths(), delimiter);
+  // canonical 이름 하나만 아이에게 넘긴다. 예전 `FX_CACHE_RETENTION` 은 FX bridge
+  // config 만 읽었고, 그 bridge 는 없다.
   env.PI_CACHE_RETENTION = env.PI_CACHE_RETENTION ?? CACHE_RETENTION;
   if (env.RUBATO_MEASUREMENT === "1" && !env.RUBATO_MEASUREMENT_LOG) {
     env.RUBATO_MEASUREMENT_LOG = defaultMeasurementLogPath(agentDir);

@@ -16,23 +16,15 @@ APPLY=0
 # 업데이트가 이걸 부른다 — alias 목록을 두 군데 두면 어깋나기 때문에
 # 정본은 여기 하나로 둔다. 의존성·빌드는 건드리지 않는다.
 ONLY_SHELL=0
-# supervisor 는 브리지를 로그인 때 한 번 띄운다. 되살리는 장치가 아니다 —
-# 자세한 것은 harness/scripts/install-supervisor.sh 머리 주석에 있다.
-ONLY_SUPERVISOR=0
-UNINSTALL_SUPERVISOR=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
     --only-shell) ONLY_SHELL=1 ;;
-    --only-supervisor) ONLY_SUPERVISOR=1 ;;
-    --uninstall-supervisor) UNINSTALL_SUPERVISOR=1 ;;
     --help|-h)
-      printf '%s\n' '사용법: ./install.sh [--apply] [--only-shell] [--only-supervisor] [--uninstall-supervisor]' '' \
+      printf '%s\n' '사용법: ./install.sh [--apply] [--only-shell]' '' \
         '  인자 없음               설치 계획만 출력한다' \
         '  --apply                 이 클론에서 Rubato를 설치하고 검증한다' \
-        '  --only-shell            셸 alias 블록과 cmux 세션 복원만 다시 심는다' \
-        '  --only-supervisor       브리지 supervisor(launchd/systemd)만 다시 심는다' \
-        '  --uninstall-supervisor  그 supervisor 를 뗀다'
+        '  --only-shell            셸 alias 블록과 cmux 세션 복원만 다시 심는다'
       exit 0 ;;
     *) printf '모르는 옵션: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -104,21 +96,6 @@ shell_rc() {
 head_ "단계 0 · 사전 점검"
 [ "$APPLY" -eq 1 ] || warn "dry-run 이다. 아무것도 바뀌지 않는다 (적용: ./install.sh --apply)"
 
-# supervisor 만 손보는 경로. 나머지 설치는 건드리지 않는다.
-supervisor() {
-  args=""
-  [ "$APPLY" -eq 1 ] && args="--apply"
-  [ "$UNINSTALL_SUPERVISOR" -eq 1 ] && args="--uninstall $args"
-  # shellcheck disable=SC2086
-  "$HARNESS/scripts/install-supervisor.sh" $args
-}
-if [ "$ONLY_SUPERVISOR" -eq 1 ] || [ "$UNINSTALL_SUPERVISOR" -eq 1 ]; then
-  head_ "브리지 supervisor"
-  supervisor
-  if [ "$APPLY" -eq 0 ]; then say "계획만 보였다. 적용하려면 --apply 를 붙여라."; fi
-  exit 0
-fi
-
 NODE24="$(find_node24)"
 if [ -n "$NODE24" ]; then ok "Node 24+ : $NODE24 ($("$NODE24" -v))"
 else err "Node 24+ 가 없다"; add_manual "nvm install 24 또는 brew install node@24"; fi
@@ -133,8 +110,6 @@ if [ "$ONLY_SHELL" -eq 1 ]; then
 elif [ -n "$UV" ]; then ok "uv : $UV ($("$UV" --version))"
 else say "uv 없음 (msearch venv 를 새로 만들 때만 필요)"; fi
 
-command -v opencodex >/dev/null 2>&1 && ok "opencodex 있다 (선택 — 추가 모델을 카탈로그에 얹는다)" \
-  || say "opencodex 없음 (선택). Codex 는 OAuth 로 직접 간다"
 
 if [ -z "$NODE24" ] || [ -z "$BUN" ]; then
   err "필수 도구가 없어 여기서 멈춘다"
@@ -152,7 +127,6 @@ head_ "단계 1 · 의존성"
 if [ "$APPLY" -eq 0 ]; then
   plan "git submodule update --init --recursive"
   plan "bun install                        (엔진 senpi, 워크스페이스)"
-  plan "npm install --prefix harness       (provider bridge)"
   plan "npm install --prefix harness/rubato-pi"
 else
   say "번들 upstream submodule 을 준비한다"
@@ -164,8 +138,6 @@ else
   fi
   say "엔진을 깐다 (bun)"
   (cd "$REPO" && "$BUN" install) || { err "bun install 실패"; exit 1; }
-  say "bridge 를 깐다"
-  npm install --prefix "$HARNESS" >/dev/null 2>&1 || { err "bridge 설치 실패"; exit 1; }
   say "rubato-pi 를 깐다"
   npm install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 || { err "rubato-pi 설치 실패"; exit 1; }
   say "Rubato 엔진 확장을 빌드한다"
@@ -245,9 +217,6 @@ alias rubato="\$RUBATO_HARNESS/scripts/rubato-pi.sh"
 alias rubato-pi="\$RUBATO_HARNESS/scripts/rubato-pi.sh"
 # 역할별 프롬프트 조립 없이 Documents/SOUL.md 만 시스템 프롬프트로.
 alias rubato-soul="\$RUBATO_HARNESS/scripts/rubato-soul.sh"
-# 모델 카탈로그를 든 bridge(:8788) 를 죽였다 살린다.
-alias rubato-restart="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
-alias rbr="\$RUBATO_HARNESS/scripts/rubato-restart.sh"
 # msearch — 기억 검색. alias 는 사람이 쓰는 대화형 셸용이고,
 # 에이전트가 부르는 비대화형 bash 는 rc 를 안 읽으므로 ~/.local/bin 심링크가 정본이다.
 alias msearch="\$RUBATO_HARNESS/msearch/msearch"
@@ -256,7 +225,7 @@ EOF
 }
 
 if [ "$APPLY" -eq 0 ]; then
-  plan "$RC 에 alias 블록을 넣는다 (rubato, rubato-pi, rubato-soul, rubato-restart, rbr, msearch)"
+  plan "$RC 에 alias 블록을 넣는다 (rubato, rubato-pi, rubato-soul, msearch)"
   plan "이미 있으면 블록을 이 클론으로 갈아끼운다"
 else
   touch "$RC"
@@ -277,6 +246,7 @@ else
   else
     # 마커 이전에 손으로/옛 설치기로 넣은 낱개 줄이 있으면 거둔다.
     # 안 거두면 나중에 정의된 옛 줄이 블록을 이긴다.
+    # rubato-restart/rbr 는 삭제된 bridge 재기동 alias 다. 남아 있으면 여기서 걷어낸다.
     if grep -qE '^alias (rubato|rubato-pi|rubato-soul|rubato-restart|rbr|msearch)=' "$RC" 2>/dev/null; then
       tmp="$(mktemp)"
       grep -vE '^alias (rubato|rubato-pi|rubato-soul|rubato-restart|rbr|msearch)=' "$RC" > "$tmp"
@@ -380,9 +350,10 @@ head_ "단계 5 · 크레덴셜 (읽기만 한다)"
 CRED_OK=1
 [ -f "$HOME/.senpi/agent/auth.json" ] && ok "xAI — ~/.senpi/agent/auth.json" \
   || { warn "xAI OAuth 가 없다"; CRED_OK=0; add_manual "xAI 로그인이 필요하다"; }
-# Claude 는 1년짜리 장기 setup-token 이다(sk-ant-oat...). bridge 는 파일을 먼저 보고
-# 없으면 Keychain 으로 넘어간다. 계정 이름 기본값은 sub 이고 FX_CLAUDE_ACCOUNT 로 바꾼다.
-CLAUDE_ACCOUNT="${FX_CLAUDE_ACCOUNT:-sub}"
+# Claude 는 1년짜리 장기 setup-token 이다(sk-ant-oat...). 직결 Anthropic 경로
+# (`anthropic-setup-token.mjs`)는 파일을 먼저 보고 없으면 Keychain 으로 넘어간다.
+# 계정 이름 기본값은 sub 이고 RUBATO_CLAUDE_ACCOUNT 로 바꾼다(예전 FX_ 이름도 읽는다).
+CLAUDE_ACCOUNT="${RUBATO_CLAUDE_ACCOUNT:-${FX_CLAUDE_ACCOUNT:-sub}}"
 if [ -f "$HOME/.claude/auth/setup-token-$CLAUDE_ACCOUNT" ]; then
   ok "Claude 장기 setup-token — ~/.claude/auth/setup-token-$CLAUDE_ACCOUNT"
 elif security find-generic-password -s "Claude Code-setup-token-$CLAUDE_ACCOUNT" >/dev/null 2>&1; then
@@ -392,7 +363,7 @@ else
   CRED_OK=0
   add_manual "claude setup-token 으로 받아 ~/.claude/auth/setup-token-$CLAUDE_ACCOUNT 에 넣어라"
 fi
-# Codex 는 senpi auth.json 의 openai-codex OAuth 로 직접 간다. OpenCodex 는 선택이다.
+# Codex 는 senpi auth.json 의 openai-codex OAuth 로 직접 간다.
 if [ -f "$HOME/.senpi/agent/auth.json" ] && grep -q '"openai-codex"' "$HOME/.senpi/agent/auth.json" 2>/dev/null; then
   ok "Codex — ~/.senpi/agent/auth.json (openai-codex)"
 else
@@ -417,13 +388,6 @@ else
 fi
 
 fi   # ONLY_SHELL 스킵 끝
-
-# 브리지를 로그인 때 한 번 띄운다. 없어도 첫 세션이 띄우지만, 그 세션이 기동을
-# 떠안으면 npm install 이 필요한 날 세션 자체가 안 뜬다.
-if [ "$ONLY_SHELL" -eq 0 ]; then
-  head_ "브리지 supervisor"
-  supervisor || add_manual "supervisor 등록에 실패했다: ./install.sh --only-supervisor --apply 로 다시 시도해라"
-fi
 
 head_ "요약"
 if [ "$APPLY" -eq 0 ]; then

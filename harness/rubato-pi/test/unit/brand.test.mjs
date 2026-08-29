@@ -9,6 +9,10 @@ import {
   launchEnv,
   providerExtensionPaths,
 } from "../../src/brand.mjs";
+import {
+  UPSTREAM_CHILD_EXTENSIONS_ENV,
+  inheritedUpstreamNames,
+} from "../../src/upstream-compat.mjs";
 
 test("brand is rubato and never uses the omo config dir", () => {
   const brand = brandProfile();
@@ -21,13 +25,14 @@ test("brand is rubato and never uses the omo config dir", () => {
   assert.match(defaultAgentDir("/tmp/home"), /\/\.rubato-pi\/agent$/);
 });
 
-test("launch env isolates state and clears the omo native badge", () => {
-  const env = launchEnv(
-    { OMO_NATIVE: "1", OMO_BIN: "/opt/homebrew/bin/omo", HOME: "/tmp/home" },
-    "/tmp/home/.rubato-pi/agent",
-  );
-  assert.equal(env.OMO_NATIVE, undefined);
-  assert.equal(env.OMO_BIN, undefined);
+test("launch env isolates state and clears the upstream native badge", () => {
+  // 이름 자체는 `upstream-compat.mjs` 가 소유한다. 여기서는 `launchEnv` 가 그 층을
+  // 실제로 부르는지만 본다 — 리터럴을 다시 적으면 소유자가 둘이 된다.
+  const badge = Object.fromEntries(inheritedUpstreamNames().map((name) => [name, "1"]));
+  const env = launchEnv({ ...badge, HOME: "/tmp/home" }, "/tmp/home/.rubato-pi/agent");
+  for (const name of inheritedUpstreamNames()) {
+    assert.equal(env[name], undefined, `${name} must not reach the child`);
+  }
   assert.equal(env.SENPI_CODING_AGENT_DIR, "/tmp/home/.rubato-pi/agent");
   assert.equal(env.RUBATO_PI_CODING_AGENT_DIR, "/tmp/home/.rubato-pi/agent");
   const parsed = JSON.parse(env.SENPI_BRAND);
@@ -35,21 +40,22 @@ test("launch env isolates state and clears the omo native badge", () => {
   assert.equal(parsed.userAgent, "rubato");
   assert.equal(parsed.displayVersion, "0.0.4");
   assert.equal(parsed.configDir, ".rubato-pi");
-  assert.equal(env.FX_CACHE_RETENTION, "long");
   assert.equal(env.PI_CACHE_RETENTION, "long");
+  // canonical 이름만 넘긴다. 예전 FX_CACHE_RETENTION 은 삭제된 FX bridge config 만 읽었다.
+  assert.equal(env.FX_CACHE_RETENTION, undefined);
 });
 
 // 배경 memory 에이전트(reflection/dream/facts)은 --no-extensions 로 뜬다. 우리 프로바이더는
-// models.json 이 아니라 broker-overlay 가 런타임에 등록하므로, 이 목록이 에이전트에게
+// models.json 이 아니라 provider-overlay 가 런타임에 등록하므로, 이 목록이 에이전트에게
 // 넘어가지 않으면 에이전트는 자격증명 없는 pi-ai 빌트인으로 벤더 API 를 때려 401 로 죽는다.
 test("launch env hands background children the provider extensions to reload", () => {
   const paths = providerExtensionPaths();
   assert.equal(paths.length, 1);
-  assert.match(paths[0], /broker-overlay\.mjs$/);
+  assert.match(paths[0], /provider-overlay\.mjs$/);
   assert.ok(existsSync(paths[0]), `provider extension must exist on disk: ${paths[0]}`);
 
   const env = launchEnv({ HOME: "/tmp/home" }, "/tmp/home/.rubato-pi/agent");
-  assert.deepEqual(env.OMO_MEMORY_CHILD_EXTENSIONS.split(delimiter), paths);
+  assert.deepEqual(env[UPSTREAM_CHILD_EXTENSIONS_ENV].split(delimiter), paths);
 });
 
 test("measurement recording defaults off and needs an explicit opt-in", () => {

@@ -1,41 +1,63 @@
 # Provider routing and verification status
 
-기준일: 2026-08-20
+기준일: 2026-08-28 (provider 직결 전환 뒤)
 
-이 문서는 rubato harness에서 모델별 실제 전송 경로와 검증 범위를 구분한다. 모델이 목록에 보이거나 단일 응답을 반환하는 것만으로 `stable` 또는 `cache verified`라고 부르지 않는다.
+이 문서는 rubato harness에서 모델별 실제 전송 경로와 검증 범위를 구분한다. 모델이 목록에
+보이거나 단일 응답을 반환하는 것만으로 `stable` 또는 `cache verified`라고 부르지 않는다.
 
 ## 현재 라우팅
 
+`127.0.0.1:8788` FX bridge와 OpenCodex `127.0.0.1:10100` 은 **제거됐다**. 여섯 provider 전부
+Senpi 프로세스 안의 `pi-ai` provider가 vendor를 직접 호출한다.
+
 ```text
-fx
-  → 127.0.0.1:8788 fx-v3-bridge
-       ├─ xai/*       → senpi-ai xAI transport → api.x.ai
-       ├─ anthropic/* → senpi-ai Anthropic Messages transport → Anthropic
-       ├─ kiro/*      → Anthropic Messages transport → kiro.rs 127.0.0.1:8990 → AWS Kiro
-       └─ 나머지      → OpenCodex 127.0.0.1:10100
-                        ├─ Codex
-                        └─ Cursor (보류)
+Rubato/Senpi (in-process)
+  ├─ openai-codex/*      → chatgpt.com/backend-api
+  ├─ xai/*               → api.x.ai
+  ├─ anthropic/*         → api.anthropic.com
+  ├─ cursor/*            → api2.cursor.sh (HTTP/2 필수, proxy fallback 없음)
+  ├─ kiro/*              → kiro.rs 127.0.0.1:8990 → AWS Kiro
+  └─ google-antigravity/* → daily-cloudcode-pa.googleapis.com
 ```
 
-`senpi-ai`에서는 provider transport만 사용한다. Senpi agent나 Senpi tool executor는 사용하지 않는다. 모델의 tool call은 bridge가 fx SSE로 변환하고 실제 도구는 fx가 실행한다.
+남은 로컬 의존은 Kiro 사이드카 `:8990` 하나뿐이다. 그 ensure 는 Kiro 첫 호출 직전에만
+돌므로, Codex 나 xAI 로 여는 세션이 Docker 를 깨우지 않는다.
+
+Senpi agent나 provider CLI가 도구를 실행하지 않는다. transport는 tool call만 반환하며 실행과
+승인, tool result 전달은 하네스가 소유한다.
 
 ## 상태표
 
-| 프로바이더 | 모델 예 | 경로 | 실제 fx tool loop | 캐시 | 현재 판정 |
-|---|---|---|---|---|---|
-| Grok | `xai/grok-4.6` | xAI OAuth direct | PASS | provider usage에서 cache read 관측 | canary |
-| Claude | `anthropic/claude-opus-5` | Anthropic Messages + Claude setup-token | PASS | cold `cacheWrite=45037`, 후속 `cacheRead=45037` | canary |
-| Codex | `gpt-5.6-*` | OpenCodex | Responses 변환 및 실제 fx 응답 PASS | 53KB prefix T2–T6 모두 `cacheRead=13056/13879` | 유지 |
-| Cursor | `cursor/*` | OpenCodex Cursor Connect | 단일 턴 기준선만 있음 | 멀티턴 캐시 실패/미검증 | 보류 |
-| Kiro | `kiro/claude-opus-5`, `kiro/gpt-5.6-sol` | kiro.rs 사이드카 + Anthropic Messages | 텍스트·이미지·tool loop·3턴 멀티턴 PASS | 캐시 없음(상류가 필드를 안 준다) | canary |
+| 프로바이더 | 모델 예 | 경로 | 실 vendor 검증 | 현재 판정 |
+|---|---|---|---|---|
+| Grok | `xai/grok-4.6` | 직결, xAI OAuth | `xhigh` 가 wire 에 실림 PASS | 통과 |
+| Claude | `anthropic/claude-*` | 직결, setup-token(파일 → Keychain) | OAuth 신원·tool 이름 PASS, Keychain fallback PASS | 통과 |
+| Kiro | `kiro/claude-opus-5`, `kiro/gpt-5.6-sol` | 직결, 사이드차 + Anthropic Messages | 3턴 tool loop + 이미지 PASS | 통과 |
+| Codex | `gpt-5.6-*`, Daybreak | 직결, ChatGPT 구독 OAuth | signed reasoning 3턴·재시작 PASS(자격증명 만료 전) | 자격증명 갱신 필요 |
+| Antigravity | `gemini-3.7-flash`, `gemini-3.1-pro` | 직결, Google OAuth | 3턴 이어짐 실패 — 진단 중 | 미통과 |
+| Cursor | `cursor/*` | 직결 native Connect-RPC | 미실행(로그인 필요) | 미검증 |
 
-Grok과 Claude도 평가 계약의 `주력 채택` 조건을 전부 통과한 것은 아니다. 현재 live evidence는 실제 fx tool loop와 cache telemetry까지다. 6턴·2 tool call·abort·bridge 재시작·OAuth refresh를 모두 묶은 soak가 남아 있어 판정은 `canary`다.
+`gpt-5.6-sol` 과 `claude-opus-5` 의 272K/1M 상한은 picker 표시용이고 truncation·usage 역산에
+쓰지 않는다. 사이드카가 usage 를 퍼센트로 주지 않아 그 상한을 상류에서 확인할 길이 없다.
 
-Codex는 OpenCodex 경로를 유지한다. 최초 측정에서 캐시가 간헐적으로만 적중했지만 원인은 bridge가 fx session을 버린 것이었다. bridge가 같은 fx session을 OpenCodex body의 `prompt_cache_key`와 `session-id` header에 전달하도록 고친 뒤, 고유 SALT가 붙은 53,052-byte prefix에서 T1 cold, T2–T6 `cacheRead=13,056 / input=13,879`가 연속 관측됐다. 후속 hit rate는 약 94.1%로 평가 계약의 85% 기준을 넘는다. cache usage도 이제 fx finish event에 보인다.
+실 검증 러너는 `harness/rubato-pi/test/smoke/direct-real.mjs` 다. 격리 프로필에서 돌고 실
+프로필 `auth.json` 을 건드리지 않는다. 그 러너에서 SKIP 은 자격증명을 못 쓴다는 뜻이고 FAIL 은
+쓸 수 있는 자격증명으로 gate 가 깨졌다는 뜻이다 — 둘을 섞지 않는다.
 
-Cursor는 기본 경로로 배치하지 않는다. 공식 Cursor CLI의 resume/cache 기준선은 있지만 OpenCodex Cursor route가 같은 수준으로 prefix cache를 보존한다는 증거가 없으며 이전 멀티턴 측정에서 정상 판정을 받지 못했다.
+## 이력: bridge·OpenCodex 시절의 측정
 
-공개 조사에서도 CLIProxyAPI + `cliproxy-cursor-plugin`과 `oh-my-pi`에는 Cursor prefix-cache hit 수치가 없었다. 현재 가장 가까운 증거는 `senpi` native Cursor transport의 2턴 probe(T1 `cacheWrite=21354`, T2 `cacheRead=17575`)다. 이것도 n=2이고 OpenAI-compatible proxy가 아니므로 바로 채택하지 않는다. 다음 세션에는 cache usage가 없는 경로를 `0`이 아니라 `unavailable`로 기록하는 공통 계측부터 추가하고, 공식 Cursor CLI·현재 OpenCodex·senpi native 후보를 같은 53KB/6턴 fixture로 비교한다. 상세 근거와 필드는 `case-studies/2026-08-20-cursor-cache-public-evidence-and-next-steps.md`에 있다.
+아래는 전환 **전** 기록이다. 경로가 사라졌으므로 현재 상태가 아니지만, 그때 무엇을 재서
+무엇을 근거로 판단했는지는 남긴다.
+
+Codex 는 OpenCodex 경로를 유지하다가 직결로 옮겼다. 캐시가 간헐적으로만 적중한 원인은
+bridge 가 fx session 을 버린 것이었고, 같은 session 을 `prompt_cache_key` 와 `session-id`
+header 로 전달하게 고친 뒤 53,052-byte prefix 에서 T1 cold, T2–T6
+`cacheRead=13,056 / input=13,879` 가 연속 관측됐다(후속 hit rate 약 94.1%).
+
+Cursor 는 OpenCodex Cursor route 가 prefix cache 를 보존한다는 증거가 없어 기본 경로로 두지
+않았다. 당시 가장 가까운 증거가 `senpi` native transport 의 2턴 probe
+(T1 `cacheWrite=21354`, T2 `cacheRead=17575`)였고, 지금은 그 native 경로가 유일한 Cursor
+경로다. 상세는 `case-studies/2026-08-20-cursor-cache-public-evidence-and-next-steps.md`.
 
 ## Kiro
 
@@ -62,8 +84,8 @@ kiro-setup.sh ensure           # Docker와 사이드카를 현재 설정에서 �
 Kiro IDE 도 `kiro-cli` 도 요구하지 않는다 — 빈 기기에서 파일 하나로 모델 19개와
 두 모델의 실응답까지 확인했다.
 
-로그인 supervisor와 `rubato` 기동은 자격 파일이 있는 기기에서 `ensure`를 자동
-호출한다. supervisor는 브리지 기동을 늦추지 않도록 백그라운드에서 복원한다. Docker의
+`rubato` 기동은 자격 파일만 `heal`하고 Docker 는 띄우지 않는다. 사이드카 복원은
+실제 `kiro/*` 요청이 처음 들어온 provider 경계가 맡는다. Docker의
 `restart=unless-stopped`는 데몬이 먼저 떠야만 작동하므로, macOS에서는 현재 Docker
 context에 맞춰 OrbStack 또는 Docker Desktop을 깨운 뒤 기존 `kiro-rs`를 시작한다.
 Linux Docker Desktop은 user unit을 깨우고, 시스템 Docker는 OS supervisor에 맡긴다.
@@ -129,30 +151,60 @@ operation`)이라 kiro.rs가 ARN을 스스로 못 구한다. Kiro IDE가 실제�
 그대로 쓴다. 계정 등급도 갈린다 — 무료(`KIRO FREE`)는 모델 9개뿐이고 `claude-opus-5`와
 `gpt-5.6-sol`이 아예 없다. 목록은 AWS `ListAvailableModels` 응답이라 설정으로 못 뚫는다.
 
-## OpenCodex 유지와 교체 기준
+## 이력: OpenCodex 유지 판단과 그 종결
 
-현재 Codex cache가 계약을 통과했으므로 OpenCodex를 즉시 제거하지 않는다. 다음 중 하나가 재현되면 Codex route를 별도 transport로 분리한다.
+전환 전에는 Codex cache 가 계약을 통과했으므로 OpenCodex 를 두고, 아래가 재현되면 별도
+transport 로 분리하기로 했다: 같은 `prompt_cache_key` 에서 T3–T6 중앙 hit rate 85% 미만,
+upstream Codex protocol drift 반복, 넓은 provider surface 로 인한 운영 부담, credential
+refresh·account pinning·취소 전파의 P0 위반.
 
-- 같은 `prompt_cache_key`에서 T3–T6 중앙 hit rate가 85% 미만
-- upstream Codex protocol drift가 반복되어 fx tool loop를 깨뜨림
-- OpenCodex의 넓은 provider surface 때문에 회귀 또는 운영 부담이 direct route보다 커짐
-- credential refresh, account pinning 또는 취소 전파가 P0 계약을 반복 위반
-
-대안 우선순위:
-
-1. **공식 `openai/codex` transport 직접 이식**: cache key와 Responses 계약의 정본에 가장 가깝지만 OAuth refresh, SSE/WebSocket, tool/event 변환을 우리가 유지해야 한다.
-2. **`dvcrn/codex-oauth-proxy` sidecar**: MIT, Responses endpoint와 `prompt_cache_key` 보존/생성을 구현한 작은 Codex 전용 후보. 프로젝트 규모와 최신 모델 ID 호환성은 canary로 검증해야 한다.
-3. **`router-for-me/CLIProxyAPI`**: MIT, 매우 활발하고 Codex 지원이 넓지만 OpenCodex를 또 다른 대형 범용 proxy로 교체하는 선택이라 단순화 효과가 작다.
-
-`zendext/codex-oauth-proxy`는 session affinity와 usage를 명시하지만 신규·저사용 프로젝트이며 README가 AI 작성임을 경고하므로 우선순위가 낮다.
+**그 판단은 종결됐다.** 분리 사유가 재현된 것이 아니라, 직결 전환이 그 선택 자체를
+없앴다 — Codex 는 pinned `openaiCodexProvider()` 로 vendor 를 직접 부르고 중계기가 없다.
+당시 검토했던 대안(공식 `openai/codex` transport 이식, `dvcrn/codex-oauth-proxy`,
+`router-for-me/CLIProxyAPI`)도 같은 이유로 더 쓰지 않는다. 남기는 이유는 하나다: 다음에
+"중계기를 하나 두면 편하지 않나" 라는 질문이 올 때, 그 길을 이미 걸었고 무엇을 대가로
+치렀는지 보이도록.
 
 ## 인증 경계
 
-- xAI OAuth credential: 기본 `~/.senpi/agent/auth.json`; bridge는 refresh 시 원자적으로 갱신하고 로그에 토큰을 남기지 않는다.
-- Claude setup-token: macOS Keychain의 `Claude Code-setup-token-${FX_CLAUDE_ACCOUNT:-sub}`.
-- Claude identity: `CLAUDE_CODE_PATH` 또는 `~/.local/bin/claude` symlink에서 설치 버전을 읽어 `claude-cli/<version>` User-Agent를 맞춘다.
-- Codex/Cursor credential: OpenCodex가 소유한다.
-- bridge는 loopback에만 bind한다.
+권위 저장소는 브랜드 profile 의 `~/.rubato-pi/agent/auth.json` 이다. provider 마다 refresh
+writer 는 하나이고, Senpi `AuthStorage` 가 `proper-lockfile` 과 원자적 쓰기로 직렬화한다.
+
+- Codex·xAI·Cursor·Antigravity OAuth: profile `auth.json`. `/login` 이 채운다.
+- Claude setup-token: `~/.claude/auth/setup-token-<계정>` → 없으면 Keychain
+  `Claude Code-setup-token-<계정>`. 갱신 대상이 아니라 기존 저장소를 그대로 쓴다.
+  계정 이름은 `RUBATO_CLAUDE_ACCOUNT` 이고, 예전 `FX_CLAUDE_ACCOUNT` 는 정식 이름이 없을 때만
+  읽으며 한 번 알린다.
+- Claude identity: pinned OAuth 경로가 `sk-ant-oat` 접두를 보고 고정 `claude-cli/<version>`
+  user-agent 와 Claude Code beta, cache retention 을 적용한다.
+- Kiro sidecar key: `~/.rubato-pi/kiro/config.json`(`kiro-setup.sh` 가 쓴다). 갱신 대상이 아니다.
+- Antigravity 는 Keychain 을 일회성 import 입력으로만 읽고, 이관은 **부모 세션만** 한다 —
+  격리 자식마다 Keychain 을 읽고 `loadCodeAssist` 를 부르면 시작 부작용이 자식 수만큼 곱해진다.
+- 토큰을 파일 사이로 복사하지 않는다. 같은 refresh token 을 두 저장소가 들면 먼저 갱신한 쪽이
+  다른 쪽을 무효로 만든다.
+
+## 직결 경로의 env 계약
+
+`RUBATO_PROVIDER_DIRECT=1` 로 켜는 in-process 직결 경로가 읽는 이름이다. 위 "인증 경계" 는
+bridge 경로(기본값)를 설명하고, 이 절은 직결 경로만 설명한다. 두 경로는 같은 기기에서
+공존하므로 이름을 섞지 않는다.
+
+| 이름 | 기본값 | 용도 |
+|---|---|---|
+| `RUBATO_CLAUDE_ACCOUNT` | `sub` | setup-token 계정. 파일 이름과 Keychain service 이름에 함께 쓴다 |
+| `RUBATO_CLAUDE_SETUP_TOKEN_FILE` | `~/.claude/auth/setup-token-<계정>` | setup-token 파일 경로 |
+| `KIRO_API_KEY` | 없음 | 사이드카 key. config 파일보다 **먼저** 쓴다 |
+| `KIRO_CONFIG_PATH` | `~/.rubato-pi/kiro/config.json` | `kiro-setup.sh` 가 쓴 config |
+| `KIRO_BASE_URL` | `http://127.0.0.1:8990` | 사이드카 주소. **loopback 만** 받고, 아니면 기본값으로 되돌린다 |
+
+Anthropic 자격증명 우선순위는 pinned provider 가 소유한다: 저장된 자격증명 → `ANTHROPIC_AUTH_TOKEN`
+→ `ANTHROPIC_OAUTH_TOKEN` → `ANTHROPIC_API_KEY` → setup-token(파일 → Keychain). setup-token 은
+**마지막 출처**이고 `sk-ant-oat` 접두를 확인한 값만 쓴다 — 그 접두가 pinned 층의 Claude CLI
+신원·beta·cache 동작을 켠다. 어느 경로도 token 을 복사하거나 다시 쓰지 않는다.
+
+직결 경로에는 bridge 의 `read_file ↔ Read` 변환이 없다. pinned OAuth 경로가 canonical
+대소문자 교정을 이미 적용하므로 그것을 남기면 이중 변환이다. Kiro 는 사이드카 key 가
+`sk-ant-oat` 가 아니어서 그 교정 자체가 걸리지 않는다.
 
 ## Claude 도구 경계
 

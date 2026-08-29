@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { adapterPath, brokerOverlayPath, buildSenpiArgs, leadOverlayPath, readPinnedVersions } from "../../src/launch.mjs";
+import { adapterPath, providerOverlayPath, buildSenpiArgs, leadOverlayPath, readPinnedVersions } from "../../src/launch.mjs";
 import { PIN } from "../../src/policy.mjs";
 
 test("launcher pins exact omo-ai and senpi versions", () => {
@@ -11,7 +11,7 @@ test("senpi argv replaces the system prompt and lets profile settings choose the
   const args = buildSenpiArgs(["--mode", "rpc"]);
   const promptAt = args.indexOf("--system-prompt");
   const leadAt = args.indexOf(leadOverlayPath());
-  const brokerAt = args.indexOf(brokerOverlayPath());
+  const providerAt = args.indexOf(providerOverlayPath());
   const adapterAt = args.indexOf(adapterPath());
   assert.ok(promptAt > 0);
   assert.match(args[promptAt + 1], /Working agreement/);
@@ -26,8 +26,8 @@ test("senpi argv replaces the system prompt and lets profile settings choose the
   assert.equal(args.includes("--model"), false);
   assert.ok(args.includes("-e"));
   assert.ok(leadAt > 0 && args[leadAt - 1] === "-e");
-  assert.ok(brokerAt > leadAt && args[brokerAt - 1] === "-e");
-  assert.ok(adapterAt > brokerAt && args[adapterAt - 1] === "-e");
+  assert.ok(providerAt > leadAt && args[providerAt - 1] === "-e");
+  assert.ok(adapterAt > providerAt && args[adapterAt - 1] === "-e");
 });
 
 test("member argv gets teammate prompt plus the same tool guidelines", () => {

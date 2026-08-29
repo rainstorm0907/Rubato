@@ -6,7 +6,7 @@
 
 ## 레포가 둘인 이유
 
-- **이 레포(Rubato)** 가 하네스다. 엔진 포크 + rubato-pi 오버레이 + 역할별 시스템 프롬프트 + provider bridge. 실행에 필요한 것은 전부 여기다. upstream(`code-yeongyu/oh-my-openagent`)을 추적한다.
+- **이 레포(Rubato)** 가 하네스다. 엔진 포크 + rubato-pi 오버레이 + 역할별 시스템 프롬프트 + provider 직결. 실행에 필요한 것은 전부 여기다. upstream(`code-yeongyu/oh-my-openagent`)을 추적한다.
 - **agent-taskforce** 는 스킬, agent 정의, Claude Code 런타임 훅, 사례, 참고 자료다. 하네스 없이 의미가 있고 다른 CLI와 공유한다.
 
 예전에 `harness/`는 agent-taskforce 안에 있었다. 지금은 여기로 옮겼다. agent-taskforce의 `runtime/`은 Claude Code 설정(컴팩션 훅 등)이고, 실행 하네스가 아니다.
@@ -22,7 +22,7 @@ cd Rubato
 ./install.sh --apply                 # 설치하고 모델 왕복까지 확인한다
 ```
 
-installer는 submodule, 엔진·bridge·rubato-pi 의존성, 엔진 확장 빌드, 역할별 프롬프트 합성,
+installer는 submodule, 엔진·rubato-pi 의존성, 엔진 확장 빌드, 역할별 프롬프트 합성,
 번들 스킬, 셸 alias 블록을 이 클론만으로 설치한다. 기존 스킬은 덮어쓰지 않는다.
 크레덴셜은 복사하거나 만들지 않고 상태만 알려 준다.
 
@@ -33,7 +33,6 @@ alias는 `~/.zshrc`의 마커 블록(`# >>> rubato aliases >>>`) 하나로 관�
 |---|---|
 | `rubato`, `rubato-pi` | 세션을 띄운다 |
 | `rubato-soul` | 역할별 조립 없이 `Documents/SOUL.md`만 시스템 프롬프트로 |
-| `rubato-restart`, `rbr` | 공유 bridge 를 인증 drain 한 뒤 교체하고 `/health` 까지 확인 |
 | `msearch` | 기억 검색. alias 와 별개로 `~/.local/bin/msearch` 심링크가 정본이다 — 에이전트가 부르는 bash 는 비대화형이라 rc 를 안 읽는다 |
 
 설치 후에는 `rubato update`가 이 블록과 cmux 세션 복원까지 같이 따라온다.
@@ -67,7 +66,6 @@ dream 은 규칙이 결정하는 것만 실행하고(6개월 지난 facts 아카
 ```bash
 git submodule update --init --recursive
 bun install                          # 엔진(senpi). npm 은 workspace: 를 못 읽는다. bun 1.4+
-npm install --prefix harness         # bridge
 npm install --prefix harness/rubato-pi
 node harness/scripts/build-engine.mjs   # 엔진 산출물 → ~/.rubato-pi/engine/plugin
 harness/prompts/build.sh
@@ -144,7 +142,7 @@ node harness/scripts/cmux-vault.mjs --print   # 붙여넣을 블록만
 반영은 `cmux reload-config`. 놀고 있는 세션의 RAM 까지 회수하려면 cmux 설정의
 `terminal.agentHibernation` 을 따로 켜라 — 둥이는 세션을 죽였다가 탭을 열 때 되살린다.
 
-**요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). `opencodex` 는 선택이다 — Codex 는 OAuth 로 직접 가고, OpenCodex 가 있으면 그쪽 모델이 카탈로그에 더해질 뿐이다.
+**요구 사항.** Node 24+, bun 1.4+(그 아래는 `--metafile` 이 없어 확장 빌드가 죽는다). Codex 는 OAuth 로 직접 간다 — `opencodex` 는 더 쓰지 않는다.
 
 **크레덴셜은 각자 넣는다.** 설치는 이것들을 만들지 않는다. 상태는 `rubato auth` 로 본다.
 
@@ -154,7 +152,7 @@ node harness/scripts/cmux-vault.mjs --print   # 붙여넣을 블록만
 | Codex | 같은 파일의 `openai-codex` | OAuth, 자동 갱신 |
 | Claude | `~/.claude/auth/setup-token-<계정>` (없으면 Keychain) | **1년 장기 토큰** `sk-ant-oat...` |
 
-계정 이름 기본값은 `sub` 이고 `FX_CLAUDE_ACCOUNT` 로 바꾼다.
+계정 이름 기본값은 `sub` 이고 `RUBATO_CLAUDE_ACCOUNT` 로 바꾼다(예전 `FX_CLAUDE_ACCOUNT` 도 읽는다).
 
 Rubato 실행에 필요한 파일과 스킬은 이 레포에 있다. Claude Code 전용 agent 정의와
 컴팩션 훅은 Rubato 실행 범위가 아니며, 필요하면 별도 도구로 설치한다.
@@ -171,7 +169,7 @@ Senpi (code-yeongyu)                       세션 루프·도구 실행·모델 
 omo-ai / oh-my-openagent (code-yeongyu)    task 엔진·component
   ↓  포크
 Rubato (keepitmello)                       component를 고른 엔진 + 이 harness/
-  └─ harness/rubato-pi/                    역할별 시스템 프롬프트·팀 도구·상태줄·브로커 연결
+  └─ harness/rubato-pi/                    역할별 시스템 프롬프트·팀 도구·상태줄·provider 직결
 ```
 
 오버레이는 아직 npm의 `omo-ai`를 정확한 버전으로 받아 `plugin/extensions/omo.js`를 `-e`로 얹는다. 그와 별개로 **이 레포가 엔진 포크다.** component를 골라 끄는 경로가 upstream에 없어서 포크를 만들었고, 켜는 여섯 개만 `packages/omo-senpi/src/extension/component-list.ts` 배열에 남긴다. 소스 파일은 지우지 않는다. 어떤 component를 왜 끄는지와 머지 절차는 [docs/rubato/component-policy.md](../docs/rubato/component-policy.md)가 정본이다. 여기서 다시 적지 않는다.
@@ -186,70 +184,49 @@ Rubato (keepitmello)                       component를 고른 엔진 + 이 harn
 
 팀은 OMO 런타임을 유지한다. `team_create` / `task` / `task_send` / 보드. 팀원 모델은 리드가 고르고, 띄우기 전에 역할·모델 배치안을 채팅으로 보여 승낙을 받는다. `~/.omo/omo.jsonc` 카테고리 라우팅은 읽지 않는다. `/login`은 중계기 경로다. OMO 스킬팩은 안 실리고, `~/.agents/skills`만 본다.
 
-## provider bridge
+## provider 직결
 
-모델 호출은 로컬 브로커를 거친다.
+모델 호출은 세션 프로세스 안에서 provider 로 바로 간다. 예전의 로컬 FX bridge(`:8788`)는
+삭제됐다.
 
 ```text
-rubato-pi
-  → 127.0.0.1:8788  bridge
-       ├─ xai/*           → pi-ai xAI transport      → xAI OAuth
-       ├─ anthropic/*     → pi-ai Messages transport → Claude 장기 setup-token
-       ├─ openai-codex/*  → pi-ai Codex transport    → Codex OAuth
-       └─ 나머지           → OpenCodex 127.0.0.1:10100 (선택)
+rubato-pi  (provider-overlay.mjs 가 native provider 를 등록한다)
+  ├─ openai-codex/*      → pi-ai Codex transport     → Codex OAuth
+  ├─ xai/*               → pi-ai xAI transport       → xAI OAuth
+  ├─ anthropic/*         → pi-ai Messages transport  → Claude 장기 setup-token
+  ├─ kiro/*              → kiro.rs 사이드카 127.0.0.1:8990
+  ├─ google-antigravity/* → Antigravity OAuth
+  └─ cursor/*            → native Connect-RPC       → api2.cursor.sh (HTTP/2 필수)
 ```
 
-셋 다 이 중계기가 직접 문다. OpenCodex 는 없어도 되고, 있으면 그쪽 카탈로그가 더해진다.
+여섯 개 다 세션 프로세스가 직접 문다. 남은 로컬 의존은 Kiro 사이드카 `:8990` 하나뿐이고, 그
+ensure 는 배경으로 돌아 다른 provider 로 여는 세션을 붙잡지 않는다.
 
-Senpi agent나 provider CLI가 도구를 실행하지 않는다. transport는 tool call만 반환하며 실행과 승인, tool result 전달은 하네스가 소유한다. xAI OAuth credential은 기본 `~/.senpi/agent/auth.json`, Claude setup-token은 macOS Keychain에서 읽는다. Codex credential은 OpenCodex가 가진다. Codex 경로를 쓸 때는 OpenCodex가 `10100`에서 살아 있어야 한다.
+Cursor 에는 proxy fallback 이 없다. HTTP/2 로 `api2.cursor.sh` 에 닿지 못하는 망에서는 Cursor
+경로가 없고, 오류가 그 사실을 그대로 말한다. 예전의 OpenCodex `:10100` 중계는 삭제됐다.
 
-Cursor는 이 중계기에 없다. 밖의 `cs-agent`(`~/.claude/cs-agent/`)에서 `cursor-agent`를 독립 에이전트로 띄우는 형태다 — 판정 근거는 agent-taskforce `case-studies/provider-routing/cursor-route-verdict/`.
+Senpi agent나 provider CLI가 도구를 실행하지 않는다. transport는 tool call만 반환하며 실행과
+승인, tool result 전달은 하네스가 소유한다.
+
+자격증명 권위는 profile `~/.rubato-pi/agent/auth.json` 이고 `/login` 이 채운다. Claude
+setup-token 만 예외로 `~/.claude/auth/setup-token-<계정>` → Keychain 순으로 읽는다. provider
+마다 refresh writer 는 하나이며 `AuthStorage` 가 lock 과 원자적 쓰기로 직렬화한다. 토큰을 파일
+사이로 복사하지 않는다 — 같은 refresh token 을 두 저장소가 들면 먼저 갱신한 쪽이 다른 쪽을
+무효로 만든다. 자세한 경계는 `harness/docs/provider-routing.md`.
 
 ## 실행
 
 ```bash
-./scripts/start.sh   # bridge
 rubato               # = rubato-pi. 보통 alias 가 harness/scripts/rubato-pi.sh
 ```
 
-브리지는 첫 세션이 알아서 띄운다(`ensureBroker`). 아래 supervisor 를 심어두면 로그인 때 이미 떠 있어서 그 몫이 사라진다. 둘 중 무엇이든 코드는 같다 — `ensureBroker` 가 "살아 있으면 아무것도 안 한다"로 시작하므로 자연히 no-op 이 된다.
-
-### 로그인 때 브리지를 띄운다 (supervisor)
-
-```bash
-./install.sh --only-supervisor --apply      # macOS launchd / Linux systemd user unit
-./install.sh --uninstall-supervisor --apply # 뗀다
-```
-
-`./install.sh --apply` 에도 포함돼 있다. 인자 없이 부르면 무엇을 할지만 보여준다.
-
-supervisor 는 종료 원인과 무관하게 브리지를 되살린다. macOS 는 `KeepAlive=true`, Linux 는 `Restart=always`다. 명시적인 교체는 `rubato restart`가 맡는다 — 브리지가 런타임에 쓴 mode 600 비밀 파일로 `POST /admin/drain` 을 인증하고, 옛 프로세스가 끝난 뒤 supervisor를 깨워 `/health` 가 200 일 때만 성공한다. SIGTERM/SIGINT 는 브리지가 무시한다. 소스 수정만으로는 브리지가 종료되지 않고, 예기치 않은 정상 종료나 SIGKILL 뒤에도 supervisor가 다시 올린다.
-
-macOS에서 이미 supervisor가 실행 중이면 `install-supervisor.sh --apply`는 공유 브리지를 끊지 않고 plist만 갱신한다. 이때 새 `KeepAlive` 정책은 다음 로그인부터 적용된다.
-
-systemd 가 없는 곳(WSL 일부, 컨테이너)에는 아무것도 심지 않고 lazy start 로 남는다. `loginctl enable-linger` 는 권하지 않는다 — 브리지가 사용자 인증 파일을 읽으므로 로그인 세션 밖에서 도는 것은 득보다 실이 크다.
-
-한 머신에서 클론을 여럿 돌린다면 `FX_BRIDGE_PORT` 와 함께 `RUBATO_SUPERVISOR_LABEL`(macOS) 또는 `RUBATO_SUPERVISOR_UNIT`(Linux)도 다르게 준다.
-
-> **supervisor 를 쓸 때 Claude setup-token 은 파일로 두는 편이 안전하다.** 브리지는 `~/.claude/auth/setup-token-<계정>` 을 먼저 보고 없으면 Keychain(`security find-generic-password`)으로 떨어지는데, 로그인 직후 launchd 가 띄우는 시점에 키체인이 잠겨 있으면 그 폴백이 실패할 수 있다. 이 경로는 **아직 실측하지 못했다** — 이 머신은 파일 토큰이 먼저 잡혀 확인할 기회가 없었다.
+띄울 중계기가 없다. provider 등록은 세션이 시작할 때 `provider-overlay.mjs` 가 한다.
 
 ### 로그
 
-```
-macOS  ~/Library/Logs/rubato/bridge.log
-그 외   ${XDG_STATE_HOME:-~/.local/state}/rubato/bridge.log
-```
-
-`RUBATO_BROKER_LOG` 로 덮을 수 있다. 예전에는 `$TMPDIR` 에 뒀는데 재부팅에 날아가서, 뒤늦게 "브리지가 왜 죽었나"를 물을 때 볼 것이 남지 않았다. `rubato-restart.sh` 는 재기동마다 시각·호출자·사유를 한 줄 남긴다.
-
-세션 상태는 `~/.rubato-pi/agent`다. `~/.omo`는 건드리지 않는다. `.build/lead.pi.md`와 `.build/teammate.pi.md`가 없으면 거절한다 — 시스템 프롬프트 없이 도는 것이 과거의 실제 버그였기 때문에 조용히 넘어가지 않는다. 조각을 고친 뒤에는 `prompts/build.sh`를 다시 돌린다.
-
-확인:
-
-```bash
-./scripts/doctor.sh
-./scripts/smoke-test.sh
-```
+세션 상태는 `~/.rubato-pi/agent`다. `~/.omo`는 건드리지 않는다. `.build/lead.pi.md`와
+`.build/teammate.pi.md`가 없으면 거절한다 — 시스템 프롬프트 없이 도는 것이 과거의 실제
+버그였기 때문에 조용히 넘어가지 않는다. 조각을 고친 뒤에는 `prompts/build.sh`를 다시 돌린다.
 
 ## fx — 폐기된 이전 세대
 
@@ -282,23 +259,25 @@ Esc Esc        빈 입력창에서 두 번 누르면 피커 (턴 목록, 최신�
 
 ## prompt cache — 프로바이더마다 레버가 다르다
 
-측정일 2026-08-21. 세 프로바이더 중 **TTL을 우리가 정할 수 있는 것은 Anthropic direct 하나뿐이다.** 나머지 둘은 우리 코드가 아니라 provider가 막는다. 아래 표의 `FX_*` 이름은 fx 시절 레버다. 브리지가 같은 값을 아직 읽는다.
+측정일 2026-08-21. 세 프로바이더 중 **TTL을 우리가 정할 수 있는 것은 Anthropic direct 하나뿐이다.** 나머지 둘은 우리 코드가 아니라 provider가 막는다.
 
 | 프로바이더 | 캐시 방식 | 1시간 TTL | 우리가 쥔 레버 |
 |---|---|---|---|
-| `anthropic/*` | 명시 `cache_control` breakpoint | **된다** | `FX_CACHE_RETENTION` |
+| `anthropic/*` | 명시 `cache_control` breakpoint | **된다** | `PI_CACHE_RETENTION` |
 | `xai/*` | provider 자동, 128토큰 블록 | 파라미터 자체가 없다 | `prompt_cache_key`(서버 affinity)뿐 |
 | codex (`gpt-5.6-*`) | provider 자동 | upstream이 400으로 거부 | `prompt_cache_key`뿐 |
 
-### Anthropic — `FX_CACHE_RETENTION`
+### Anthropic — `PI_CACHE_RETENTION`
 
-bridge가 pi-ai에 `cacheRetention`을 넘긴다. 기본값은 `long`이고 `short`/`none`으로 끌 수 있다.
+`brand.mjs` 의 `launchEnv` 가 자식에게 `PI_CACHE_RETENTION` 을 넘기고 pinned pi-ai 가 그것을
+읽는다(`utils/prompt-cache-ttl.js` 의 `resolveAnthropicCacheRetention`). 기본값은 `long` 이고
+`short`/`none` 으로 끌 수 있다. 예전 `FX_CACHE_RETENTION` 은 삭제된 bridge config 만 읽었다.
 
 `long`이면 system·tools·마지막 user 블록에 `cache_control: {"type":"ephemeral","ttl":"1h"}`가 붙는다. **Claude setup-token OAuth 경로에서도 거부되지 않는다** — 실측에서 `anthropic-beta`는 `claude-code-20250219,oauth-2025-04-20`만 나갔고 extended-cache-ttl beta 헤더 없이 통과했다. 응답 usage의 `cache_creation.ephemeral_1h_input_tokens`로 provider가 1시간 캐시임을 확인해준다.
 
-sonnet-5 기준 2턴 실측: T1 `cacheWrite1h=10853` → T2 `cacheRead=10853`. bridge를 통과한 e2e도 동일했다.
+sonnet-5 기준 2턴 실측: T1 `cacheWrite1h=10853` → T2 `cacheRead=10853`.
 
-비용은 공짜가 아니다. 1시간 쓰기는 base input의 **2배**이고 5분 쓰기는 1.25배다(sonnet-5 기준 $4/M 대 $2.5/M, 읽기는 $0.2/M). agent-taskforce `case-studies/cache/fx-compaction-vs-cache-discount-measurement.md`의 실측(외부 턴 간격 5분 초과 24%, 턴당 request 12.4, 세션 턴 중앙값 7, 8턴 초과 세션 47%)을 넣으면 손익분기가 외부 턴 3개 근처다. 그 위로는 계속 `long`이 싸다. 아주 짧은 단발 호출만 도는 용도라면 `FX_CACHE_RETENTION=short`가 맞다.
+비용은 공짜가 아니다. 1시간 쓰기는 base input의 **2배**이고 5분 쓰기는 1.25배다(sonnet-5 기준 $4/M 대 $2.5/M, 읽기는 $0.2/M). agent-taskforce `case-studies/cache/fx-compaction-vs-cache-discount-measurement.md`의 실측(외부 턴 간격 5분 초과 24%, 턴당 request 12.4, 세션 턴 중앙값 7, 8턴 초과 세션 47%)을 넣으면 손익분기가 외부 턴 3개 근처다. 그 위로는 계속 `long`이 싸다. 아주 짧은 단발 호출만 도는 용도라면 `PI_CACHE_RETENTION=short`가 맞다.
 
 **fx 포크에서 고친 것 하나.** fx는 `.no_cache` 메시지를 만나면 `prefix_cacheable` 래치를 끄고 다시 켜지 않아, ephemeral overlay 뒤의 모든 메시지가 캐시 대상에서 빠졌다. breakpoint 계산은 대화 끝을 제대로 짚는데 마킹이 안 돼서 요청마다 전체를 새로 썼다. 래치는 애초에 중복이었다 — `shouldCacheMessage`가 `.no_cache`를 개별로 이미 거른다. 래치를 걷어내고 breakpoint 생존을 검증하는 테스트를 넣었다 (`51b2c16`).
 
@@ -358,7 +337,7 @@ body를 그대로 파일로 남긴다. **개인정보·비밀 유출 위험이 �
 보여줬고, 실제 응답이 얼마나 걸렸는지는 없었다. `tok/s`나 캐시율은 처리량이지 벽시계 지연이
 아니다 — 사용자가 원한 건 '이번 턴이 느렸는지, 느렸다면 첫 토큰 전이었는지 후였는지'다.
 
-broker-stream.mjs(`streamBroker`)가 성공한 모델 호출이 끝날 때 assistant 메시지에
+rubato-stream.mjs(`withRubatoStream`)가 성공한 모델 호출이 끝날 때 assistant 메시지에
 `timing: { sentAt, processStartedAt, ttftMs, waitMs, thinkMs, modelDurationMs }`를 붙인다. 첫 실제
 텍스트·reasoning·도구 인자 delta가 올 때까지를 TTFT로 세고, 빈 start 프레임은 세지 않는다. 이 계산은
 측정 기록기와 완전히 독립이고, **`RUBATO_MEASUREMENT_LOG`가 꺼져 있어도 항상 계산된다** — 실제
@@ -420,10 +399,9 @@ Rubato/
   harness/
     README.md
     prompts/               역할별 시스템 프롬프트 정본 (build.sh 로 합성)
-    rubato-pi/             기본 런타임 오버레이
-    bridge/                provider bridge
+    rubato-pi/             기본 런타임 오버레이 (provider 직결 포함)
     docs/                  설계와 이력
-    scripts/               start / doctor / smoke / 런처
+    scripts/               런처와 설치 보조
     bench/  audit/         벤치와 비용 집계
 ```
 

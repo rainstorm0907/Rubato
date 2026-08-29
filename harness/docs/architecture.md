@@ -1,4 +1,13 @@
-# fx-v3-bridge
+# fx-v3-bridge (삭제됨 — 이력)
+
+> **이 컴포넌트는 2026-08-28 provider 직결 전환(Phase 5A)에서 삭제됐다.** 아래는 그것이
+> 무엇이었고 어떻게 동작했는지의 기록이다. 현재 라우팅은
+> [`provider-routing.md`](provider-routing.md) 와 [`../README.md`](../README.md) 를 봐라 —
+> 여섯 provider 전부 세션 프로세스에서 vendor 를 직접 부르고 `:8788` 은 없다.
+>
+> 지우지 않고 남기는 이유: 이 구조가 왜 필요했고 무엇이 그것을 불필요하게 만들었는지가
+> 다음에 "중계기를 하나 두면 편하지 않나" 라는 질문에 답한다. 판단 근거는
+> [`provider-direct-routing-design.md`](provider-direct-routing-design.md) 의 "왜 바꾸는가".
 
 정본 위치는 이 레포의 `harness/`다. fx upstream의 provider 코드는 건드리지 않고 Vercel AI Gateway v3 요청을 provider별 transport로 연결한다.
 

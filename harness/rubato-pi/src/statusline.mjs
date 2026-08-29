@@ -203,7 +203,7 @@ export function resolveCachePolicy(model) {
   if (provider === "openai" && api === "openai-responses" && /(?:^|\/)gpt-5\.6(?:-|$)/.test(id)) {
     return { kind: "minimum", ttlSeconds: 1800 };
   }
-  // Rubato broker는 anthropic catalog에 cacheRetention:"long"을 붙여 1h를 요청한다.
+  // Rubato는 PI_CACHE_RETENTION=long 으로 anthropic 1h 캐시를 요청한다(brand.mjs).
   // 표시 TTL을 foreground wait budget에서 역산하면 사용자 safety buffer가 섞여 거짓말한다.
   if (provider === "anthropic") return { kind: "sliding", ttlSeconds: 3600 };
   if (api === "anthropic-messages" || api === "bedrock-converse-stream") {
@@ -274,7 +274,7 @@ export function latestAssistantUsage(entries) {
 }
 
 /**
- * `output.timing` 은 broker-stream 이 성공한 모델 호출이 끝날 때 붙인다 (measurement
+ * `output.timing` 은 rubato-stream 이 성공한 모델 호출이 끝날 때 붙인다 (measurement
  * 기록기와 무관하게 항상 계산 — RUBATO_MEASUREMENT_LOG 가 꺼져 있어도 값이 있다).
  * 세션 파일에도 저장되므로 현재 프로세스 표식이 맞고 표시할 숫자가 유효한 값만 고른다.
  *

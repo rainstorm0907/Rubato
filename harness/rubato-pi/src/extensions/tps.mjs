@@ -2,7 +2,7 @@
 //
 // 기본판은 `TPS 54.4 tok/s. Cache hit 0.0%, 10.5s` 까지만 그린다. 그 10.5초 안에
 // '기다린 시간'과 '생각한 시간'이 섞여 있어, 느린 턴이 왜 느렸는지 알 수 없다.
-// broker-stream 이 성공한 호출마다 `output.timing` 을 붙이므로 여기서 그 두 구간을
+// rubato-stream 이 성공한 호출마다 `output.timing` 을 붙이므로 여기서 그 두 구간을
 // 턴 평균으로 덧붙인다: `…, 10.5s, delay 1.2s, think 4.0s`.
 //
 // 숫자 계산은 상태줄과 같은 statusline.mjs 헬퍼(turnTiming/formatLatencyMs)를 쓴다.

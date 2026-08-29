@@ -1,38 +1,38 @@
 import { pathToFileURL } from "node:url";
 import { senpiNested } from "./engine-paths.mjs";
 
-// broker-overlay 가 끌어오는 pi-ai index.js(createProvider) 없이
+// provider-overlay 가 끌어오는 pi-ai index.js(createProvider) 없이
 // disabledProviders 계산에 필요한 id 만 모은다. 세션 기본값을 쓸 때마다
 // 프로바이더 구현을 컴파일하지 않으려고 갈라 둔 파일이다.
 const { builtinProviders, getBuiltinProviders } = await import(
   pathToFileURL(senpiNested("@earendil-works/pi-ai/dist/providers/all.js")).href
 );
 
-// broker.mjs FALLBACK_CATALOG 의 프로바이더 prefix 와 맞춰 둔다.
-// 이쪽이 broker 를 가져오면 시작 그래프가 다시 무거워진다.
-const FALLBACK_OURS = Object.freeze(["xai", "anthropic", "openai-codex"]);
-
-function providerPrefix(id) {
-  const text = String(id);
-  const slash = text.indexOf("/");
-  return slash > 0 ? text.slice(0, slash) : "rubato";
-}
-
-export function ourProviderIds(catalog) {
-  if (!Array.isArray(catalog) || catalog.length === 0) return [...FALLBACK_OURS];
-  const ids = new Set();
-  for (const entry of catalog) {
-    const id = typeof entry === "string" ? entry : entry?.id;
-    if (!id) continue;
-    ids.add(providerPrefix(id));
-  }
-  return ids.size > 0 ? [...ids] : [...FALLBACK_OURS];
-}
+/**
+ * Rubato 가 제품으로 지원하는 provider. FX bridge 삭제 뒤로 이것이 **유일한 권위**다.
+ *
+ * 예전에는 두 개념이 갈라져 있었다: 이 정적 목록은 "제품 계약"이었고, 활성 등록의
+ * 권위는 bridge catalog 에서 유도한 `ourProviderIds(catalog)` 였다. 갈라 둘 이유가
+ * catalog 자신이었다 — 살아 있는 bridge 가 우리가 모르는 provider 를 열 수 있었으므로
+ * 그때의 실제 목록을 런타임에 물어야 했다.
+ *
+ * 이제 물을 곳이 없고, 등록하는 것은 pinned native factory 뿐이다. 목록과 실제가
+ * 어긋날 수 있는 자리가 사라졌으므로 두 개념을 하나로 둔다.
+ */
+export const SUPPORTED_PROVIDER_IDS = Object.freeze([
+  "openai-codex",
+  "xai",
+  "anthropic",
+  "cursor",
+  "kiro",
+  "google-antigravity",
+]);
 
 /**
- * Built-in pi-ai providers the model picker must never show. Rubato routes every model through the
- * broker, so a provider id we did not register ourselves is a direct-vendor lane with no credentials
- * behind it. Ids the broker also uses (anthropic, openai, xai) stay: our registration replaced them.
+ * Built-in pi-ai providers the model picker must never show. A provider id we did not register
+ * ourselves is a direct-vendor lane with no credentials behind it. Ids we do register
+ * (anthropic, openai-codex, xai, cursor, kiro, google-antigravity) stay: our registration
+ * replaced them.
  */
 export function builtinProviderIds() {
   // getBuiltinProviders() only lists ids present in the generated catalog, which misses
@@ -40,7 +40,7 @@ export function builtinProviderIds() {
   return [...getBuiltinProviders(), ...builtinProviders().map((provider) => provider.id)];
 }
 
-export function foreignProviderIds(builtinIds, catalog) {
-  const ours = new Set(ourProviderIds(catalog));
+export function foreignProviderIds(builtinIds) {
+  const ours = new Set(SUPPORTED_PROVIDER_IDS);
   return [...new Set(builtinIds)].filter((id) => typeof id === "string" && id.length > 0 && !ours.has(id));
 }

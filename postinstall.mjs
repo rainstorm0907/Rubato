@@ -170,6 +170,19 @@ export const VENDOR_PATCHES = [
       return realpathSync(join(senpiRoot, "node_modules", "@earendil-works", "pi-tui"));
     },
   },
+  {
+    packageName: "@earendil-works/pi-ai (nested in @code-yeongyu/senpi)",
+    patchName: "@earendil-works%2Fpi-ai@2026.8.22.patch",
+    seriesName: "@earendil-works%2Fpi-ai",
+    expectedVersion: "2026.8.22",
+    resolveRoot() {
+      // 루트에 hoist 된 사본이 아니라 senpi 가 자기 안에 품은 사본이 세션이 읽는 것이다
+      // (`engine-paths.mjs` 의 `senpiNested()` 도 이 사본을 우선한다). pi-tui 에서 같은
+      // 구분을 놓치면 "패치는 정확한데 도는 것은 원본"인 상태가 오래 간다.
+      const senpiRoot = VENDOR_PATCHES[0].resolveRoot();
+      return realpathSync(join(senpiRoot, "node_modules", "@earendil-works", "pi-ai"));
+    },
+  },
 ];
 
 export function seriesDir(spec, root = rootDir) {

@@ -67,8 +67,6 @@ export async function probeRpc({ nodeBin, senpiCli, extensionArgs, extraArgs = [
       SENPI_CODING_AGENT_DIR: agentDir,
       PI_OFFLINE: "1",
       DO_NOT_TRACK: "1",
-      OMO_DISABLE_POSTHOG: "1",
-      OMO_SENPI_DISABLE_POSTHOG: "1",
       ...engineChildEnv(env),
     },
     stdio: ["pipe", "pipe", "pipe"],

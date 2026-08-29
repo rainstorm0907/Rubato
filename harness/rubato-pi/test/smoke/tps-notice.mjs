@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { adapterPath, brokerOverlayPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
+import { adapterPath, providerOverlayPath, leadOverlayPath, senpiCliPath } from "../../src/launch.mjs";
 import { launchEnv } from "../../src/brand.mjs";
 
 const agentDir = join(homedir(), ".rubato-pi", "agent");
@@ -22,7 +22,7 @@ const child = spawn(
     "-e",
     leadOverlayPath(),
     "-e",
-    brokerOverlayPath(),
+    providerOverlayPath(),
     "-e",
     adapterPath(),
   ],

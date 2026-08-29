@@ -1,7 +1,7 @@
 import { existsSync as existsSyncFs, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_MODEL_ID, DEFAULT_PROVIDER } from "./defaults.mjs";
-import { builtinProviderIds, foreignProviderIds, ourProviderIds } from "./provider-ids.mjs";
+import { SUPPORTED_PROVIDER_IDS, builtinProviderIds, foreignProviderIds } from "./provider-ids.mjs";
 
 export function settingsPath(agentDir) {
   return join(agentDir, "settings.json");
@@ -11,7 +11,18 @@ export function modelsPath(agentDir) {
   return join(agentDir, "models.json");
 }
 
-const DISABLED_OAUTH_EXTENSIONS = ["claude-sdk-oauth", "cursor-cli-oauth"];
+/**
+ * 끄는 built-in OAuth extension.
+ *
+ * `cursor-cli-oauth` 는 real `cursor-agent` binary 를 띄우는 별개 lane 이고, native
+ * Connect-RPC 와 동시에 노출하지 않는다(설계). 그런데 이것을 끄지 않으면 그 lane 의
+ * catalog 가 **우리 모델 id 를 가린다** — `gemini-3.7-flash` 를 `input: ["text"]` 로 들고
+ * 있어서, 같은 id 인 Antigravity 모델이 이미지 능력을 잃고 도구 결과 변환에서 죽는다.
+ *
+ * 시험이 이 목록을 다시 적지 않게 내보낸다. 실 세션과 다른 구성을 검증하면 그 검증은
+ * 실 세션에 대해 아무것도 말하지 않는다.
+ */
+export const DISABLED_OAUTH_EXTENSIONS = ["claude-sdk-oauth", "cursor-cli-oauth"];
 
 function readJson(path, { exists, readFile }) {
   if (!exists(path)) return {};
@@ -36,31 +47,31 @@ export function settingsLookCurrent(current) {
   return true;
 }
 
-export function modelsLookCurrent(current, catalog) {
+export function modelsLookCurrent(current) {
   if (!current || typeof current !== "object") return false;
   if (!Array.isArray(current.disabledProviders) || current.disabledProviders.length === 0) return false;
   if (!current.disabledProviders.includes("vercel-ai-gateway")) return false;
-  return !ourProviderIds(catalog).some((id) => current.disabledProviders.includes(id));
+  return !SUPPORTED_PROVIDER_IDS.some((id) => current.disabledProviders.includes(id));
 }
 
 export function sessionDefaultsLookCurrent(
   agentDir,
-  { exists = existsSyncFs, readFile = readFileSync, catalog } = {},
+  { exists = existsSyncFs, readFile = readFileSync } = {},
 ) {
   return (
     settingsLookCurrent(readJson(settingsPath(agentDir), { exists, readFile })) &&
-    modelsLookCurrent(readJson(modelsPath(agentDir), { exists, readFile }), catalog)
+    modelsLookCurrent(readJson(modelsPath(agentDir), { exists, readFile }))
   );
 }
 
 export function ensureSessionDefaults(
   agentDir,
-  { exists = existsSyncFs, readFile = readFileSync, writeFile = writeFileSync, catalog } = {},
+  { exists = existsSyncFs, readFile = readFileSync, writeFile = writeFileSync } = {},
 ) {
   const path = settingsPath(agentDir);
   const current = readJson(path, { exists, readFile });
   const models = readJson(modelsPath(agentDir), { exists, readFile });
-  if (settingsLookCurrent(current) && modelsLookCurrent(models, catalog)) {
+  if (settingsLookCurrent(current) && modelsLookCurrent(models)) {
     return current;
   }
   const disabled = new Set([
@@ -76,8 +87,8 @@ export function ensureSessionDefaults(
     // 눌러 펴고 그 안에서 사고가 흐른다. false 로 두면 접기 자체가 사라져
     // 산문이 본문에 그대로 쏟아진다.
     hideThinkingBlock: current.hideThinkingBlock ?? true,
-    // 기본 3회(2+4+8초)는 브리지가 npm install 을 끼고 다시 뜨는 경우를 못 덮는다.
-    // 5회면 약 62초까지 버틴다. 사용자가 적어 둔 값은 건드리지 않는다.
+    // 기본 3회(2+4+8초)는 provider 가 잠깐 흔들리는 경우를 못 덮는다. 5회면 약
+    // 62초까지 버틴다. 사용자가 적어 둔 값은 건드리지 않는다.
     //
     // modelFallback 은 엔진 기본이 true 다(senpi retry-fallback/settings.js).
     // 켜져 있으면 거절(refusal)을 만났을 때 같은 모델로 재시도하는 대신 체인의
@@ -89,7 +100,7 @@ export function ensureSessionDefaults(
     disabledBuiltinExtensions: [...disabled],
   };
   writeFile(path, `${JSON.stringify(next, null, 2)}\n`);
-  ensureModelsConfig(agentDir, { exists, readFile, writeFile, catalog });
+  ensureModelsConfig(agentDir, { exists, readFile, writeFile });
   return next;
 }
 
@@ -109,7 +120,7 @@ export function mergeDisabledProviders(current, required, ours = []) {
 
 export function ensureModelsConfig(
   agentDir,
-  { exists = existsSyncFs, readFile = readFileSync, writeFile = writeFileSync, catalog } = {},
+  { exists = existsSyncFs, readFile = readFileSync, writeFile = writeFileSync } = {},
 ) {
   const path = modelsPath(agentDir);
   const current = exists(path) ? JSON.parse(readFile(path, "utf8")) : {};
@@ -117,14 +128,13 @@ export function ensureModelsConfig(
     current.providers && typeof current.providers === "object" && !Array.isArray(current.providers)
       ? current.providers
       : {};
-  const ours = ourProviderIds(catalog);
   const next = {
     ...current,
     providers,
     disabledProviders: mergeDisabledProviders(
       current,
-      foreignProviderIds(builtinProviderIds(), catalog),
-      ours,
+      foreignProviderIds(builtinProviderIds()),
+      SUPPORTED_PROVIDER_IDS,
     ),
   };
   writeFile(path, `${JSON.stringify(next, null, 2)}\n`);

@@ -100,8 +100,6 @@ const child = spawn(nodeBin, args, {
     SENPI_CODING_AGENT_DIR: agentDir,
     PI_OFFLINE: "1",
     DO_NOT_TRACK: "1",
-    OMO_DISABLE_POSTHOG: "1",
-    OMO_SENPI_DISABLE_POSTHOG: "1",
   },
   stdio: ["pipe", "pipe", "pipe"],
 });

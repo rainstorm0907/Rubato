@@ -88,7 +88,7 @@ git log --oneline --no-decorate "HEAD..origin/$BRANCH" | sed 's/^/  /'
 
 CHANGED="$(git diff --name-only "HEAD..origin/$BRANCH")"
 need_deps=0; need_prompts=0; need_skills=0; need_engine=0; need_shell=0; need_extensions=0
-echo "$CHANGED" | grep -Eq '^(package\.json|bun\.lock|harness/package\.json|harness/rubato-pi/package\.json)$' && need_deps=1
+echo "$CHANGED" | grep -Eq '^(package\.json|bun\.lock|harness/rubato-pi/package\.json)$' && need_deps=1
 echo "$CHANGED" | grep -Eq '^harness/prompts/' && need_prompts=1
 echo "$CHANGED" | grep -Eq '^harness/skills/' && need_skills=1
 # 자동 로드되는 사용자 확장. 설치기 자신이 바뀌어도 다시 깐다 — 설치 규칙이
@@ -290,8 +290,6 @@ if [ "$need_deps" = 1 ]; then
   [ -n "$NPM" ] || fail "npm 이 없어 하네스 의존성을 갱신할 수 없습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
   (cd "$REPO" && "$BUN" install >/dev/null 2>&1) \
     && ok "엔진 의존성" || fail "bun install 에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
-  "$NPM" install --prefix "$HARNESS" >/dev/null 2>&1 \
-    && ok "bridge 의존성" || fail "bridge 의존성 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
   "$NPM" install --prefix "$HARNESS/rubato-pi" >/dev/null 2>&1 \
     && ok "rubato-pi 의존성" || fail "rubato-pi 의존성 설치에 실패했습니다. 소스는 받았지만 업데이트는 완료되지 않았습니다."
 fi
