@@ -128,6 +128,27 @@ test("발견하지 않은 Fast variant id 는 만들지 않는다", () => {
   );
 });
 
+test("저장분 베이스도 catalog 에 Fast 가 있으면 pin 한다", () => {
+  const catalog = [grokBase(), grokFast("cursor-grok-4.6-high-fast"), grokFast("cursor-grok-4.6-xhigh-fast")];
+  const options = { thinkingSelection: { level: "high", source: "explicit" } };
+  const { options: pinned } = pinCursorGrokFastSelection(grokBase(), options, catalog);
+  assert.equal(pinned.thinkingSelection.legacyVariantId, "cursor-grok-4.6-high-fast");
+  assert.equal(
+    resolveCursorSelectionDescriptor(grokBase(), pinned.thinkingSelection).modelId,
+    "cursor-grok-4.6-high-fast",
+  );
+});
+
+test("저장분 베이스는 catalog 에 없는 Fast id 를 만들지 않는다", () => {
+  const catalog = [grokBase(), grokFast("cursor-grok-4.6-medium-fast")];
+  const { options } = pinCursorGrokFastSelection(
+    grokBase(),
+    { thinkingSelection: { level: "high", source: "explicit" } },
+    catalog,
+  );
+  assert.equal(options.thinkingSelection.legacyVariantId, "cursor-grok-4.6-medium-fast");
+});
+
 test("다른 모델은 손대지 않는다", () => {
   const model = { id: "composer-2.5", provider: "cursor" };
   const options = { thinkingSelection: { level: "high", source: "explicit" } };

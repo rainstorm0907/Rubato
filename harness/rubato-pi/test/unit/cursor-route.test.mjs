@@ -743,6 +743,29 @@ test("server-exec 표지와 local-work 위임은 pinned 그대로다", async () 
   inner.end();
 });
 
+test("저장분 베이스 stream 도 catalog Fast 로 pin 한다", async () => {
+  let seen;
+  const inner = {
+    getModels: () => [discoveredModel("cursor-grok-4.6"), discoveredModel("cursor-grok-4.6-high-fast")],
+    streamSimple(_model, _context, options) {
+      seen = options.thinkingSelection;
+      return { [Symbol.asyncIterator]: async function* () {} };
+    },
+    refreshModels: async () => {},
+  };
+  const provider = await cursorDirectProvider({
+    provider: inner,
+    markerStore: memoryMarkerStore(),
+    run: async () => ({ stopReason: "stop" }),
+  });
+  provider.streamSimple(
+    discoveredModel("cursor-grok-4.6"),
+    { messages: [] },
+    { thinkingSelection: { level: "high", source: "explicit" } },
+  );
+  assert.equal(seen?.legacyVariantId, "cursor-grok-4.6-high-fast");
+});
+
 test("피커 filterModels 는 쓰던 일곱만 남긴다", async () => {
   const provider = await cursorDirectProvider({
     provider: pinnedShapedCursor({ fetchModels: async () => [] }),

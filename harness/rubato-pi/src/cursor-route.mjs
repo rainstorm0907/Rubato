@@ -401,10 +401,13 @@ function wrapCursorHttp2Stream(inner) {
   });
 }
 
-function wrapCursorHttp2Fn(inner) {
+function wrapCursorHttp2Fn(inner, getCatalog) {
   if (typeof inner !== "function") return inner;
   return (model, context, options) => {
-    const pinned = pinCursorGrokFastSelection(model, options);
+    // --model / 세션 복원은 getModels() 저장분을 쓴다. Fast map 은 filterModels
+    // 피커 객체에만 있으므로, 저장 catalog 에서 variant 를 다시 본다.
+    const catalog = typeof getCatalog === "function" ? getCatalog() : undefined;
+    const pinned = pinCursorGrokFastSelection(model, options, catalog);
     try {
       return wrapCursorHttp2Stream(inner(pinned.model, context, pinned.options));
     } catch (error) {
@@ -642,9 +645,10 @@ export async function loadPinnedCursorProvider() {
 }
 
 function withCursorHttp2Errors(provider) {
+  const catalog = () => (typeof provider.getModels === "function" ? provider.getModels() : []);
   const wrapPair = (source) => ({
-    ...(typeof source?.stream === "function" ? { stream: wrapCursorHttp2Fn(source.stream) } : {}),
-    ...(typeof source?.streamSimple === "function" ? { streamSimple: wrapCursorHttp2Fn(source.streamSimple) } : {}),
+    ...(typeof source?.stream === "function" ? { stream: wrapCursorHttp2Fn(source.stream, catalog) } : {}),
+    ...(typeof source?.streamSimple === "function" ? { streamSimple: wrapCursorHttp2Fn(source.streamSimple, catalog) } : {}),
   });
   const top = wrapPair(provider);
   const api = provider.api ? { ...provider.api, ...wrapPair(provider.api) } : provider.api;

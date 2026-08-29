@@ -100,10 +100,16 @@ function presentBase(base, fastVariants) {
   };
 }
 
-export function pinCursorGrokFastSelection(model, options = {}) {
+export function resolveCursorGrokFastByLevel(model, catalog) {
+  const attached = model?.compat?.cursorGrokFastByLevel;
+  if (attached && defaultDiscoveredLevel(attached)) return attached;
+  return discoveredCursorGrokFastByLevel((catalog ?? []).filter(isCursorGrok46FastVariant));
+}
+
+export function pinCursorGrokFastSelection(model, options = {}, catalog) {
   if (!isCursorGrok46Base(model)) return { model, options };
-  const byLevel = model.compat?.cursorGrokFastByLevel;
-  if (!byLevel || !defaultDiscoveredLevel(byLevel)) return { model, options };
+  const byLevel = resolveCursorGrokFastByLevel(model, catalog);
+  if (!defaultDiscoveredLevel(byLevel)) return { model, options };
   const selection = options.thinkingSelection;
   const alreadyFast = typeof selection?.legacyVariantId === "string" && FAST_SUFFIX.test(selection.legacyVariantId);
   const requested = byLevel[selection?.level]
