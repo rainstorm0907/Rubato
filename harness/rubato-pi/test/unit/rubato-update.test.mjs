@@ -1,12 +1,25 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, chmodSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 
 const SCRIPT_SRC = join(dirname(fileURLToPath(import.meta.url)), "../../../scripts/rubato-update.sh");
+
+test("updater entrypoint stays executable", () => {
+  assert.notEqual(statSync(SCRIPT_SRC).mode & 0o111, 0);
+});
 
 function git(cwd, args, opts = {}) {
   const result = spawnSync("git", args, {
